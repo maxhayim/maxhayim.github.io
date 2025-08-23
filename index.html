@@ -20,21 +20,98 @@
 </head>
 <body class="antialiased bg-neutral-950 text-neutral-100 selection:bg-cyan-300 selection:text-neutral-900">
   <div class="min-h-screen gradient">
+    <!-- Header -->
     <header class="sticky top-0 backdrop-blur supports-[backdrop-filter]:bg-neutral-950/60 z-40 border-b border-neutral-800">
       <div class="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
         <a href="#" class="font-semibold tracking-tight text-lg">@maxhayim</a>
         <nav class="hidden sm:flex gap-6 text-sm text-neutral-300">
           <a class="hover:text-white" href="#projects">Projects</a>
-          <a class="hover:text-white" href="#writing">Writing</a>
+          <a class="hover:text-white" href="#about">About</a>
           <a class="hover:text-white" href="#contact">Contact</a>
-          <a class="hover:text-white" href="/resume.html">Résumé</a>
         </nav>
       </div>
     </header>
 
+    <!-- Hero -->
     <section class="mx-auto max-w-6xl px-4 py-16 sm:py-24">
       <div class="grid md:grid-cols-5 gap-10 items-center">
         <div class="md:col-span-3">
+          <h1 class="text-3xl sm:text-5xl font-bold leading-tight">Builder of radio tools, open‑source bridges, and small utilities.</h1>
+          <p class="mt-4 text-neutral-300 max-w-2xl">On my GitHub page, you'll find a collection of projects that reflect my curiosity, creativity, and commitment to continuous learning. I tinker with Linux, Raspberry Pi, and cross‑platform tooling like <strong>ZPTTLink</strong>.</p>
+          <div class="mt-6 flex flex-wrap gap-3">
+            <a href="#projects" class="px-4 py-2 rounded-xl bg-cyan-500 text-neutral-950 font-medium hover:opacity-90">See Projects</a>
+            <a href="https://github.com/maxhayim" class="px-4 py-2 rounded-xl border border-neutral-700 hover:bg-neutral-900" target="_blank" rel="noopener">GitHub Profile</a>
+          </div>
+        </div>
+        <div class="md:col-span-2">
+          <div class="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-6">
+            <h2 class="font-semibold">Now</h2>
+            <ul class="mt-3 space-y-2 text-neutral-300 text-sm">
+              <li>• Shipping <span class="font-medium">ZPTTLink</span> docs & integrations</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Projects -->
+    <section id="projects" class="mx-auto max-w-6xl px-4 py-12">
+      <div class="flex items-end justify-between gap-4">
+        <h2 class="text-2xl font-semibold">Projects</h2>
+        <a class="text-sm text-neutral-400 hover:text-white" href="https://github.com/maxhayim?tab=repositories" target="_blank" rel="noopener">All repos →</a>
+      </div>
+
+      <div class="mt-6 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Card: ZPTTLink only -->
+        <a href="https://github.com/maxhayim/ZPTTLink" target="_blank" rel="noopener" class="block group">
+          <article class="h-full p-5 rounded-2xl border border-neutral-800 bg-neutral-900/50 hover:bg-neutral-900 transition">
+            <div class="flex items-center justify-between">
+              <h3 class="font-semibold">ZPTTLink</h3>
+              <span class="text-xs px-2 py-1 rounded-full bg-neutral-800 border border-neutral-700">Open‑source</span>
+            </div>
+            <p class="mt-2 text-sm text-neutral-300">Cross‑platform bridge that links Zello (via Android/Waydroid or BlueStacks) to radio interfaces (AIOC), handling audio + PTT in one app.</p>
+            <ul class="mt-3 text-xs text-neutral-400 list-disc list-inside space-y-1">
+              <li>Windows · macOS · Linux</li>
+              <li>Virtual audio cables & USB PTT detection</li>
+            </ul>
+            <p class="mt-3 text-xs text-cyan-400 group-hover:translate-x-0.5 transition">View on GitHub →</p>
+          </article>
+        </a>
+      </div>
+    </section>
+
+    <!-- About / OS Journey -->
+    <section id="about" class="mx-auto max-w-6xl px-4 py-12">
+      <h2 class="text-2xl font-semibold">About & OS Journey</h2>
+
+      <!-- Badges row -->
+      <div class="mt-4 flex flex-wrap gap-2 text-xs">
+        <img alt="Windows 95" src="https://img.shields.io/badge/Windows%2095-008080?logo=windows95&logoColor=white&style=flat" />
+        <img alt="Windows XP" src="https://img.shields.io/badge/Microsoft%20Windows%20XP-003399?logo=windowsxp&logoColor=white&style=flat" />
+        <img alt="Windows Vista" src="https://img.shields.io/badge/Windows%20Vista-00ADEF?logo=windows&logoColor=white&style=flat" />
+        <img alt="Ubuntu 7.04" src="https://img.shields.io/badge/Ubuntu%207.04%20Feisty%20Fawn-E95420?logo=ubuntu&logoColor=white&style=flat" />
+        <img alt="GNOME" src="https://img.shields.io/badge/GNOME-4A86CF?logo=gnome&logoColor=white&style=flat" />
+        <img alt="Mac OS X Leopard" src="https://img.shields.io/badge/Mac%20OS%20X%20Leopard-000000?logo=apple&logoColor=white&style=flat" />
+      </div>
+
+      <div class="mt-8 grid md:grid-cols-2 gap-8">
+        <div class="prose prose-invert max-w-none">
+          <h3>My OS Journey</h3>
+          <ul>
+            <li><strong>2001</strong> — First computer: Packard Bell D160 with built‑in speaker monitor, running Windows 95. First app I played with: QuickTime 5.0 (from a Kid’s Toy CD).</li>
+            <li><strong>2004</strong> — Moved to Microsoft Windows XP and later skinned it to look like Windows Vista.</li>
+            <li><strong>2006</strong> — Built my first MS‑DOS application: a Pong‑style game. <br/>
+              <img src="https://www.retrogames.cz/games/530/Pong-gameplay.gif" alt="Pong gameplay" width="320"/>
+            </li>
+            <li><strong>2007</strong> — Discovered OSS and dove into Linux, starting with Ubuntu 7.04 (GNOME). Mirrors: <a href="https://github.com/ubuntu" target="_blank" rel="noopener">Ubuntu</a> • <a href="https://github.com/GNOME" target="_blank" rel="noopener">GNOME</a>.</li>
+            <li><strong>2007</strong> — Mac world: loved Unix‑like systems and the iPod; used <a href="https://github.com/chriskite" target="_blank" rel="noopener">FlyAKiteOSX</a>, explored Mac OS X 10.5 Leopard Dashboard widgets. iPod nostalgia: <a href="https://github.com/tvillarete/ipod-classic-js" target="_blank" rel="noopener">ipod-classic-js</a>.</li>
+            <li><strong>Today</strong> — Dabbling with code again after years of web and GUI design.</li>
+          </ul>
+
+          <h3>Favorite Operating Systems</h3>
+          <ul>
+            <li>Microsoft Windows XP</li>
+            <li>        <div class="md:col-span-3">
           <h1 class="text-3xl sm:text-5xl font-bold leading-tight">Builder of radio tools, open-source bridges, and delightful little utilities.</h1>
           <p class="mt-4 text-neutral-300 max-w-2xl">On my GitHub page, you'll find a collection of projects that reflect my curiosity, creativity, and commitment to continuous learning. I tinker with GMRS/LoRa, Raspberry Pi receivers (ADS-B/AIS), and create software like <strong>ZPTTLink</strong> that connects voice apps and radios.</p>
           <div class="mt-6 flex flex-wrap gap-3">
