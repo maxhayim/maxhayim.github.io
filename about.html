@@ -1,0 +1,307 @@
+import React from "react";
+import {
+  User,
+  MapPin,
+  Globe,
+  Monitor,
+  Terminal,
+  Cpu,
+  Github,
+  ExternalLink,
+  Phone,
+  Clock3,
+  Radio,
+} from "lucide-react";
+
+export default function AboutPage() {
+  const navItems = [
+    { label: "Home", href: "/" },
+    { label: "About & Contact", href: "/about" },
+  ];
+
+  const osBadges = [
+    "Windows 95",
+    "Windows XP",
+    "Windows Vista",
+    "Ubuntu 7.04",
+    "GNOME",
+    "Mac OS X Leopard",
+  ];
+
+  const journey = [
+    {
+      year: "2001",
+      title: "First Computer",
+      text: "Started with a Packard Bell D160 with a built-in speaker monitor running Windows 95. One of the first things I explored was QuickTime 5.0 from a kids CD.",
+      icon: Monitor,
+    },
+    {
+      year: "2004",
+      title: "Windows XP Era",
+      text: "Moved into Microsoft Windows XP and started experimenting with theming and interface customization, including making it look like Windows Vista.",
+      icon: Monitor,
+    },
+    {
+      year: "2006",
+      title: "First Programming Project",
+      text: "Built a small MS-DOS Pong-style application while experimenting with simple game logic and old-school computing ideas.",
+      icon: Terminal,
+    },
+    {
+      year: "2007",
+      title: "Open Source Discovery",
+      text: "Discovered open-source software and got into Linux through Ubuntu 7.04 with GNOME, which opened the door to a very different way of thinking about computers.",
+      icon: Cpu,
+    },
+    {
+      year: "2007",
+      title: "Mac OS X Interest",
+      text: "Also got pulled into the Mac world through Unix-like systems, iPod culture, FlyAKiteOSX, and the design of Mac OS X Leopard and dashboard widgets.",
+      icon: Globe,
+    },
+    {
+      year: "Today",
+      title: "Back in Code",
+      text: "Now I am working with code again after years of web design and UI experimentation, blending technical tooling, visuals, and practical systems.",
+      icon: Radio,
+    },
+  ];
+
+  const favoriteSystems = [
+    "Microsoft Windows XP",
+    "Ubuntu 11.10 Oneiric Ocelot",
+    "Mac OS X 10.6 Snow Leopard",
+  ];
+
+  const favoriteApps = [
+    "Mozilla Firefox",
+    "Skype",
+    "Trillian",
+    "Gizmo5",
+    "Adobe Photoshop",
+    "Google Desktop",
+  ];
+
+  const skills = [
+    "HTML5",
+    "CSS3",
+    "JavaScript",
+    "Linux",
+    "macOS",
+    "Windows",
+    "Git",
+    "Adobe Photoshop",
+  ];
+
+  return (
+    <div className="min-h-screen overflow-hidden bg-[#04070b] text-zinc-100 selection:bg-emerald-400/30">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.12),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.10),transparent_25%)]" />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:32px_32px]" />
+
+      <main className="relative z-10 mx-auto flex max-w-7xl flex-col gap-6 p-4 md:p-6">
+        <nav className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-emerald-300">
+                Navigation
+              </div>
+              <div className="text-lg font-semibold tracking-[0.2em] text-zinc-100">maxhayim.com</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {navItems.map((item) => (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  className="rounded-xl border border-zinc-800 bg-zinc-950/70 px-4 py-2 text-xs uppercase tracking-[0.18em] text-zinc-300 transition hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
+                >
+                  {item.label}
+                </a>
+              ))}
+            </div>
+          </div>
+        </nav>
+        <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
+          <div className="grid gap-6 md:grid-cols-12">
+            <div className="md:col-span-8 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
+              <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-300">
+                <User className="h-3.5 w-3.5" />
+                About Me
+              </div>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-100 md:text-5xl">
+                About & Contact
+              </h1>
+              <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-zinc-400">
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin className="h-4 w-4 text-cyan-300" />
+                  MIA
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Globe className="h-4 w-4 text-emerald-300" />
+                  OS Journey / Design / Code
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock3 className="h-4 w-4 text-orange-300" />
+                  Personal Timeline
+                </span>
+              </div>
+              <p className="mt-5 max-w-4xl text-sm leading-7 text-zinc-300 md:text-base">
+                This page is a command-center style profile of my background: the operating systems that shaped me, the applications I loved growing up, the tools I work with, and the path that brought me back into code.
+              </p>
+            </div>
+
+            <div className="md:col-span-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
+              <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-300">
+                <Monitor className="h-3.5 w-3.5" />
+                System Badges
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {osBadges.map((badge) => (
+                  <span
+                    key={badge}
+                    className="rounded-full border border-zinc-700 bg-black/40 px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] text-zinc-300"
+                  >
+                    {badge}
+                  </span>
+                ))}
+              </div>
+              <a
+                href="https://github.com/maxhayim"
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs uppercase tracking-[0.18em] text-emerald-300 transition hover:bg-emerald-500/20"
+              >
+                <Github className="h-3.5 w-3.5" />
+                Open GitHub
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-6 md:grid-cols-12">
+          <div className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl md:col-span-8">
+            <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-300">
+              <Radio className="h-3.5 w-3.5" />
+              OS Journey Timeline
+            </div>
+            <div className="space-y-4">
+              {journey.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <div key={`${item.year}-${item.title}`} className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10">
+                        <Icon className="h-4 w-4 text-emerald-300" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.2em] text-cyan-300">
+                            {item.year}
+                          </span>
+                          <h3 className="text-base font-semibold text-zinc-100">{item.title}</h3>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-zinc-400">{item.text}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl md:col-span-4">
+            <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-orange-300">
+              <Terminal className="h-3.5 w-3.5" />
+              Favorites
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                <h3 className="text-sm font-semibold text-zinc-100">Favorite Operating Systems</h3>
+                <ul className="mt-3 space-y-2 text-sm text-zinc-400">
+                  {favoriteSystems.map((item) => (
+                    <li key={item} className="rounded-xl border border-zinc-800 bg-black/30 px-3 py-2">
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                <h3 className="text-sm font-semibold text-zinc-100">Favorite Applications Growing Up</h3>
+                <p className="mt-2 text-xs text-zinc-500">Some may no longer be maintained.</p>
+                <ul className="mt-3 space-y-2 text-sm text-zinc-400">
+                  {favoriteApps.map((item) => (
+                    <li key={item} className="rounded-xl border border-zinc-800 bg-black/30 px-3 py-2">
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-6 md:grid-cols-12">
+          <div className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl md:col-span-6">
+            <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-violet-300">
+              <Cpu className="h-3.5 w-3.5" />
+              Skills & Tools
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {skills.map((item) => (
+                <span
+                  key={item}
+                  className="rounded-full border border-zinc-700 bg-black/40 px-3 py-2 text-[10px] uppercase tracking-[0.18em] text-zinc-300"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl md:col-span-6">
+            <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-300">
+              <Github className="h-3.5 w-3.5" />
+              GitHub Stats
+            </div>
+            <div className="space-y-3">
+              <img
+                alt="GitHub stats"
+                src="https://github-readme-stats.vercel.app/api?username=maxhayim&show_icons=true&theme=radical"
+                className="w-full rounded-2xl border border-zinc-800"
+              />
+              <img
+                alt="Top languages"
+                src="https://github-readme-stats.vercel.app/api/top-langs/?username=maxhayim&layout=compact&theme=radical"
+                className="w-full rounded-2xl border border-zinc-800"
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-300">
+                <Phone className="h-3.5 w-3.5" />
+                Contact
+              </div>
+              <h2 className="mt-2 text-2xl font-semibold text-zinc-100">Get in touch through GitHub</h2>
+              <p className="mt-2 text-sm text-zinc-400">Contact me through GitHub for anything.</p>
+            </div>
+            <a
+              href="https://github.com/maxhayim"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20"
+            >
+              github.com/maxhayim
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
