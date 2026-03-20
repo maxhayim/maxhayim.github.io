@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Radar,
@@ -267,213 +267,121 @@ function useAnalytics() {
     window.gtag("config", "G-ZRECP8G16F");
     window.__maxhayimGtagLoaded = true;
   }, []);
-}
-
-function formatDate(value) {
-  if (!value) return "—";
-  return new Date(value).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function buildFlightCode(repo) {
-  const words = repo.name.split(/[-_]/g).filter(Boolean);
-  const letters = words.map((word) => word[0]?.toUpperCase() || "").join("");
-  const stars = String(repo.stargazers_count || 0).padStart(2, "0");
-  return `${letters}${stars}`;
-}
-
-function SharedShell({ currentPage, children }) {
-  const currentYear = new Date().getFullYear();
-  useAnalytics();
-
-  return (
-    <div className="min-h-screen overflow-hidden bg-[#04070b] text-zinc-100 selection:bg-emerald-400/30">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.12),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.10),transparent_25%)]" />
-      <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:32px_32px]" />
-
-      <nav className="relative z-20 mx-auto mt-4 max-w-7xl rounded-3xl border border-zinc-800 bg-black/60 p-4 shadow-2xl backdrop-blur-xl">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
-            <img src="/logo_clear.png" alt="maxhayim logo" className="h-9 w-9" />
-            <div className="text-lg font-semibold tracking-[0.2em] text-zinc-100">maxhayim.com</div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {navItems.map((item) => {
-              const isActive =
-                (currentPage === "home" && item.href === "#/") ||
-                (currentPage === "about" && item.href === "#/about") ||
-                (currentPage === "contact" && item.href === "#/contact");
-              return (
-                <a
-                  key={item.label}
-                  href={item.href}
-                  className={`rounded-xl border px-4 py-2 text-xs uppercase tracking-[0.18em] transition ${
-                    isActive
-                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                      : "border-zinc-800 bg-zinc-950/70 text-zinc-300 hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
-                  }`}
-                >
-                  {item.label}
-                </a>
-              );
-            })}
-          </div>
-        </div>
-      </nav>
-
-      <main className="relative z-10 mx-auto flex max-w-7xl flex-col gap-6 p-4 md:p-6">{children}</main>
-
-      <footer className="relative z-10 mx-auto mb-4 max-w-7xl rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
-        <div className="flex flex-col gap-3 text-sm text-zinc-400 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-2">
-            <img src="/logo_clear.png" alt="maxhayim logo" className="h-4 w-4" />
-            <span>© 2009 - {currentYear} MAXHAYIM.COM. All Rights Reserved.</span>
-          </div>
-          <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">GitHub Command Center</div>
-        </div>
-      </footer>
-    </div>
-  );
-}
-
-function HomePage() {
-  const [repos, setRepos] = useState(fallbackRepos);
-  const [loadingRepos, setLoadingRepos] = useState(true);
-  const [visibleMessages, setVisibleMessages] = useState(1);
 
   useEffect(() => {
-    let cancelled = false;
+    if (typeof document === "undefined") return;
 
-    async function loadRepos() {
-      try {
-        const response = await fetch("https://api.github.com/users/maxhayim/repos?per_page=100&sort=updated");
-        if (!response.ok) throw new Error("Failed to load repositories");
-        const repoList = await response.json();
+    document.title = "maxhayim.com — GitHub Command Center";
 
-        const filtered = repoList
-          .filter((repo) => !repo.fork)
-          .filter((repo) => repo.name !== "maxhayim" && repo.name !== "maxhayim.github.io")
-          .sort((a, b) => {
-            const aStars = a.stargazers_count || 0;
-            const bStars = b.stargazers_count || 0;
-            if (bStars !== aStars) return bStars - aStars;
-            return new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime();
-          })
-          .map((repo) => ({
-            name: repo.name,
-            html_url: repo.html_url,
-            stargazers_count: repo.stargazers_count ?? 0,
-            forks_count: repo.forks_count ?? 0,
-            language: repo.language || "—",
-            updated_at: repo.updated_at || null,
-            description:
-              repoDescriptions[repo.name] || repo.description || "Public repository in the maxhayim command center.",
-          }));
-
-        if (!cancelled) setRepos(filtered.length ? filtered : fallbackRepos);
-      } catch {
-        if (!cancelled) setRepos(fallbackRepos);
-      } finally {
-        if (!cancelled) setLoadingRepos(false);
-      }
+    let favicon = document.querySelector("link[rel='icon']");
+    if (!favicon) {
+      favicon = document.createElement("link");
+      favicon.setAttribute("rel", "icon");
+      document.head.appendChild(favicon);
     }
+    favicon.setAttribute("type", "image/x-icon");
+    favicon.setAttribute("href", "/logo_fullclear_favicon.ico");
 
-    loadRepos();
+    let appleIcon = document.querySelector("link[rel='apple-touch-icon']");
+    if (!appleIcon) {
+      appleIcon = document.createElement("link");
+      appleIcon.setAttribute("rel", "apple-touch-icon");
+      document.head.appendChild(appleIcon);
+    }
+    appleIcon.setAttribute("href", "/logo_fullclear.png");
+
+    let metaDescription = document.querySelector("meta[name='description']");
+    if (!metaDescription) {
+      metaDescription = document.createElement("meta");
+      metaDescription.setAttribute("name", "description");
+      document.head.appendChild(metaDescription);
+    }
+    metaDescription.setAttribute(
+      "content",
+      "Public GitHub command center for maxhayim with live repo radar, telemetry, dashboards, and interactive engineering modules."
+    );
+  }, []);
+}
+
+function PongGame() {
+  const fieldRef = useRef(null);
+  const [visitorY, setVisitorY] = useState(92);
+  const [botY, setBotY] = useState(92);
+  const [ball, setBall] = useState({ x: 50, y: 50, vx: 0.65, vy: 0.42 });
+  const [score, setScore] = useState({ bot: 3, visitor: 7 });
+
+  useEffect(() => {
+    const handleMove = (clientY) => {
+      const rect = fieldRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const relativeY = ((clientY - rect.top) / rect.height) * 100;
+      setVisitorY(Math.max(10, Math.min(90, relativeY)));
+    };
+
+    const onMouseMove = (event) => handleMove(event.clientY);
+    const onTouchMove = (event) => {
+      if (event.touches[0]) handleMove(event.touches[0].clientY);
+    };
+
+    const node = fieldRef.current;
+    node?.addEventListener("mousemove", onMouseMove);
+    node?.addEventListener("touchmove", onTouchMove, { passive: true });
 
     return () => {
-      cancelled = true;
+      node?.removeEventListener("mousemove", onMouseMove);
+      node?.removeEventListener("touchmove", onTouchMove);
     };
   }, []);
 
   useEffect(() => {
-    setVisibleMessages(1);
     const interval = setInterval(() => {
-      setVisibleMessages((current) => {
-        if (current >= repoConversation.length) return 1;
-        return current + 1;
+      setBall((prev) => {
+        let { x, y, vx, vy } = prev;
+        x += vx;
+        y += vy;
+
+        if (y <= 3 || y >= 97) vy *= -1;
+
+        const nextBotY = Math.max(10, Math.min(90, botY + (y - botY) * 0.18));
+        if (Math.abs(nextBotY - botY) > 0.2) setBotY(nextBotY);
+
+        const visitorMin = visitorY - 12;
+        const visitorMax = visitorY + 12;
+        const botMin = nextBotY - 12;
+        const botMax = nextBotY + 12;
+
+        if (x >= 92 && y >= visitorMin && y <= visitorMax) {
+          vx = -Math.abs(vx);
+          vy += (y - visitorY) * 0.015;
+          x = 92;
+        }
+
+        if (x <= 8 && y >= botMin && y <= botMax) {
+          vx = Math.abs(vx);
+          vy += (y - nextBotY) * 0.015;
+          x = 8;
+        }
+
+        if (x > 100) {
+          setScore((s) => ({ ...s, bot: s.bot + 1 }));
+          return { x: 50, y: 50, vx: -0.65, vy: 0.34 };
+        }
+
+        if (x < 0) {
+          setScore((s) => ({ ...s, visitor: s.visitor + 1 }));
+          return { x: 50, y: 50, vx: 0.65, vy: -0.34 };
+        }
+
+        return { x, y, vx, vy };
       });
-    }, 1800);
+    }, 16);
+
     return () => clearInterval(interval);
-  }, []);
-
-  const repoTelemetry = useMemo(() => {
-    const totalStars = repos.reduce((sum, repo) => sum + (repo.stargazers_count || 0), 0);
-    const totalForks = repos.reduce((sum, repo) => sum + (repo.forks_count || 0), 0);
-    const languages = Array.from(
-      new Set(repos.map((repo) => repo.language).filter((lang) => lang && lang !== "—"))
-    );
-    return {
-      totalRepos: repos.length,
-      totalStars,
-      totalForks,
-      languages,
-    };
-  }, [repos]);
-
-  const radarTargets = useMemo(() => {
-    return repos.slice(0, radarPositions.length).map((repo, index) => ({
-      repo,
-      position: radarPositions[index],
-    }));
-  }, [repos]);
-
-  const recentActivity = useMemo(() => {
-    return [...repos]
-      .filter((repo) => repo.updated_at)
-      .sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
-      .slice(0, 4);
-  }, [repos]);
-
-  const activeConversationRepo = repoConversation[Math.max(visibleMessages - 1, 0)]?.from;
-
-  const telemetrySwitches = [
-    { label: "Repositories", value: repoTelemetry.totalRepos, icon: Layers3 },
-    { label: "Stars", value: repoTelemetry.totalStars, icon: Star },
-    { label: "Forks", value: repoTelemetry.totalForks, icon: GitFork },
-    { label: "Languages", value: repoTelemetry.languages.length, icon: Radio },
-  ];
+  }, [visitorY, botY]);
 
   return (
-    <SharedShell currentPage="home">
-      <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
-        <div className="grid gap-6 md:grid-cols-12">
-          <div className="md:col-span-8 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-300">
-                  <User className="h-3.5 w-3.5" />
-                  Command Profile
-                </div>
-                <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-100 md:text-5xl">maxhayim.com</h1>
-              </div>
-
-              <div className="shrink-0 rounded-2xl border border-emerald-500/20 bg-black/40 p-2 shadow-[0_0_24px_rgba(16,185,129,0.12)]">
-                <img
-                  src="/avatar.jpg"
-                  alt="Max Hayim avatar"
-                  className="h-20 w-20 rounded-xl border border-zinc-800 object-cover md:h-24 md:w-24"
-                />
-              </div>
+    <PongGame />
             </div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-zinc-400">
-              <span className="inline-flex items-center gap-1.5">
-                <MapPin className="h-4 w-4 text-cyan-300" /> MIA
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Globe className="h-4 w-4 text-emerald-300" /> Public GitHub Command Center
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Shield className="h-4 w-4 text-violet-300" /> Open Repositories Only
-              </span>
-            </div>
-
-            <p className="mt-5 max-w-4xl text-sm leading-7 text-zinc-300 md:text-base">
-              Public repos, telemetry, activity logs, and engineering identity presented through a radar-inspired interface centered on live GitHub work.
-            </p>
           </div>
 
           <div className="md:col-span-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
