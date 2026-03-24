@@ -116,45 +116,6 @@ const fallbackRepos = [
   },
 ];
 
-const repoConversation = [
-  {
-    from: "ZPTTLink",
-    tag: "TX",
-    time: "19:41Z",
-    message: "bridge push complete. radio gateway patch packaged and queued for field check.",
-  },
-  {
-    from: "meshmonitor-bridge-homeassistant",
-    tag: "RX",
-    time: "19:42Z",
-    message: "entity state received. synchronizing event payload into automation pipeline.",
-  },
-  {
-    from: "meshmonitor-watchandreboot",
-    tag: "TX",
-    time: "19:43Z",
-    message: "watchdog loop complete. service health within threshold. no recovery action needed.",
-  },
-  {
-    from: "meshmonitor-carrier-outage",
-    tag: "RX",
-    time: "19:44Z",
-    message: "signal anomaly detected. logging outage indicator and raising alert state.",
-  },
-  {
-    from: "meshmonitor-llm-bridge",
-    tag: "TX",
-    time: "19:45Z",
-    message: "message parsed. formatting response for low-bandwidth transport route.",
-  },
-  {
-    from: "meshmonitor-mx-weather-alerts",
-    tag: "RX",
-    time: "19:46Z",
-    message: "bulletin ingested. timed broadcast payload generated and staged.",
-  },
-];
-
 const osBadges = [
   "Windows 95",
   "Windows XP",
@@ -250,7 +211,7 @@ function useHashRoute() {
 
 function usePageMeta() {
   useEffect(() => {
-    document.title = "maxhayim.com — GitHub Command Center";
+    document.title = "maxhayim.com — Public Command Center Homepage";
 
     let favicon = document.querySelector("link[rel='icon']");
     if (!favicon) {
@@ -277,7 +238,7 @@ function usePageMeta() {
     }
     metaDescription.setAttribute(
       "content",
-      "Public GitHub command center for maxhayim with live repo radar, telemetry, dashboards, and interactive engineering modules."
+      "Public command center homepage for maxhayim with live repo radar, telemetry, traffic, about timeline, and contact console."
     );
   }, []);
 }
@@ -347,8 +308,8 @@ function SharedShell({ currentPage, children }) {
 
       <footer className="relative z-10 mx-auto mb-4 max-w-7xl rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
         <div className="flex flex-col gap-3 text-sm text-zinc-400 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-2">
-            <img src="/logo_clear.png" alt="maxhayim logo" className="h-4 w-4" />
+          <div className="flex items-center gap-3">
+            <img src="/logo_fullclear.png" alt="maxhayim logo" className="h-5 w-auto" />
             <span>© 2009 - {currentYear} MAXYIM.COM. All Rights Reserved.</span>
           </div>
           <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
@@ -362,82 +323,122 @@ function SharedShell({ currentPage, children }) {
 
 function PongGame() {
   const fieldRef = useRef(null);
+  const animationRef = useRef(null);
+
+  const visitorYRef = useRef(50);
+  const botYRef = useRef(50);
+  const ballRef = useRef({ x: 50, y: 50, vx: 0.52, vy: 0.34 });
+
   const [visitorY, setVisitorY] = useState(50);
   const [botY, setBotY] = useState(50);
-  const [ball, setBall] = useState({ x: 50, y: 50, vx: 0.65, vy: 0.42 });
-  const [score, setScore] = useState({ bot: 3, visitor: 7 });
+  const [ball, setBall] = useState({ x: 50, y: 50 });
+  const [score, setScore] = useState({ bot: 0, visitor: 0 });
+
+  const setVisitorPosition = (clientY) => {
+    const rect = fieldRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const relativeY = ((clientY - rect.top) / rect.height) * 100;
+    const clamped = Math.max(10, Math.min(90, relativeY));
+    visitorYRef.current = clamped;
+    setVisitorY(clamped);
+  };
 
   useEffect(() => {
-    const handleMove = (clientY) => {
-      const rect = fieldRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const relativeY = ((clientY - rect.top) / rect.height) * 100;
-      setVisitorY(Math.max(10, Math.min(90, relativeY)));
-    };
-
-    const onMouseMove = (event) => handleMove(event.clientY);
-    const onTouchMove = (event) => {
-      if (event.touches[0]) handleMove(event.touches[0].clientY);
-    };
-
     const node = fieldRef.current;
-    node?.addEventListener("mousemove", onMouseMove);
-    node?.addEventListener("touchmove", onTouchMove, { passive: true });
+    if (!node) return;
+
+    const onMouseMove = (event) => setVisitorPosition(event.clientY);
+    const onTouchMove = (event) => {
+      if (event.touches?.[0]) setVisitorPosition(event.touches[0].clientY);
+    };
+
+    const onKeyDown = (event) => {
+      if (event.key === "ArrowUp") {
+        visitorYRef.current = Math.max(10, visitorYRef.current - 4);
+        setVisitorY(visitorYRef.current);
+      }
+      if (event.key === "ArrowDown") {
+        visitorYRef.current = Math.min(90, visitorYRef.current + 4);
+        setVisitorY(visitorYRef.current);
+      }
+    };
+
+    node.addEventListener("mousemove", onMouseMove);
+    node.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("keydown", onKeyDown);
 
     return () => {
-      node?.removeEventListener("mousemove", onMouseMove);
-      node?.removeEventListener("touchmove", onTouchMove);
+      node.removeEventListener("mousemove", onMouseMove);
+      node.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("keydown", onKeyDown);
     };
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setBall((prev) => {
-        let { x, y, vx, vy } = prev;
-        x += vx;
-        y += vy;
+    const resetBall = (direction) => {
+      ballRef.current = {
+        x: 50,
+        y: 50,
+        vx: direction === "visitor" ? 0.52 : -0.52,
+        vy: Math.random() > 0.5 ? 0.34 : -0.34,
+      };
+    };
 
-        if (y <= 3 || y >= 97) vy *= -1;
+    const tick = () => {
+      const next = { ...ballRef.current };
 
-        setBotY((currentBotY) => {
-          const nextBotY = Math.max(10, Math.min(90, currentBotY + (y - currentBotY) * 0.18));
+      next.x += next.vx;
+      next.y += next.vy;
 
-          const visitorMin = visitorY - 12;
-          const visitorMax = visitorY + 12;
-          const botMin = nextBotY - 12;
-          const botMax = nextBotY + 12;
+      if (next.y <= 2 || next.y >= 98) {
+        next.vy *= -1;
+        next.y = Math.max(2, Math.min(98, next.y));
+      }
 
-          if (x >= 92 && y >= visitorMin && y <= visitorMax) {
-            vx = -Math.abs(vx);
-            vy += (y - visitorY) * 0.015;
-            x = 92;
-          }
+      const nextBot = Math.max(
+        10,
+        Math.min(90, botYRef.current + (next.y - botYRef.current) * 0.08)
+      );
+      botYRef.current = nextBot;
+      setBotY(nextBot);
 
-          if (x <= 8 && y >= botMin && y <= botMax) {
-            vx = Math.abs(vx);
-            vy += (y - nextBotY) * 0.015;
-            x = 8;
-          }
+      const visitorMin = visitorYRef.current - 10;
+      const visitorMax = visitorYRef.current + 10;
+      const botMin = nextBot - 10;
+      const botMax = nextBot + 10;
 
-          return nextBotY;
-        });
+      if (next.x >= 93 && next.y >= visitorMin && next.y <= visitorMax && next.vx > 0) {
+        next.vx = -Math.abs(next.vx);
+        next.vy += (next.y - visitorYRef.current) * 0.012;
+        next.x = 93;
+      }
 
-        if (x > 100) {
-          setScore((s) => ({ ...s, bot: s.bot + 1 }));
-          return { x: 50, y: 50, vx: -0.65, vy: 0.34 };
-        }
+      if (next.x <= 7 && next.y >= botMin && next.y <= botMax && next.vx < 0) {
+        next.vx = Math.abs(next.vx);
+        next.vy += (next.y - nextBot) * 0.012;
+        next.x = 7;
+      }
 
-        if (x < 0) {
-          setScore((s) => ({ ...s, visitor: s.visitor + 1 }));
-          return { x: 50, y: 50, vx: 0.65, vy: -0.34 };
-        }
+      if (next.x > 100) {
+        setScore((prev) => ({ ...prev, bot: prev.bot + 1 }));
+        resetBall("bot");
+      } else if (next.x < 0) {
+        setScore((prev) => ({ ...prev, visitor: prev.visitor + 1 }));
+        resetBall("visitor");
+      } else {
+        ballRef.current = next;
+      }
 
-        return { x, y, vx, vy };
-      });
-    }, 16);
+      setBall({ x: ballRef.current.x, y: ballRef.current.y });
+      animationRef.current = requestAnimationFrame(tick);
+    };
 
-    return () => clearInterval(interval);
-  }, [visitorY]);
+    animationRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    };
+  }, []);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-emerald-500/20 bg-black p-4 shadow-inner">
@@ -455,11 +456,11 @@ function PongGame() {
 
         <div
           className="absolute left-4 w-2 -translate-y-1/2 rounded-sm bg-emerald-300 shadow-[0_0_12px_rgba(74,222,128,0.75)]"
-          style={{ top: `${botY}%`, height: "56px" }}
+          style={{ top: `${botY}%`, height: "52px" }}
         />
         <div
           className="absolute right-4 w-2 -translate-y-1/2 rounded-sm bg-cyan-300 shadow-[0_0_12px_rgba(103,232,249,0.75)]"
-          style={{ top: `${visitorY}%`, height: "56px" }}
+          style={{ top: `${visitorY}%`, height: "52px" }}
         />
 
         <div
@@ -478,8 +479,103 @@ function PongGame() {
 
         <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-emerald-400/80">
           <span>BOT</span>
-          <span>MOVE MOUSE / TOUCH</span>
+          <span>MOUSE / TOUCH / ARROWS</span>
           <span>VISITOR</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InteractiveDialup() {
+  const audioRef = useRef(null);
+  const [status, setStatus] = useState("idle");
+  const [lines, setLines] = useState([
+    "ATDT PRODIGY-LOCAL-POP",
+    "System ready. Awaiting connection command.",
+  ]);
+
+  const startDialup = () => {
+    if (status === "connecting") return;
+
+    setStatus("connecting");
+    setLines([
+      "ATDT PRODIGY-LOCAL-POP",
+      "Initializing modem...",
+      "Dialing local access number...",
+    ]);
+
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(() => {});
+    }
+
+    setTimeout(() => {
+      setLines((prev) => [...prev, "Negotiating carrier... 2400 / 9600 / 14400"]);
+    }, 1600);
+
+    setTimeout(() => {
+      setLines((prev) => [...prev, "CONNECT 2400"]);
+      setStatus("connected");
+    }, 4200);
+  };
+
+  return (
+    <div className="rounded-2xl border border-cyan-500/20 bg-zinc-950/70 p-4">
+      <audio ref={audioRef} src="/audio/dialup-connect.mp3" preload="auto" />
+
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-300">
+            2001 • Dial-Up Initialization
+          </div>
+          <div className="mt-2 text-lg font-semibold text-zinc-100">PRODIGY ISP</div>
+          <div className="mt-1 text-xs uppercase tracking-[0.18em] text-zinc-500">
+            Local access numbers varied by city
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <motion.div
+            initial={false}
+            animate={{ opacity: status === "connected" ? [0.55, 1, 0.55] : [0.35, 0.8, 0.35] }}
+            transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+            className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.2em] ${
+              status === "connected"
+                ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
+                : "border-cyan-500/20 bg-cyan-500/10 text-cyan-300"
+            }`}
+          >
+            {status === "connected" ? "CONNECTED" : "READY"}
+          </motion.div>
+
+          <button
+            type="button"
+            onClick={startDialup}
+            className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs uppercase tracking-[0.2em] text-emerald-300 transition hover:bg-emerald-500/20"
+          >
+            Connect
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-zinc-800 bg-black/40 p-4 font-mono text-xs text-zinc-300">
+        {lines.map((line, index) => (
+          <div
+            key={`${line}-${index}`}
+            className={`mt-1 ${
+              line.includes("CONNECT")
+                ? "text-emerald-300"
+                : line.includes("ATDT")
+                ? "text-cyan-300"
+                : "text-zinc-300"
+            }`}
+          >
+            {line}
+          </div>
+        ))}
+        <div className="mt-3 text-zinc-500">
+          Prodigy used local POP dial-up access rather than one universal nationwide member number.
         </div>
       </div>
     </div>
@@ -490,6 +586,7 @@ function HomePage() {
   const [repos, setRepos] = useState(fallbackRepos);
   const [loadingRepos, setLoadingRepos] = useState(true);
   const [visibleMessages, setVisibleMessages] = useState(1);
+  const [repoTraffic, setRepoTraffic] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -536,15 +633,40 @@ function HomePage() {
   }, []);
 
   useEffect(() => {
+    if (!repos.length) return;
+
+    const liveTraffic = repos
+      .filter((repo) => !repo.fork)
+      .filter((repo) => repo.name !== "maxhayim" && repo.name !== "maxhayim.github.io")
+      .sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
+      .slice(0, 6)
+      .map((repo, index) => ({
+        from: repo.name,
+        tag: index % 2 === 0 ? "TX" : "RX",
+        time: repo.updated_at
+          ? new Date(repo.updated_at).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false,
+            }) + "Z"
+          : "----",
+        message:
+          repo.description ||
+          `Repository active. ${repo.language || "Unknown language"} workflow updated and tracked.`,
+      }));
+
+    setRepoTraffic(liveTraffic);
     setVisibleMessages(1);
+
     const interval = setInterval(() => {
       setVisibleMessages((current) => {
-        if (current >= repoConversation.length) return 1;
+        if (current >= liveTraffic.length) return 1;
         return current + 1;
       });
     }, 1800);
+
     return () => clearInterval(interval);
-  }, []);
+  }, [repos]);
 
   const repoTelemetry = useMemo(() => {
     const totalStars = repos.reduce((sum, repo) => sum + (repo.stargazers_count || 0), 0);
@@ -574,7 +696,7 @@ function HomePage() {
       .slice(0, 4);
   }, [repos]);
 
-  const activeConversationRepo = repoConversation[Math.max(visibleMessages - 1, 0)]?.from;
+  const activeConversationRepo = repoTraffic[Math.max(visibleMessages - 1, 0)]?.from;
 
   const telemetrySwitches = [
     { label: "Repositories", value: repoTelemetry.totalRepos, icon: Layers3 },
@@ -732,7 +854,17 @@ function HomePage() {
             <div className="absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-emerald-500/15" />
 
             <div className="absolute inset-0 flex items-center justify-center">
-              <img src="/logo_fullclear.png" alt="radar core" className="h-16 w-16 opacity-75" />
+              <div className="relative flex items-center justify-center">
+                <div className="absolute h-20 w-20 rounded-full border border-emerald-500/20" />
+                <div className="absolute h-36 w-36 rounded-full border border-emerald-500/15" />
+                <div className="absolute h-52 w-52 rounded-full border border-emerald-500/10" />
+                <motion.div
+                  animate={{ scale: [1, 1.18, 1], opacity: [0.35, 0.12, 0.35] }}
+                  transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                  className="absolute h-10 w-10 rounded-full border border-emerald-300/20"
+                />
+                <div className="h-3 w-3 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.95)]" />
+              </div>
             </div>
 
             {radarTargets.map(({ repo, position }, index) => {
@@ -798,7 +930,7 @@ function HomePage() {
                 Repo Traffic
               </h2>
               <div className="mt-1 text-sm text-zinc-500">
-                Code-related traffic presented like live message flow.
+                Live GitHub repository activity presented like message flow.
               </div>
             </div>
 
@@ -809,7 +941,7 @@ function HomePage() {
 
           <div className="h-[360px] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
             <div className="flex h-full flex-col gap-3 overflow-hidden">
-              {repoConversation.slice(0, visibleMessages).map((entry, index) => {
+              {repoTraffic.slice(0, visibleMessages).map((entry, index) => {
                 const isTx = entry.tag === "TX";
 
                 return (
@@ -993,7 +1125,7 @@ function HomePage() {
             {[
               { label: "GitHub API", state: loadingRepos ? "warn" : "ok" },
               { label: "Radar Link", state: repos.length ? "ok" : "down" },
-              { label: "Traffic Feed", state: visibleMessages > 0 ? "ok" : "warn" },
+              { label: "Traffic Feed", state: repoTraffic.length > 0 ? "ok" : "warn" },
             ].map((light) => (
               <div
                 key={light.label}
@@ -1026,20 +1158,75 @@ function HomePage() {
             <Github className="h-3.5 w-3.5" />
             GitHub Stats
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
-              <img
-                alt="GitHub stats"
-                src="https://github-readme-stats.vercel.app/api?username=maxhayim&show_icons=true&theme=transparent&hide_border=true&title_color=ffffff&text_color=a1a1aa&icon_color=6ee7b7&ring_color=22c55e"
-                className="w-full rounded-xl"
-              />
+
+          <div className="grid gap-4 md:grid-cols-5">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Repositories</div>
+              <div className="mt-2 text-3xl font-semibold text-zinc-100">{repoTelemetry.totalRepos}</div>
             </div>
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
-              <img
-                alt="Top languages"
-                src="https://github-readme-stats.vercel.app/api/top-langs/?username=maxhayim&layout=compact&theme=transparent&hide_border=true&title_color=ffffff&text_color=a1a1aa"
-                className="w-full rounded-xl"
-              />
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Stars</div>
+              <div className="mt-2 text-3xl font-semibold text-zinc-100">{repoTelemetry.totalStars}</div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Forks</div>
+              <div className="mt-2 text-3xl font-semibold text-zinc-100">{repoTelemetry.totalForks}</div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Languages</div>
+              <div className="mt-2 text-3xl font-semibold text-zinc-100">{repoTelemetry.languages.length}</div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Top Repo</div>
+              <div className="mt-2 truncate text-base font-semibold text-zinc-100">
+                {repos[0]?.name || "—"}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+              <div className="mb-3 text-[10px] uppercase tracking-[0.22em] text-zinc-500">Top Languages</div>
+              <div className="flex flex-wrap gap-2">
+                {repoTelemetry.languages.length ? (
+                  repoTelemetry.languages.slice(0, 8).map((lang) => (
+                    <span
+                      key={lang}
+                      className="rounded-full border border-zinc-800 bg-black/40 px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] text-zinc-300"
+                    >
+                      {lang}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-sm text-zinc-500">No language data available.</span>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+              <div className="mb-3 text-[10px] uppercase tracking-[0.22em] text-zinc-500">Recent Repository Updates</div>
+              <div className="space-y-3">
+                {recentActivity.slice(0, 3).map((repo) => (
+                  <div
+                    key={repo.name}
+                    className="flex items-center justify-between rounded-xl border border-zinc-800 bg-black/30 px-3 py-3"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-zinc-200">{repo.name}</div>
+                      <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                        {repo.language || "—"}
+                      </div>
+                    </div>
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+                      {formatDate(repo.updated_at)}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -1102,38 +1289,7 @@ function AboutPage() {
           </div>
 
           <div className="space-y-4">
-            <div className="rounded-2xl border border-cyan-500/20 bg-zinc-950/70 p-4">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-300">
-                    2001 • Dial-Up Initialization
-                  </div>
-                  <div className="mt-2 text-lg font-semibold text-zinc-100">PRODIGY ISP</div>
-                  <div className="mt-1 text-xs uppercase tracking-[0.18em] text-zinc-500">
-                    Local access numbers varied by city
-                  </div>
-                </div>
-
-                <motion.div
-                  initial={false}
-                  animate={{ opacity: [0.45, 1, 0.45] }}
-                  transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-                  className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-emerald-300"
-                >
-                  CONNECTING
-                </motion.div>
-              </div>
-
-              <div className="mt-4 rounded-2xl border border-zinc-800 bg-black/40 p-4 font-mono text-xs text-zinc-300">
-                <div className="text-cyan-300">ATDT PRODIGY-LOCAL-POP</div>
-                <div className="mt-1">Initializing modem...</div>
-                <div className="mt-1">Negotiating carrier... 2400 / 9600 / 14400</div>
-                <div className="mt-1 text-emerald-300">CONNECT 2400</div>
-                <div className="mt-1 text-zinc-500">
-                  Prodigy used local POP dial-up access rather than one universal nationwide member number.
-                </div>
-              </div>
-            </div>
+            <InteractiveDialup />
 
             {journey.map((item) => {
               const Icon = item.icon;
@@ -1234,16 +1390,17 @@ function AboutPage() {
 
 function ContactPage() {
   const [formData, setFormData] = useState({ name: "", email: "", subject: "", message: "" });
+  const [submitted, setSubmitted] = useState(false);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const mailtoHref =
-    `mailto:maxhayim@users.noreply.github.com` +
-    `?subject=${encodeURIComponent(formData.subject || "Website Contact")}` +
-    `&body=${encodeURIComponent(`Name: ${formData.name}\nEmail: ${formData.email}\n\n${formData.message}`)}`;
+  const handleFakeSubmit = (e) => {
+    e.preventDefault();
+    setSubmitted(true);
+  };
 
   return (
     <SharedShell currentPage="contact">
@@ -1286,7 +1443,7 @@ function ContactPage() {
                     Terminal Contact Form
                   </div>
                   <div className="mt-1 text-sm text-zinc-500">
-                    Compose a message and launch your mail client.
+                    Compose a message and stage it in demonstration mode.
                   </div>
                 </div>
                 <div className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-emerald-300">
@@ -1294,7 +1451,7 @@ function ContactPage() {
                 </div>
               </div>
 
-              <form className="space-y-4" action={mailtoHref} method="get">
+              <form className="space-y-4" onSubmit={handleFakeSubmit}>
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="block">
                     <div className="mb-2 text-xs uppercase tracking-[0.2em] text-emerald-300">
@@ -1356,12 +1513,18 @@ function ContactPage() {
                     type="submit"
                     className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-300 transition hover:bg-emerald-500/20"
                   >
-                    ./send-message
+                    ./queue-message
                   </button>
                   <span className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-                    Opens your email client using mailto
+                    Demonstration only — no live message is sent
                   </span>
                 </div>
+
+                {submitted && (
+                  <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-200">
+                    Message staged in demo mode. Public site relay is intentionally simulated only.
+                  </div>
+                )}
               </form>
             </div>
 
@@ -1410,9 +1573,9 @@ function ContactPage() {
                   <div className="text-emerald-300">[TX] HELO contact-terminal.local</div>
                   <div className="mt-1 text-cyan-300">[RX] 250 github-mail.gateway ready</div>
                   <div className="mt-1">
-                    [TX] MAIL FROM: &lt;{formData.email || "maxhayim@users.noreply.github.com"}&gt;
+                    [TX] MAIL FROM: &lt;{formData.email || "demo-user@terminal.local"}&gt;
                   </div>
-                  <div className="mt-1">[TX] RCPT TO: &lt;maxhayim@users.noreply.github.com&gt;</div>
+                  <div className="mt-1">[TX] RCPT TO: &lt;demo-relay@maxhayim.github.io&gt;</div>
                   <div className="mt-1">[TX] SUBJECT: {formData.subject || "Website Contact"}</div>
                   <motion.div
                     animate={{ opacity: [0.45, 1, 0.45] }}
