@@ -1,416 +1,359 @@
-@import url("https://fonts.googleapis.com/css2?family=VT323&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:wdth,wght@75..100,400..700&family=VT323&display=swap");
 @import "tailwindcss";
 
-/* ---------- MS-DOS Prompt theme: Win95 window, see-through console, VGA text ---------- */
+/* ---------- MaXHyM System 6: Braun-timeline theme ---------- */
 
-@theme {
-  --font-sans: "VT323", "Courier New", monospace;
-  --font-mono: "VT323", "Courier New", monospace;
+@theme inline {
+  --font-sans: "Instrument Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: "Instrument Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
 
-  /* Dark console: VGA colors on see-through black.
-     VGA: #000 #0000AA #00AA00 #00AAAA #AA0000 #AA00AA #AA5500 #AAAAAA
-          #555555 #5555FF #55FF55 #55FFFF #FF5555 #FF55FF #FFFF55 #FFFFFF */
-  --color-zinc-100: #ffffff;
-  --color-zinc-200: #ffffff;
-  --color-zinc-300: #c0c0c0;
-  --color-zinc-400: #c0c0c0;
-  --color-zinc-500: #a8a8a8;
-  --color-zinc-600: #808080;
-  --color-zinc-700: #6e6e6e;
-  --color-zinc-800: #6e6e6e;
-  --color-zinc-900: #2a2a2a;
-  --color-zinc-950: #000000;
+  /* Content colors come from the machine's materials, so both editions share one mapping */
+  --color-zinc-100: var(--os-ink);
+  --color-zinc-200: var(--os-ink);
+  --color-zinc-300: var(--os-ink-2);
+  --color-zinc-400: var(--os-ink-2);
+  --color-zinc-500: var(--os-ink-3);
+  --color-zinc-600: var(--os-ink-3);
+  --color-zinc-700: var(--os-line);
+  --color-zinc-800: var(--os-line);
+  --color-zinc-900: var(--os-hover);
+  --color-zinc-950: var(--os-card);
+  --color-black: var(--os-card);
+  --color-white: var(--os-ink);
 
-  --color-emerald-100: #55ff55;
-  --color-emerald-200: #55ff55;
-  --color-emerald-300: #55ff55;
-  --color-emerald-400: #55ff55;
-  --color-emerald-500: #00aa00;
+  --color-emerald-100: var(--os-ok);
+  --color-emerald-200: var(--os-ok);
+  --color-emerald-300: var(--os-ok);
+  --color-emerald-400: var(--os-ok);
+  --color-emerald-500: var(--os-ok);
 
-  --color-cyan-100: #55ffff;
-  --color-cyan-200: #55ffff;
-  --color-cyan-300: #55ffff;
-  --color-cyan-400: #00aaaa;
-  --color-cyan-500: #00aaaa;
+  --color-cyan-100: var(--os-cool);
+  --color-cyan-200: var(--os-cool);
+  --color-cyan-300: var(--os-cool);
+  --color-cyan-400: var(--os-cool);
+  --color-cyan-500: var(--os-cool);
 
-  --color-amber-100: #ffff55;
-  --color-amber-200: #ffff55;
-  --color-amber-300: #ffff55;
-  --color-amber-400: #ffff55;
-  --color-amber-500: #aa5500;
-  --color-yellow-400: #ffff55;
+  --color-amber-100: var(--os-accent);
+  --color-amber-200: var(--os-accent);
+  --color-amber-300: var(--os-accent);
+  --color-amber-400: var(--os-accent);
+  --color-amber-500: var(--os-accent);
+  --color-yellow-400: var(--os-accent);
 
-  --color-orange-200: #ff5555;
-  --color-orange-300: #ff5555;
-  --color-orange-500: #aa0000;
-  --color-red-400: #ff5555;
+  --color-orange-200: var(--os-accent);
+  --color-orange-300: var(--os-accent);
+  --color-orange-500: var(--os-accent);
+  --color-red-400: var(--os-warn);
 
-  --color-violet-300: #ff55ff;
-  --color-violet-500: #aa00aa;
+  --color-violet-300: var(--os-ink-2);
+  --color-violet-500: var(--os-ink-3);
 
   --blur-xl: 0px;
   --shadow-2xl: 0 0 #0000;
-
-  --text-xs: 17px;
-  --text-xs--line-height: 1.25;
-  --text-sm: 19px;
-  --text-sm--line-height: 1.3;
-  --text-base: 21px;
-  --text-base--line-height: 1.35;
-  --text-lg: 23px;
-  --text-xl: 26px;
-  --text-2xl: 30px;
-  --text-3xl: 34px;
-  --text-5xl: 46px;
 }
 
-/* Theme tokens: window chrome, desktop, console */
+/* Light edition: warm white plastic */
 :root {
-  color-scheme: dark;
-  --desk: #1f3d12;
-  --desk-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url("/wallpaper/meadow.jpg");
-  --win-face: #3a3a3a;
-  --win-fg: #f0f0f0;
-  --win-light: #6c6c6c;
-  --win-hilite: #4c4c4c;
-  --win-shadow: #1e1e1e;
-  --win-dark: #000000;
-  --win-field: #1c1c1c;
-  --console-bg: rgba(0, 0, 0, 0.62);
-  --console-fg: #c0c0c0;
-  --console-strong: #ffffff;
-  --console-dim: #a8a8a8;
-  --console-prompt: #c0c0c0;
-  --console-link: #55ffff;
-  --console-rule: #6e6e6e;
-  --console-input: rgba(0, 0, 0, 0.55);
-  --console-select-bg: #c0c0c0;
-  --console-select-fg: #000000;
+  color-scheme: light;
+  --os-desk: #e7e3da;
+  --os-case: #f3f1ec;
+  --os-card: #fbfaf7;
+  --os-ink: #262624;
+  --os-ink-2: #55534e;
+  --os-ink-3: #86837c;
+  --os-line: #dcd7cc;
+  --os-hover: rgba(38, 38, 36, 0.06);
+  --os-accent: #e8591a;
+  --os-ok: #3f7f33;
+  --os-cool: #46687a;
+  --os-warn: #c8371a;
+  --os-knob-top: #ffffff;
+  --os-knob-bot: #e6e2d9;
+  --os-dot-grid: rgba(38, 38, 36, 0.22);
+  --os-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 18px 50px -20px rgba(60, 50, 30, 0.35), 0 2px 6px rgba(60, 50, 30, 0.08);
 }
 
-/* Cards inside the console stay see-through too */
-.term {
-  --color-black: rgb(0 0 0 / 0.55);
-  --color-zinc-950: rgb(0 0 0 / 0.5);
-}
-
-@media (prefers-color-scheme: light) {
+/* Graphite edition */
+@media (prefers-color-scheme: dark) {
   :root {
-    color-scheme: light;
-    --desk: #3a7bd5;
-    --desk-image: url("/wallpaper/meadow.jpg");
-    --win-face: #c0c0c0;
-    --win-fg: #000000;
-    --win-light: #ffffff;
-    --win-hilite: #dfdfdf;
-    --win-shadow: #808080;
-    --win-dark: #000000;
-    --win-field: #ffffff;
-    --console-bg: rgba(255, 255, 255, 0.62);
-    --console-fg: #202020;
-    --console-strong: #000000;
-    --console-dim: #3a3a3a;
-    --console-prompt: #202020;
-    --console-link: #0000aa;
-    --console-rule: #8a8a8a;
-    --console-input: rgba(255, 255, 255, 0.7);
-    --console-select-bg: #000080;
-    --console-select-fg: #ffffff;
-  }
-
-  /* Dark VGA shades for text on the light, see-through console */
-  .term {
-    --color-black: rgb(255 255 255 / 0.6);
-    --color-white: #000000;
-    --color-zinc-100: #000000;
-    --color-zinc-200: #000000;
-    --color-zinc-300: #202020;
-    --color-zinc-400: #303030;
-    --color-zinc-500: #404040;
-    --color-zinc-600: #707070;
-    --color-zinc-700: #8a8a8a;
-    --color-zinc-800: #8a8a8a;
-    --color-zinc-900: #e0e0e0;
-    --color-zinc-950: rgb(255 255 255 / 0.55);
-
-    --color-emerald-100: #006e00;
-    --color-emerald-200: #006e00;
-    --color-emerald-300: #006e00;
-    --color-emerald-400: #00aa00;
-    --color-emerald-500: #00aa00;
-
-    --color-cyan-100: #006a6a;
-    --color-cyan-200: #006a6a;
-    --color-cyan-300: #006a6a;
-    --color-cyan-400: #00aaaa;
-    --color-cyan-500: #00aaaa;
-
-    --color-amber-100: #8a4500;
-    --color-amber-200: #8a4500;
-    --color-amber-300: #8a4500;
-    --color-amber-400: #8a4500;
-    --color-amber-500: #aa5500;
-    --color-yellow-400: #8a4500;
-
-    --color-orange-200: #aa0000;
-    --color-orange-300: #aa0000;
-    --color-orange-500: #aa0000;
-    --color-red-400: #aa0000;
-
-    --color-violet-300: #aa00aa;
-    --color-violet-500: #aa00aa;
-  }
-
-  /* Radar and Pong are screens inside the page: they stay dark */
-  .term .term-screen {
-    --color-black: #000000;
-    --color-white: #ffffff;
-    --color-zinc-100: #ffffff;
-    --color-zinc-200: #ffffff;
-    --color-zinc-300: #c0c0c0;
-    --color-zinc-400: #c0c0c0;
-    --color-zinc-500: #a8a8a8;
-    --color-zinc-800: #6e6e6e;
-    --color-zinc-950: #000000;
-    --color-emerald-100: #55ff55;
-    --color-emerald-200: #55ff55;
-    --color-emerald-300: #55ff55;
-    --color-emerald-400: #55ff55;
-    --color-cyan-100: #55ffff;
-    --color-cyan-200: #55ffff;
-    --color-cyan-300: #55ffff;
-    --color-amber-300: #ffff55;
-    background-color: #050805;
+    color-scheme: dark;
+    --os-desk: #151514;
+    --os-case: #201f1d;
+    --os-card: #292826;
+    --os-ink: #eeebe4;
+    --os-ink-2: #bdb8ae;
+    --os-ink-3: #8a867e;
+    --os-line: #383733;
+    --os-hover: rgba(238, 235, 228, 0.07);
+    --os-accent: #f06a2a;
+    --os-ok: #8cc174;
+    --os-cool: #9fbccb;
+    --os-warn: #f0674a;
+    --os-knob-top: #3a3936;
+    --os-knob-bot: #282725;
+    --os-dot-grid: rgba(238, 235, 228, 0.16);
+    --os-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 20px 60px -20px rgba(0, 0, 0, 0.8), 0 2px 6px rgba(0, 0, 0, 0.4);
   }
 }
 
+/* Radar and Pong are small displays set into the case: they stay dark in both editions */
+.term-screen {
+  --os-ink: #eeebe4;
+  --os-ink-2: #c9c5bb;
+  --os-ink-3: #9a968d;
+  --os-line: #3a3935;
+  --os-card: #0c0d0b;
+  --os-hover: #1c1c1a;
+  --os-ok: #9fd37f;
+  --os-cool: #a9cbd9;
+  --os-accent: #ff7a3a;
+  background-color: #0c0d0b;
+}
+
+/* The BIOS, boot, and shutdown screens are a real black CRT, whatever the edition */
 .bios-font {
+  --os-card: #000000;
+  --os-case: #000000;
+  --os-ink: #ffffff;
+  --os-ink-2: #aaaaaa;
+  --os-ink-3: #555555;
+  --os-line: #555555;
+  --os-hover: #111111;
+  background-color: #000000;
   font-family: "VT323", "Courier New", monospace;
   font-variant-ligatures: none;
   font-feature-settings: "liga" 0, "clig" 0;
 }
 
-/* ---------- Win95 chrome ---------- */
+/* ---------- Case, desk, chrome ---------- */
 
-.win-ui {
-  font-family: Tahoma, "MS Sans Serif", "Microsoft Sans Serif", Geneva, Verdana, sans-serif;
-  -webkit-font-smoothing: none;
-}
-
-.win-desktop {
-  background-color: var(--desk);
-  background-image: var(--desk-image);
-  background-size: cover;
-  background-position: center bottom;
-  background-attachment: fixed;
-  image-rendering: pixelated;
-}
-/* iOS ignores fixed backgrounds and scales them badly; let it scroll there */
-@supports (-webkit-touch-callout: none) {
-  .win-desktop { background-attachment: scroll; }
+.os-ui {
+  font-family: "Instrument Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  color: var(--os-ink);
+  font-feature-settings: "tnum" 0;
 }
 
-/* Desktop shortcut shown while the window is minimized */
-.win-desk-icon {
-  display: flex;
-  width: 96px;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 4px;
-  color: #fff;
-  font-size: 12px;
-  text-align: center;
-}
-.win-desk-icon-label {
-  padding: 0 2px;
-  text-shadow: 1px 1px 0 #000;
-}
-.win-desk-icon:focus-visible .win-desk-icon-label,
-.win-desk-icon:hover .win-desk-icon-label,
-.win-desk-icon-current .win-desk-icon-label {
-  background: #000080;
-  outline: 1px dotted #fff;
-  text-shadow: none;
-}
-.win-desk-icon:hover svg,
-.win-desk-icon:focus-visible svg { filter: brightness(0.8) sepia(1) hue-rotate(190deg) saturate(3); }
+.os-desk { background: var(--os-desk); }
 
-/* Active taskbar button: Win95 dithered face */
-.win-task-active {
-  background-image: repeating-conic-gradient(var(--win-light) 0 25%, var(--win-face) 0 50%);
-  background-size: 2px 2px;
+/* Speaker grille: the signature perforation */
+.os-grille {
+  background-image: radial-gradient(circle, var(--os-dot-grid) 1.15px, transparent 1.6px);
+  background-size: 7px 7px;
+  background-position: center;
+}
+.os-desk-grille { opacity: 0.9; }
+
+.os-menubar {
+  background: color-mix(in oklab, var(--os-case) 88%, transparent);
+  border-bottom: 1px solid var(--os-line);
+  -webkit-backdrop-filter: saturate(1.2) blur(10px);
+  backdrop-filter: saturate(1.2) blur(10px);
 }
 
-.win-bevel {
-  background: var(--win-face);
-  color: var(--win-fg);
-  box-shadow:
-    inset -1px -1px 0 var(--win-dark),
-    inset 1px 1px 0 var(--win-light),
-    inset -2px -2px 0 var(--win-shadow),
-    inset 2px 2px 0 var(--win-hilite);
-}
-.win-bevel-in,
-button.win-bevel:active {
-  box-shadow:
-    inset -1px -1px 0 var(--win-light),
-    inset 1px 1px 0 var(--win-dark),
-    inset -2px -2px 0 var(--win-hilite),
-    inset 2px 2px 0 var(--win-shadow);
-}
-/* The window frame is drawn by the bevel; the console area inside it is see-through */
-.win-window.win-bevel {
-  background: transparent;
-  box-shadow:
-    inset -1px -1px 0 var(--win-dark),
-    inset 1px 1px 0 var(--win-light),
-    inset -2px -2px 0 var(--win-shadow),
-    inset 2px 2px 0 var(--win-hilite),
-    inset 0 0 0 3px var(--win-face);
-}
-.win-window { color: var(--win-fg); }
-.win-face { background: var(--win-face); color: var(--win-fg); }
+.os-logo { filter: grayscale(1) contrast(1.1); }
 
-.win-title-btn {
+.os-popover {
+  background: var(--os-case);
+  border: 1px solid var(--os-line);
+  border-radius: 14px;
+  box-shadow: var(--os-shadow);
+}
+
+.os-window {
+  background: var(--os-case);
+  border: 1px solid var(--os-line);
+  border-radius: 20px;
+  box-shadow: var(--os-shadow);
+  color: var(--os-ink);
+}
+
+.os-led {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--os-ok);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--os-ok) 18%, transparent);
+}
+
+/* Segmented selector: a slide switch between pages */
+.os-segment {
   display: inline-flex;
-  width: 16px;
-  height: 14px;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 999px;
+  background: var(--os-desk);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.os-segment-item {
+  padding: 5px 14px;
+  border-radius: 999px;
+  color: var(--os-ink-2);
+  transition: background-color 0.15s, color 0.15s;
+}
+.os-segment-item:hover { color: var(--os-ink); }
+.os-segment-item[aria-current="page"] {
+  background: var(--os-card);
+  color: var(--os-ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14), 0 0 0 1px var(--os-line);
+}
+
+.os-round-btn {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  color: var(--win-fg);
+  border-radius: 999px;
+  color: var(--os-ink-2);
+  background: linear-gradient(var(--os-knob-top), var(--os-knob-bot));
+  box-shadow: 0 0 0 1px var(--os-line), 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.os-round-btn:hover { color: var(--os-ink); }
+.os-round-btn:active { transform: translateY(1px); box-shadow: 0 0 0 1px var(--os-line); }
+.os-round-btn-power { color: var(--os-accent); }
+
+/* CRT slide switch */
+.os-switch {
+  position: relative;
+  width: 26px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--os-desk);
+  box-shadow: inset 0 0 0 1px var(--os-line), inset 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+.os-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--os-ink-3);
+  transition: transform 0.15s, background-color 0.15s;
+}
+.os-switch-on::after { transform: translateX(12px); background: var(--os-accent); }
+
+/* Knobs: round, slightly domed controls */
+.os-knob {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: var(--os-ink);
+  background: linear-gradient(var(--os-knob-top), var(--os-knob-bot));
+  box-shadow: 0 0 0 1px var(--os-line), 0 2px 4px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  transition: transform 0.1s;
+}
+.os-knob-power {
+  color: #fff;
+  background: linear-gradient(color-mix(in oklab, var(--os-accent) 88%, white), var(--os-accent));
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--os-accent) 70%, black), 0 2px 6px color-mix(in oklab, var(--os-accent) 40%, transparent);
 }
 
-.win-field {
-  background: var(--win-field);
-  color: var(--win-fg);
-  box-shadow:
-    inset 1px 1px 0 var(--win-shadow),
-    inset -1px -1px 0 var(--win-light),
-    inset 2px 2px 0 var(--win-dark),
-    inset -2px -2px 0 var(--win-hilite);
-  border: 0;
-  outline: none;
+.os-dock {
+  background: color-mix(in oklab, var(--os-case) 92%, transparent);
+  border: 1px solid var(--os-line);
+  border-radius: 22px;
+  box-shadow: var(--os-shadow);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.os-dock-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--os-ink-2);
+}
+.os-dock-item:hover .os-knob,
+.os-shortcut:hover .os-knob { transform: translateY(-1px); }
+.os-dock-item:active .os-knob,
+.os-shortcut:active .os-knob { transform: translateY(1px); }
+.os-dock-item[aria-current="page"] { color: var(--os-ink); }
+
+.os-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--os-line);
+}
+.os-dot-on { background: var(--os-accent); }
+
+.os-shortcut {
+  display: flex;
+  width: 72px;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--os-ink-2);
+}
+.os-shortcut[aria-current="page"] { color: var(--os-ink); }
+.os-shortcut[aria-current="page"] .os-knob { box-shadow: 0 0 0 2px var(--os-accent), 0 2px 4px rgba(0, 0, 0, 0.1); }
+
+/* ---------- Content inside the window ---------- */
+
+.os {
+  font-family: "Instrument Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: var(--os-ink);
 }
 
-.win-sunken {
-  box-shadow:
-    inset 1px 1px 0 var(--win-shadow),
-    inset -1px -1px 0 var(--win-light),
-    inset 2px 2px 0 var(--win-dark),
-    inset -2px -2px 0 var(--win-hilite);
+/* Braun lettered in lowercase; no shouting, no wide tracking */
+.os .uppercase { text-transform: lowercase; }
+/* Callsigns and codes on the little displays keep their capitals */
+.os .term-screen .uppercase { text-transform: uppercase; }
+.os [class*="tracking-["] { letter-spacing: 0.005em; }
+.os .text-\[8px\] { font-size: 9.5px; }
+.os .text-\[10px\] { font-size: 12px; }
+.os .text-\[11px\] { font-size: 12.5px; }
+.os .font-mono { font-variant-numeric: tabular-nums; }
+
+.os * { box-shadow: none !important; }
+
+/* Modules: quiet cards with hairlines */
+.os .rounded-3xl.border {
+  background-color: var(--os-card);
+  border-color: var(--os-line);
+  border-radius: 18px;
+}
+.os .rounded-2xl { border-radius: 14px; }
+@media (max-width: 639px) {
+  .os .rounded-3xl.border { padding: 12px; }
+  .os .rounded-2xl.p-5,
+  .os .rounded-2xl.p-4 { padding: 14px; }
+}
+.os .rounded-xl { border-radius: 10px; }
+
+/* Module titles: an indicator dot, then the name */
+.os .term-title {
+  color: var(--os-ink);
+  font-weight: 600;
+}
+.os .term-title svg { display: none; }
+.os .term-title::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 8px;
+  border-radius: 999px;
+  background: var(--os-accent);
+  vertical-align: 0.05em;
+}
+.os .flex.term-title::before { margin-right: 0; }
+
+.os input,
+.os textarea {
+  background-color: var(--os-case);
+  caret-color: var(--os-accent);
 }
 
-.win-taskbar {
-  background: var(--win-face);
-  color: var(--win-fg);
-  box-shadow: inset 0 1px 0 var(--win-hilite), inset 0 2px 0 var(--win-light);
-}
-
-.win-start-side {
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
-  color: #c0c0c0;
-  font-size: 18px;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-.win-start-side b { color: #ffffff; }
-
-/* ---------- Console ---------- */
-
-.dos-console {
-  background: var(--console-bg);
-  color: var(--console-fg);
-  -webkit-backdrop-filter: blur(3px);
-  backdrop-filter: blur(3px);
-  font-family: "VT323", "Courier New", monospace;
-  font-variant-ligatures: none;
-  font-feature-settings: "liga" 0, "clig" 0;
-  font-size: 21px;
-  line-height: 1.3;
-}
-.dos-size-small { font-size: 18px; }
-.dos-size-medium { font-size: 21px; }
-.dos-size-large { font-size: 25px; }
-@media (min-width: 768px) {
-  .dos-size-auto { font-size: 22px; }
-}
-
-.dos-fg { color: var(--console-fg); }
-.dos-strong { color: var(--console-strong); }
-.dos-dim { color: var(--console-dim); }
-.dos-prompt { color: var(--console-prompt); }
-.dos-dir { color: var(--console-fg); }
-.dos-dir:hover { background: var(--console-fg); color: var(--console-select-fg); }
-.dos-dir-active { color: var(--console-strong); }
-@media (min-width: 640px) {
-  .dos-dir-active::after { content: "  <-- you are here"; color: var(--console-dim); }
-}
-
-.term .font-semibold,
-.term .font-bold,
-.term .font-medium { font-weight: 400; }
-
-/* Utility sizes inside the console scale with the chosen console font */
-.term .text-xs { font-size: 0.82em; }
-.term .text-sm { font-size: 0.9em; }
-.term .text-base { font-size: 1em; }
-.term .text-\[8px\] { font-size: 0.62em; }
-.term .text-\[10px\] { font-size: 0.8em; }
-.term .text-\[11px\] { font-size: 0.84em; }
-.term .text-\[12px\] { font-size: 0.88em; }
-
-.term [class*="tracking-["] { letter-spacing: 0.03em; }
-
-.term .rounded-3xl,
-.term .rounded-2xl,
-.term .rounded-xl,
-.term .rounded-lg,
-.term .rounded-md { border-radius: 0; }
-.term * { box-shadow: none !important; }
-
-/* Panels: single-line boxes, see-through */
-.term .rounded-3xl.border {
-  background-color: transparent;
-  border-color: var(--console-rule);
-}
-
-/* Panel titles: > BUDDY LIST */
-.term .term-title { color: var(--console-strong); }
-.term .term-title::before { content: "> "; color: var(--console-dim); }
-.term .term-title svg { display: none; }
-
-.term a:not([class]) { color: var(--console-link); }
-
-.term input,
-.term textarea {
-  background-color: var(--console-input);
-  caret-color: var(--console-strong);
-}
-
-.term ::selection { background: var(--console-select-bg); color: var(--console-select-fg); }
-
-.term-cursor { animation: cursor-blink 1.05s steps(1) infinite; }
-@keyframes cursor-blink {
-  50% { opacity: 0; }
-}
-
-/* Output reveal: panels print top to bottom, a line at a time (mask keeps the console see-through) */
-.term-reveal {
-  -webkit-mask: linear-gradient(#000 0 0) top / 100% 0% no-repeat;
-  mask: linear-gradient(#000 0 0) top / 100% 0% no-repeat;
-}
-.term-reveal.term-shown { animation: output-draw 0.8s steps(18) forwards; }
-@keyframes output-draw {
-  from { -webkit-mask-size: 100% 0%; mask-size: 100% 0%; }
-  to { -webkit-mask-size: 100% 100%; mask-size: 100% 100%; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .term-cursor { animation: none; }
-}
+.os ::selection { background: color-mix(in oklab, var(--os-accent) 30%, transparent); }
 
 /* ---------- CRT mode (toggled via <html data-crt="...">) ---------- */
 

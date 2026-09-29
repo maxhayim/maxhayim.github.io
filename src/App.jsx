@@ -23,6 +23,11 @@ import {
   Phone,
   Users,
   MessageSquare,
+  House,
+  FileText,
+  AppWindow,
+  Minus,
+  Power,
 } from "lucide-react";
 
 const radarPositions = [
@@ -258,21 +263,24 @@ function buildFlightCode(repo) {
   return `${letters}${stars}`;
 }
 
-/* ---------- MS-DOS Prompt shell ---------- */
+/* ---------- MaXHyM System 6: Braun-timeline desktop ---------- */
 
-const DOS_BANNER = " __  __      __  ___   _       __  __\n|  \\/  | __ _\\ \\/ / | | |_   _|  \\/  |\n| |\\/| |/ _` |\\  /| |_| | | | | |\\/| |\n| |  | | (_| |/  \\|  _  | |_| | |  | |\n|_|  |_|\\__,_/_/\\_\\_| |_|\\__, |_|  |_|\n                         |___/";
-
-const DOS_PAGES = [
-  { page: "home", dir: "", href: "#/", label: "Home", command: "TYPE README.TXT" },
-  { page: "about", dir: "ABOUT", href: "#/about", label: "About", command: "TYPE ABOUT.TXT" },
-  { page: "contact", dir: "CONTACT", href: "#/contact", label: "Contact", command: "CONTACT.BAT" },
+const OS_PAGES = [
+  { page: "home", label: "home", href: "#/", Icon: House },
+  { page: "about", label: "about", href: "#/about", Icon: FileText },
+  { page: "contact", label: "contact", href: "#/contact", Icon: Mail },
 ];
 
-const DOS_FONT_SIZES = [
-  { id: "auto", label: "Auto" },
-  { id: "small", label: "7 x 12" },
-  { id: "medium", label: "8 x 16" },
-  { id: "large", label: "10 x 20" },
+// Same machine the BIOS detects on boot.
+const THIS_COMPUTER = [
+  ["computer", "MaXHyM Model 26"],
+  ["system", "MaXHyM System 6"],
+  ["processor", "MaXHyM-486DX2, 66 MHz"],
+  ["memory", "64 MB (65536K)"],
+  ["storage", "MESHNODE-HDD, 540 MB"],
+  ["drives", "1.44M floppy, CD-ROM 4X"],
+  ["modem", "14400 bps on COM1"],
+  ["firmware", "BIOS v2.01"],
 ];
 
 function useClock() {
@@ -301,93 +309,9 @@ function useCrtMode() {
   return mode;
 }
 
-// Panels print in top-to-bottom like console output, once per page per session.
-function useOutputReveal(currentPage, rootRef) {
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root || prefersReducedMotion() || !("IntersectionObserver" in window)) return;
-    const key = `mh-reveal-${currentPage}`;
-    if (readStore("sessionStorage", key)) return;
-
-    const panels = Array.from(root.querySelectorAll("main .rounded-3xl"));
-    panels.forEach((panel) => panel.classList.add("term-reveal"));
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting) return;
-          writeStore("sessionStorage", key, "1");
-          entry.target.classList.add("term-shown");
-          observer.unobserve(entry.target);
-        });
-      },
-      { threshold: 0.05 }
-    );
-    panels.forEach((panel) => observer.observe(panel));
-    return () => {
-      observer.disconnect();
-      panels.forEach((panel) => panel.classList.remove("term-reveal", "term-shown"));
-    };
-  }, [currentPage, rootRef]);
-}
-
-function dosPath(dir) {
-  return `C:\\MaXHyM${dir ? `\\${dir}` : ""}>`;
-}
-
-function Prompt({ dir = "", children }) {
-  return (
-    <div className="break-all">
-      <span className="dos-prompt">{dosPath(dir)}</span>
-      <span className="dos-fg">{children}</span>
-    </div>
-  );
-}
-
-function Cursor() {
-  return <span className="term-cursor dos-fg" aria-hidden="true">_</span>;
-}
-
-function dosDate(d) {
-  const pad = (n) => String(n).padStart(2, "0");
-  let h = d.getHours();
-  const ampm = h >= 12 ? "p" : "a";
-  h = h % 12 || 12;
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${String(d.getFullYear()).slice(2)}  ${String(h).padStart(2, " ")}:${pad(d.getMinutes())}${ampm}`;
-}
-
-function DirListing({ currentPage }) {
-  const [stamp] = useState(() => dosDate(new Date()));
-  return (
-    <div className="whitespace-pre">
-      <div className="dos-dim"> Volume in drive C is MAXHYM</div>
-      <div className="dos-dim"> Directory of C:\MaXHyM</div>
-      <div>{"\u00a0"}</div>
-      {DOS_PAGES.map((p) => (
-        <a
-          key={p.page}
-          href={p.href}
-          aria-current={p.page === currentPage ? "page" : undefined}
-          className={`dos-dir block w-fit ${p.page === currentPage ? "dos-dir-active" : ""}`}
-        >
-          {(p.dir || "HOME").padEnd(9, " ")}
-          {"<DIR>".padEnd(13, " ")}
-          {stamp}
-        </a>
-      ))}
-      <div className="dos-dim">{"         3 dir(s)   640 bytes free"}</div>
-    </div>
-  );
-}
-
-function Bevel({ as = "button", className = "", pressed = false, ...props }) {
-  const Element = as;
-  return <Element className={`win-bevel ${pressed ? "win-bevel-in" : ""} ${className}`} {...props} />;
-}
-
-function StartMenu() {
+function usePopover() {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-
   useEffect(() => {
     if (!open) return;
     const close = (e) => {
@@ -401,167 +325,147 @@ function StartMenu() {
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+  return { open, setOpen, ref };
+}
 
-  const go = (fn) => () => {
-    setOpen(false);
-    fn();
-  };
-  const item = "flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-black hover:text-white";
+function AnalogClock({ now }) {
+  const s = now.getSeconds();
+  const m = now.getMinutes() + s / 60;
+  const h = (now.getHours() % 12) + m / 60;
+  const hand = (deg, len, width, color) => (
+    <line x1="12" y1="12" x2="12" y2={12 - len} stroke={color} strokeWidth={width} strokeLinecap="round" transform={`rotate(${deg} 12 12)`} />
+  );
+  return (
+    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" aria-hidden="true">
+      <circle cx="12" cy="12" r="11" fill="var(--os-card)" stroke="var(--os-line)" />
+      {[0, 90, 180, 270].map((d) => (
+        <line key={d} x1="12" y1="2.6" x2="12" y2="4.2" stroke="var(--os-ink-3)" strokeWidth="1" transform={`rotate(${d} 12 12)`} />
+      ))}
+      {hand(h * 30, 5, 1.8, "var(--os-ink)")}
+      {hand(m * 6, 7.5, 1.3, "var(--os-ink)")}
+      {hand(s * 6, 8.5, 0.8, "var(--os-accent)")}
+      <circle cx="12" cy="12" r="1.1" fill="var(--os-accent)" />
+    </svg>
+  );
+}
+
+function SystemMenu() {
+  const { open, setOpen, ref } = usePopover();
+  const [showAbout, setShowAbout] = useState(false);
+  const item = "block w-full rounded-lg px-3 py-1.5 text-left hover:bg-[var(--os-hover)]";
 
   return (
     <div ref={ref} className="relative">
-      <Bevel
+      <button
         type="button"
-        pressed={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          setOpen((o) => !o);
+          setShowAbout(false);
+        }}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex h-7 items-center gap-1.5 px-2 font-bold"
+        className={`flex h-8 items-center gap-2 rounded-full px-2.5 hover:bg-[var(--os-hover)] ${open ? "bg-[var(--os-hover)]" : ""}`}
       >
-        <img src="/logo_fullclear.png" alt="" className="h-4 w-auto" />
-        Start
-      </Bevel>
+        <img src="/logo_fullclear.png" alt="" className="os-logo h-4 w-auto" />
+        <span className="font-semibold tracking-tight">maxhayim</span>
+        <span className="text-[var(--os-ink-3)]">system</span>
+      </button>
+
       {open && (
-        <div role="menu" className="win-bevel absolute bottom-8 left-0 z-50 flex min-w-[210px]">
-          <div className="flex w-7 items-end justify-center bg-black pb-2">
-            <span className="win-start-side">
-              <b>MaXHyM</b> 95
-            </span>
-          </div>
-          <div className="flex-1 py-1">
-            {DOS_PAGES.map((p) => (
-              <a key={p.page} role="menuitem" href={p.href} onClick={() => setOpen(false)} className={item}>
-                <span className="w-4 text-center">&#9656;</span>
-                {p.label}
-              </a>
-            ))}
-            <div className="mx-1 my-1 border-t border-[var(--win-shadow)] border-b border-b-[var(--win-light)]" />
-            <button role="menuitem" type="button" className={item} onClick={go(() => window.dispatchEvent(new Event("mh-reboot")))}>
-              <span className="w-4 text-center">&#8635;</span>
-              Restart...
-            </button>
-            <button role="menuitem" type="button" className={item} onClick={go(() => window.dispatchEvent(new Event("mh-power-off")))}>
-              <span className="w-4 text-center">&#9211;</span>
-              Shut Down...
-            </button>
-          </div>
+        <div role="menu" className="os-popover absolute left-0 top-10 z-50 w-[320px] max-w-[calc(100vw-16px)] p-1.5">
+          {!showAbout ? (
+            <>
+              <button role="menuitem" type="button" className={item} onClick={() => setShowAbout(true)}>
+                about this computer
+              </button>
+              <div className="my-1 h-px bg-[var(--os-line)]" />
+              <button
+                role="menuitem"
+                type="button"
+                className={item}
+                onClick={() => {
+                  setOpen(false);
+                  window.dispatchEvent(new Event("mh-reboot"));
+                }}
+              >
+                restart…
+              </button>
+              <button
+                role="menuitem"
+                type="button"
+                className={item}
+                onClick={() => {
+                  setOpen(false);
+                  window.dispatchEvent(new Event("mh-power-off"));
+                }}
+              >
+                shut down…
+              </button>
+            </>
+          ) : (
+            <div className="p-3">
+              <div className="os-grille mb-3 h-10 w-full rounded-md" aria-hidden="true" />
+              <div className="text-[15px] font-semibold tracking-tight">MaXHyM Model 26</div>
+              <div className="text-[var(--os-ink-3)]">home computer, 1995</div>
+              <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                {THIS_COMPUTER.slice(1).map(([k, v]) => (
+                  <React.Fragment key={k}>
+                    <dt className="text-[var(--os-ink-3)]">{k}</dt>
+                    <dd className="tabular-nums">{v}</dd>
+                  </React.Fragment>
+                ))}
+              </dl>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function ToolIcon({ children, label }) {
+function CrtSwitch({ mode }) {
+  const label = CRT_MODES.find((m) => m.id === mode)?.label.toLowerCase() || "off";
+  const on = mode !== "off";
   return (
-    <span className="win-bevel flex h-6 w-6 items-center justify-center" title={label} aria-hidden="true">
-      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.2">
-        {children}
-      </svg>
-    </span>
+    <button
+      type="button"
+      onClick={() => window.dispatchEvent(new Event("mh-crt-cycle"))}
+      title="Cycle CRT mode"
+      className="flex h-8 items-center gap-2 rounded-full px-2.5 hover:bg-[var(--os-hover)]"
+    >
+      <span className={`os-switch ${on ? "os-switch-on" : ""}`} aria-hidden="true" />
+      <span>crt</span>
+      <span className="w-[3.2em] text-[var(--os-ink-3)]">{label}</span>
+    </button>
   );
 }
 
-
-/* ---------- Desktop shortcuts: original 32x32 pixel icons in the Win95 palette ---------- */
-
-function PixelIcon({ children }) {
+function DesktopShortcuts({ currentPage, minimized, onRestore }) {
   return (
-    <svg viewBox="0 0 32 32" className="h-8 w-8" shapeRendering="crispEdges" aria-hidden="true">
-      {children}
-    </svg>
-  );
-}
-
-const DESKTOP_ICONS = {
-  prompt: (
-    <PixelIcon>
-      <rect x="2" y="4" width="28" height="24" fill="#000" />
-      <rect x="3" y="5" width="26" height="4" fill="#000080" />
-      <rect x="25" y="6" width="3" height="2" fill="#c0c0c0" />
-      <rect x="3" y="9" width="26" height="18" fill="#000" />
-      <rect x="5" y="12" width="2" height="2" fill="#c0c0c0" />
-      <rect x="7" y="14" width="2" height="2" fill="#c0c0c0" />
-      <rect x="5" y="16" width="2" height="2" fill="#c0c0c0" />
-      <rect x="11" y="18" width="6" height="2" fill="#c0c0c0" />
-      <rect x="2" y="4" width="28" height="1" fill="#fff" />
-      <rect x="2" y="4" width="1" height="24" fill="#fff" />
-    </PixelIcon>
-  ),
-  home: (
-    <PixelIcon>
-      <path d="M16 3 L3 15 H6 V29 H26 V15 H29 Z" fill="#000" />
-      <path d="M16 5 L5 15 H27 Z" fill="#aa0000" />
-      <rect x="7" y="15" width="18" height="13" fill="#ffffcc" />
-      <rect x="7" y="15" width="18" height="1" fill="#000" />
-      <rect x="10" y="18" width="5" height="4" fill="#55ffff" />
-      <rect x="10" y="18" width="5" height="1" fill="#000" />
-      <rect x="12" y="18" width="1" height="4" fill="#000" />
-      <rect x="18" y="19" width="4" height="9" fill="#aa5500" />
-      <rect x="21" y="23" width="1" height="1" fill="#ffff55" />
-      <rect x="22" y="6" width="3" height="6" fill="#555" />
-    </PixelIcon>
-  ),
-  about: (
-    <PixelIcon>
-      <path d="M6 2 H21 L27 8 V30 H6 Z" fill="#000" />
-      <path d="M7 3 H20 V9 H26 V29 H7 Z" fill="#fff" />
-      <path d="M21 4 L25 8 H21 Z" fill="#c0c0c0" />
-      <rect x="9" y="12" width="14" height="1" fill="#000080" />
-      <rect x="9" y="15" width="12" height="1" fill="#808080" />
-      <rect x="9" y="18" width="14" height="1" fill="#808080" />
-      <rect x="9" y="21" width="10" height="1" fill="#808080" />
-      <rect x="9" y="24" width="13" height="1" fill="#808080" />
-      <rect x="9" y="6" width="3" height="3" fill="#0000aa" />
-    </PixelIcon>
-  ),
-  contact: (
-    <PixelIcon>
-      <rect x="2" y="7" width="28" height="19" fill="#000" />
-      <rect x="3" y="8" width="26" height="17" fill="#ffffcc" />
-      <path d="M3 8 L16 18 L29 8" fill="none" stroke="#000" strokeWidth="1" />
-      <path d="M3 25 L12 16 M29 25 L20 16" fill="none" stroke="#808080" strokeWidth="1" />
-      <rect x="23" y="10" width="5" height="5" fill="#aa0000" />
-      <rect x="24" y="11" width="3" height="3" fill="#ff5555" />
-    </PixelIcon>
-  ),
-};
-
-function ShortcutArrow() {
-  return (
-    <svg viewBox="0 0 10 10" className="absolute bottom-0 left-0 h-[10px] w-[10px]" shapeRendering="crispEdges" aria-hidden="true">
-      <rect x="0" y="0" width="10" height="10" fill="#fff" />
-      <rect x="0" y="0" width="10" height="10" fill="none" stroke="#000" />
-      <path d="M3 7 L7 3 M4 3 H7 V6" stroke="#000" strokeWidth="1.3" fill="none" />
-    </svg>
-  );
-}
-
-function DesktopIcons({ currentPage, minimized, onRestore }) {
-  const shortcuts = [
-    { id: "home", label: "Home", href: "#/" },
-    { id: "about", label: "About", href: "#/about" },
-    { id: "contact", label: "Contact", href: "#/contact" },
-  ];
-
-  return (
-    <nav aria-label="Desktop" className="win-ui absolute left-1 top-2 z-0 flex flex-col gap-1 sm:left-2 sm:top-3">
-      <button type="button" onClick={onRestore} className="win-desk-icon" title={minimized ? "Open MaXHyM-DOS Prompt" : "MaXHyM-DOS Prompt"}>
-        <span className="relative">{DESKTOP_ICONS.prompt}</span>
-        <span className="win-desk-icon-label">MaXHyM-DOS Prompt</span>
-      </button>
-      {shortcuts.map((sc) => (
-        <a
-          key={sc.id}
-          href={sc.href}
-          onClick={() => sc.id === currentPage && onRestore()}
-          aria-current={sc.id === currentPage ? "page" : undefined}
-          className={`win-desk-icon ${sc.id === currentPage ? "win-desk-icon-current" : ""}`}
-        >
-          <span className="relative">
-            {DESKTOP_ICONS[sc.id]}
-            <ShortcutArrow />
+    <nav
+      aria-label="Desktop"
+      className={`absolute left-3 top-16 z-0 flex-col gap-3 sm:left-5 sm:top-[72px] ${minimized ? "flex" : "hidden lg:flex"}`}
+    >
+      {minimized && (
+        <button type="button" onClick={onRestore} className="os-shortcut" title="Open window">
+          <span className="os-knob">
+            <AppWindow className="h-5 w-5" strokeWidth={1.6} />
           </span>
-          <span className="win-desk-icon-label">{sc.label}</span>
+          <span>window</span>
+        </button>
+      )}
+      {OS_PAGES.map(({ page, label, href, Icon }) => (
+        <a
+          key={page}
+          href={href}
+          onClick={() => page === currentPage && onRestore()}
+          aria-current={page === currentPage ? "page" : undefined}
+          className="os-shortcut"
+        >
+          <span className="os-knob">
+            <Icon className="h-5 w-5" strokeWidth={1.6} />
+          </span>
+          <span>{label}</span>
         </a>
       ))}
     </nav>
@@ -572,159 +476,142 @@ function SharedShell({ currentPage, children }) {
   const currentYear = new Date().getFullYear();
   const now = useClock();
   const crtMode = useCrtMode();
-  const rootRef = useRef(null);
-  const [fontSize, setFontSize] = useState(() => readStore("localStorage", "mh-dos-font") || "auto");
   const [minimized, setMinimized] = useState(false);
   const reduceMotion = prefersReducedMotion();
+  usePageMeta();
+
+  const page = OS_PAGES.find((p) => p.page === currentPage) || OS_PAGES[0];
+  const time = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
   const minimize = () => {
     setMinimized(true);
     window.scrollTo(0, 0);
   };
   const restore = () => setMinimized(false);
-  usePageMeta();
-  useOutputReveal(currentPage, rootRef);
-
-  const page = DOS_PAGES.find((p) => p.page === currentPage) || DOS_PAGES[0];
-  const crtLabel = CRT_MODES.find((m) => m.id === crtMode)?.label || "Off";
-  const clock = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-
-  const changeFont = (e) => {
-    setFontSize(e.target.value);
-    writeStore("localStorage", "mh-dos-font", e.target.value);
-  };
 
   return (
     <>
-      <div ref={rootRef} className="mh-screen win-desktop relative min-h-screen overflow-hidden px-2 pb-14 pt-3 sm:px-4 md:px-6 md:pb-16 md:pt-6 lg:pl-[116px]">
-        <DesktopIcons currentPage={currentPage} minimized={minimized} onRestore={restore} />
+      {/* Menu bar */}
+      <header className="mh-fixed os-ui os-menubar fixed inset-x-0 top-0 z-40 flex h-11 items-center justify-between px-2 sm:px-3">
+        <SystemMenu />
+        <div className="flex items-center gap-1">
+          <CrtSwitch mode={crtMode} />
+          <div className="flex h-8 items-center gap-2 px-2.5 tabular-nums">
+            <AnalogClock now={now} />
+            <span className="hidden sm:inline">{time}</span>
+          </div>
+        </div>
+      </header>
+
+      <div className="mh-screen os-desk os-ui relative min-h-screen overflow-hidden px-3 pb-28 pt-16 sm:px-5 md:px-8 lg:pl-[128px]">
+        <div className="os-grille os-desk-grille pointer-events-none absolute right-8 top-20 hidden h-40 w-40 rounded-full lg:block" aria-hidden="true" />
+        <DesktopShortcuts currentPage={currentPage} minimized={minimized} onRestore={restore} />
 
         <motion.div
-          className="win-window win-bevel relative z-10 mx-auto max-w-7xl origin-bottom-left p-[3px]"
+          className="os-window relative z-10 mx-auto max-w-7xl origin-bottom"
           initial={false}
           animate={
             minimized
-              ? { opacity: 0, scale: 0.08, y: 120, transitionEnd: { display: "none" } }
+              ? { opacity: 0, scale: 0.92, y: 60, transitionEnd: { display: "none" } }
               : { display: "block", opacity: 1, scale: 1, y: 0 }
           }
-          transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeIn" }}
+          transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.3, 0, 0.2, 1] }}
           aria-hidden={minimized}
         >
-          {/* Title bar */}
-          <div className="win-ui flex h-[22px] items-center gap-1.5 bg-black pl-1 pr-[2px] text-white">
-            <img src="/logo_fullclear.png" alt="" className="h-4 w-auto" />
-            <div className="min-w-0 flex-1 truncate text-[13px] font-bold">MaXHyM-DOS Prompt{page.dir ? ` - ${page.dir}` : ""}</div>
-            <button type="button" onClick={minimize} title="Minimize" aria-label="Minimize" className="win-bevel win-title-btn">
-              <svg viewBox="0 0 8 7" className="h-[7px] w-2"><rect x="1" y="5" width="6" height="2" fill="currentColor" /></svg>
-            </button>
-            <span className="win-bevel win-title-btn" aria-hidden="true">
-              <svg viewBox="0 0 9 9" className="h-[9px] w-[9px]"><rect x="0.5" y="0.5" width="8" height="8" fill="none" stroke="currentColor" /><rect x="0" y="0" width="9" height="2" fill="currentColor" /></svg>
-            </span>
-            <button
-              type="button"
-              title="Close (shut down)"
-              aria-label="Close and shut down"
-              onClick={() => window.dispatchEvent(new Event("mh-power-off"))}
-              className="win-bevel win-title-btn ml-0.5"
-            >
-              <svg viewBox="0 0 8 7" className="h-[7px] w-2"><path d="M0 0l8 7M8 0L0 7" stroke="currentColor" strokeWidth="1.6" /></svg>
-            </button>
-          </div>
+          {/* Window header */}
+          <div className="flex flex-wrap items-center gap-3 border-b border-[var(--os-line)] px-4 py-3 sm:px-5">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="os-led" aria-hidden="true" />
+              <span className="truncate font-semibold tracking-tight">command center</span>
+              <span className="text-[var(--os-ink-3)]">/ {page.label}</span>
+            </div>
 
-          {/* Toolbar */}
-          <div className="win-ui win-face flex flex-wrap items-center gap-1 px-1 py-1 text-[12px]">
-            <select
-              value={fontSize}
-              onChange={changeFont}
-              aria-label="Font size"
-              className="win-field h-6 w-[88px] px-1 text-[12px]"
-            >
-              {DOS_FONT_SIZES.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.label}
-                </option>
+            <nav aria-label="Pages" className="os-segment ml-auto">
+              {OS_PAGES.map((p) => (
+                <a key={p.page} href={p.href} aria-current={p.page === currentPage ? "page" : undefined} className="os-segment-item">
+                  {p.label}
+                </a>
               ))}
-            </select>
-            <div className="hidden items-center gap-1 sm:flex">
-              <span className="mx-1 h-5 w-px bg-[var(--win-shadow)]" />
-              <ToolIcon label="Mark"><rect x="2.5" y="2.5" width="11" height="11" strokeDasharray="1.5 1.5" /></ToolIcon>
-              <ToolIcon label="Copy"><rect x="2.5" y="2.5" width="7" height="8" /><rect x="6.5" y="5.5" width="7" height="8" /></ToolIcon>
-              <ToolIcon label="Paste"><rect x="3.5" y="3.5" width="9" height="10" /><rect x="5.5" y="2" width="5" height="3" /></ToolIcon>
-              <span className="mx-1 h-5 w-px bg-[var(--win-shadow)]" />
-              <ToolIcon label="Full screen"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" /></ToolIcon>
-              <ToolIcon label="Properties"><rect x="2.5" y="3.5" width="11" height="9" /><path d="M5 7h6M5 9.5h4" /></ToolIcon>
-              <ToolIcon label="Background"><rect x="2.5" y="3.5" width="11" height="9" /><rect x="5" y="6" width="6" height="4" fill="currentColor" /></ToolIcon>
+            </nav>
+
+            <div className="flex items-center gap-1.5">
+              <button type="button" onClick={minimize} title="Minimize" aria-label="Minimize" className="os-round-btn">
+                <Minus className="h-3.5 w-3.5" strokeWidth={2} />
+              </button>
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new Event("mh-power-off"))}
+                title="Shut down"
+                aria-label="Shut down"
+                className="os-round-btn os-round-btn-power"
+              >
+                <Power className="h-3.5 w-3.5" strokeWidth={2} />
+              </button>
             </div>
-            <Bevel
-              type="button"
-              onClick={() => window.dispatchEvent(new Event("mh-crt-cycle"))}
-              title="Cycle CRT mode"
-              className="ml-auto flex h-6 items-center px-2"
-            >
-              CRT: {crtLabel}
-            </Bevel>
           </div>
 
-          {/* Console */}
-          <div className={`term dos-console dos-size-${fontSize} win-sunken relative px-3 py-3 sm:px-4 md:px-5 md:py-4`}>
-            <div className="dos-dim">
-              <div>MaXHyM-DOS Version 6.22</div>
-              <div>(C)Copyright maxhayim.com 2009-{currentYear}.</div>
-            </div>
-
-            <div className="mt-[1.3em]">
-              <Prompt>DIR</Prompt>
-              <DirListing currentPage={currentPage} />
-            </div>
-
-            <div className="mt-[1.3em]">
-              <Prompt dir={page.dir}>{page.command}</Prompt>
-            </div>
-
-            {currentPage === "home" && (
-              <>
-                <pre className="dos-strong mt-2 overflow-hidden leading-[1.05] [font-size:clamp(9px,2.6vw,20px)]">{DOS_BANNER}</pre>
-                <div className="dos-dim mt-1">Public repos, mesh radio tooling, and a working modem. Pick a directory above to look around.</div>
-              </>
-            )}
-
-            <main className="relative z-10 mt-4 flex flex-col gap-5">{children}</main>
-
-            <footer className="mt-6">
-              <Prompt dir={page.dir}>TYPE COPYRIGHT.TXT</Prompt>
-              <div className="dos-dim flex flex-wrap items-center gap-x-3">
+          <div className="os relative p-3 sm:p-5 md:p-6">
+            <main className="relative z-10 flex flex-col gap-5">{children}</main>
+            <footer className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--os-line)] pt-4 text-[13px] text-[var(--os-ink-3)]">
+              <div className="flex items-center gap-2">
+                <img src="/logo_fullclear.png" alt="maxhayim logo" className="os-logo h-4 w-auto" />
                 <span>&copy; 2009 - {currentYear} MAXYIM.COM. All Rights Reserved.</span>
               </div>
-              <div className="mt-[1.3em]">
-                <Prompt dir={page.dir}>
-                  <Cursor />
-                </Prompt>
-              </div>
+              <span>MaXHyM System 6 on the Model 26</span>
             </footer>
           </div>
         </motion.div>
       </div>
 
-      {/* Taskbar */}
-      <div className="mh-fixed win-ui win-taskbar fixed inset-x-0 bottom-0 z-40 flex h-9 items-center gap-1 px-1 text-[12px]">
-        <StartMenu />
-        <Bevel
-          type="button"
-          pressed={!minimized}
-          onClick={minimized ? restore : minimize}
-          title={minimized ? "Restore MaXHyM-DOS Prompt" : "Minimize MaXHyM-DOS Prompt"}
-          className={`flex h-7 min-w-0 max-w-[220px] flex-1 items-center gap-1.5 truncate px-2 text-left ${minimized ? "" : "font-bold win-task-active"}`}
-        >
-          <span className="inline-block h-3.5 w-4 shrink-0 bg-black" />
-          <span className="truncate">MaXHyM-DOS Prompt</span>
-        </Bevel>
-        <Bevel as="div" pressed className="ml-auto flex h-7 items-center gap-2 px-2">
-          <button type="button" onClick={() => window.dispatchEvent(new Event("mh-crt-cycle"))} title="Cycle CRT mode" className="hover:underline">
-            CRT
+      {/* Dock: a hi-fi front panel */}
+      <nav aria-label="Dock" className="mh-fixed os-ui fixed inset-x-0 bottom-3 z-40 flex justify-center px-3">
+        <div className="os-dock flex items-end gap-3 px-3 py-2 sm:gap-5 sm:px-4">
+          <div className="os-grille hidden h-11 w-16 rounded-md sm:block" aria-hidden="true" />
+          {OS_PAGES.map(({ page, label, href, Icon }) => {
+            const active = page === currentPage && !minimized;
+            return (
+              <a
+                key={page}
+                href={href}
+                onClick={() => page === currentPage && restore()}
+                aria-current={page === currentPage ? "page" : undefined}
+                className="os-dock-item"
+              >
+                <span className="os-knob">
+                  <Icon className="h-[18px] w-[18px]" strokeWidth={1.6} />
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className={`os-dot ${active ? "os-dot-on" : ""}`} aria-hidden="true" />
+                  {label}
+                </span>
+              </a>
+            );
+          })}
+          <span className="mb-5 h-8 w-px bg-[var(--os-line)]" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={minimized ? restore : minimize}
+            className="os-dock-item"
+            title={minimized ? "Show window" : "Hide window"}
+          >
+            <span className="os-knob">
+              <AppWindow className="h-[18px] w-[18px]" strokeWidth={1.6} />
+            </span>
+            <span>{minimized ? "show" : "hide"}</span>
           </button>
-          <span>{clock}</span>
-        </Bevel>
-      </div>
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event("mh-power-off"))}
+            className="os-dock-item"
+            title="Shut down"
+          >
+            <span className="os-knob os-knob-power">
+              <Power className="h-[18px] w-[18px]" strokeWidth={2} />
+            </span>
+            <span>power</span>
+          </button>
+        </div>
+      </nav>
     </>
   );
 }
@@ -1167,12 +1054,12 @@ function HomePage() {
         <div className="grid gap-6 md:grid-cols-12">
           <div className="md:col-span-8 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
             <div className="flex items-start justify-between gap-4">
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-emerald-300">
                   <User className="h-3.5 w-3.5" />
                   Command Profile
                 </div>
-                <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-100 md:text-5xl">
+                <h1 className="mt-2 break-words text-[26px] font-semibold tracking-tight text-zinc-100 sm:text-3xl md:text-5xl">
                   maxhayim.com
                 </h1>
               </div>
@@ -1181,7 +1068,7 @@ function HomePage() {
                 <img
                   src="/avatar.jpg"
                   alt="Max Hayim avatar"
-                  className="h-20 w-20 rounded-xl border border-zinc-800 object-cover md:h-24 md:w-24"
+                  className="h-16 w-16 rounded-xl border border-zinc-800 object-cover sm:h-20 sm:w-20 md:h-24 md:w-24"
                 />
               </div>
             </div>
@@ -1515,8 +1402,8 @@ function HomePage() {
                       initial={false}
                       animate={{
                         backgroundColor: enabled
-                          ? "rgb(34 197 94)"
-                          : "rgb(63 63 70)",
+                          ? "#e8591a"
+                          : "#9a968d",
                       }}
                       transition={{ duration: 0.35 }}
                       className="relative h-6 w-11 rounded-full"
@@ -2286,10 +2173,10 @@ const PCI_DEVICES = [
 ];
 
 const DOS_LINES = [
-  "Starting MaXHyM-DOS...",
+  "Starting MaXHyM System 6...",
   "",
   "C:\\> cd \\MaXHyM",
-  "C:\\MaXHyM> start command-center.exe",
+  "C:\\MaXHyM> system.exe",
 ];
 
 /*
@@ -2602,7 +2489,7 @@ function BootScreen({ onDone, mode }) {
                   className="mt-[0.1em] h-[2.5em] w-auto shrink-0"
                 />
                 <div>
-                  <div>MAXHAYIM Modular BIOS v2.01, An Energy Star Ally</div>
+                  <div>MaXHyM Model 26 BIOS v2.01, An Energy Star Ally</div>
                   <div>
                     Copyright (C) 2009-{String(year).slice(2)}, maxhayim.com
                   </div>
