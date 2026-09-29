@@ -1,10 +1,143 @@
 @import url("https://fonts.googleapis.com/css2?family=VT323&display=swap");
 @import "tailwindcss";
 
+/* ---------- DOS / BBS theme: VGA 16-color palette, bitmap type, square corners ---------- */
+
+@theme {
+  --font-sans: "VT323", "Courier New", monospace;
+  --font-mono: "VT323", "Courier New", monospace;
+
+  /* VGA palette: #000 #0000AA #00AA00 #00AAAA #AA0000 #AA00AA #AA5500 #AAAAAA
+                  #555555 #5555FF #55FF55 #55FFFF #FF5555 #FF55FF #FFFF55 #FFFFFF */
+  --color-zinc-100: #ffffff;
+  --color-zinc-200: #ffffff;
+  --color-zinc-300: #aaaaaa;
+  --color-zinc-400: #aaaaaa;
+  --color-zinc-500: #aaaaaa;
+  --color-zinc-600: #555555;
+  --color-zinc-700: #555555;
+  --color-zinc-800: #555555;
+  --color-zinc-900: #0000aa;
+  --color-zinc-950: #000000;
+
+  --color-emerald-100: #55ff55;
+  --color-emerald-200: #55ff55;
+  --color-emerald-300: #55ff55;
+  --color-emerald-400: #55ff55;
+  --color-emerald-500: #00aa00;
+
+  --color-cyan-100: #55ffff;
+  --color-cyan-200: #55ffff;
+  --color-cyan-300: #55ffff;
+  --color-cyan-400: #00aaaa;
+  --color-cyan-500: #00aaaa;
+
+  --color-amber-100: #ffff55;
+  --color-amber-200: #ffff55;
+  --color-amber-300: #ffff55;
+  --color-amber-400: #ffff55;
+  --color-amber-500: #aa5500;
+  --color-yellow-400: #ffff55;
+
+  --color-orange-200: #ff5555;
+  --color-orange-300: #ff5555;
+  --color-orange-500: #aa0000;
+  --color-red-400: #ff5555;
+
+  --color-violet-300: #ff55ff;
+  --color-violet-500: #aa00aa;
+
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+
+  --blur-xl: 0px;
+  --shadow-2xl: 0 0 #0000;
+
+  --text-xs: 18px;
+  --text-xs--line-height: 1.25;
+  --text-sm: 20px;
+  --text-sm--line-height: 1.3;
+  --text-base: 22px;
+  --text-base--line-height: 1.35;
+  --text-lg: 24px;
+  --text-xl: 28px;
+  --text-2xl: 30px;
+  --text-3xl: 34px;
+  --text-5xl: 48px;
+}
+
 .bios-font {
   font-family: "VT323", "Courier New", monospace;
   font-variant-ligatures: none;
   font-feature-settings: "liga" 0, "clig" 0;
+}
+
+.dos {
+  font-size: 20px;
+  line-height: 1.35;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "clig" 0;
+  -webkit-font-smoothing: none;
+}
+
+/* Bitmap fonts have no bold; emphasis comes from color. */
+.dos .font-semibold,
+.dos .font-bold,
+.dos .font-medium {
+  font-weight: 400;
+}
+
+/* Small pixel sizes were set for a proportional face; VT323 needs a few more pixels. */
+.dos .text-\[8px\] { font-size: 13px; }
+.dos .text-\[10px\] { font-size: 17px; }
+.dos .text-\[11px\] { font-size: 18px; }
+.dos .text-\[12px\] { font-size: 19px; }
+
+/* Wide tracking reads as spaced-out on a fixed cell grid. */
+.dos [class*="tracking-["] {
+  letter-spacing: 0.04em;
+}
+
+/* No rounded pills, glows, or soft shadows in text mode. Status dots become square blocks. */
+.dos .rounded-full { border-radius: 0; }
+.dos * { box-shadow: none !important; }
+
+/* Outer panels: double-line box, like ╔══╗. Inner cards keep the single gray line. */
+.dos .rounded-3xl.border {
+  border: 4px double #00aaaa;
+  background-color: #000;
+}
+
+/* Panel titles: [ TITLE ] */
+.dos .dos-title::before { content: "[ "; }
+.dos .dos-title::after { content: " ]"; }
+.dos .dos-title svg { display: none; }
+
+/* Inputs get the classic blue field */
+.dos input,
+.dos textarea {
+  background-color: #0000aa;
+  caret-color: #ffff55;
+}
+
+/* Modem reveal: a black cover wipes away top to bottom, a line at a time */
+.dos-reveal { position: relative; }
+.dos-reveal::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  z-index: 5;
+  background: #000;
+  pointer-events: none;
+}
+.dos-reveal.dos-shown::after { animation: modem-draw 1.1s steps(22) forwards; }
+@keyframes modem-draw {
+  from { clip-path: inset(0 0 0 0); }
+  to { clip-path: inset(100% 0 0 0); }
 }
 
 /* ---------- CRT mode (toggled via <html data-crt="...">) ---------- */
@@ -25,15 +158,18 @@ html[data-crt="amber"] body::after {
 
 html[data-crt="color"] .mh-screen,
 html[data-crt="green"] .mh-screen,
-html[data-crt="amber"] .mh-screen {
+html[data-crt="amber"] .mh-screen,
+html[data-crt="amber"] .mh-fkeys {
   text-shadow: 0 0 3px rgba(255, 255, 255, 0.28);
 }
 
-html[data-crt="green"] .mh-screen {
+html[data-crt="green"] .mh-screen,
+html[data-crt="green"] .mh-fkeys {
   filter: grayscale(1) sepia(1) hue-rotate(65deg) saturate(3.5) brightness(1.05);
 }
 
-html[data-crt="amber"] .mh-screen {
+html[data-crt="amber"] .mh-screen,
+html[data-crt="amber"] .mh-fkeys {
   filter: grayscale(1) sepia(1) hue-rotate(-12deg) saturate(4) brightness(1.05);
 }
 
