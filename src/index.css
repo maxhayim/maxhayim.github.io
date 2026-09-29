@@ -1,169 +1,164 @@
-@import url("https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&family=Ubuntu:wght@400;500;700&family=VT323&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=VT323&display=swap");
 @import "tailwindcss";
 
-/* ---------- Ubuntu terminal theme: dark by default, light when the browser prefers it ---------- */
+/* ---------- MS-DOS Prompt theme: Win95 window, see-through console, VGA text ---------- */
 
 @theme {
-  --font-sans: "Ubuntu Mono", "DejaVu Sans Mono", monospace;
-  --font-mono: "Ubuntu Mono", "DejaVu Sans Mono", monospace;
+  --font-sans: "VT323", "Courier New", monospace;
+  --font-mono: "VT323", "Courier New", monospace;
 
-  /* Dark palette: Tango bright colors on charcoal.
-     Tango: #2E3436 #CC0000 #4E9A06 #C4A000 #3465A4 #75507B #06989A #D3D7CF
-            #555753 #EF2929 #8AE234 #FCE94F #729FCF #AD7FA8 #34E2E2 #EEEEEC */
+  /* Dark console: VGA colors on see-through black.
+     VGA: #000 #0000AA #00AA00 #00AAAA #AA0000 #AA00AA #AA5500 #AAAAAA
+          #555555 #5555FF #55FF55 #55FFFF #FF5555 #FF55FF #FFFF55 #FFFFFF */
   --color-zinc-100: #ffffff;
-  --color-zinc-200: #eeeeec;
-  --color-zinc-300: #d3d7cf;
-  --color-zinc-400: #babdb6;
-  --color-zinc-500: #9a9996;
-  --color-zinc-600: #5e5c64;
-  --color-zinc-700: #3d3d3d;
-  --color-zinc-800: #3d3d3d;
+  --color-zinc-200: #ffffff;
+  --color-zinc-300: #c0c0c0;
+  --color-zinc-400: #c0c0c0;
+  --color-zinc-500: #a8a8a8;
+  --color-zinc-600: #808080;
+  --color-zinc-700: #6e6e6e;
+  --color-zinc-800: #6e6e6e;
   --color-zinc-900: #2a2a2a;
-  --color-zinc-950: #121212;
+  --color-zinc-950: #000000;
 
-  --color-emerald-100: #8ae234;
-  --color-emerald-200: #8ae234;
-  --color-emerald-300: #8ae234;
-  --color-emerald-400: #8ae234;
-  --color-emerald-500: #4e9a06;
+  --color-emerald-100: #55ff55;
+  --color-emerald-200: #55ff55;
+  --color-emerald-300: #55ff55;
+  --color-emerald-400: #55ff55;
+  --color-emerald-500: #00aa00;
 
-  --color-cyan-100: #34e2e2;
-  --color-cyan-200: #34e2e2;
-  --color-cyan-300: #34e2e2;
-  --color-cyan-400: #06989a;
-  --color-cyan-500: #06989a;
+  --color-cyan-100: #55ffff;
+  --color-cyan-200: #55ffff;
+  --color-cyan-300: #55ffff;
+  --color-cyan-400: #00aaaa;
+  --color-cyan-500: #00aaaa;
 
-  --color-amber-100: #fce94f;
-  --color-amber-200: #fce94f;
-  --color-amber-300: #fce94f;
-  --color-amber-400: #fce94f;
-  --color-amber-500: #c4a000;
-  --color-yellow-400: #fce94f;
+  --color-amber-100: #ffff55;
+  --color-amber-200: #ffff55;
+  --color-amber-300: #ffff55;
+  --color-amber-400: #ffff55;
+  --color-amber-500: #aa5500;
+  --color-yellow-400: #ffff55;
 
-  --color-orange-200: #fcaf3e;
-  --color-orange-300: #fcaf3e;
-  --color-orange-500: #e95420;
-  --color-red-400: #ef2929;
+  --color-orange-200: #ff5555;
+  --color-orange-300: #ff5555;
+  --color-orange-500: #aa0000;
+  --color-red-400: #ff5555;
 
-  --color-violet-300: #ad7fa8;
-  --color-violet-500: #75507b;
+  --color-violet-300: #ff55ff;
+  --color-violet-500: #aa00aa;
 
   --blur-xl: 0px;
   --shadow-2xl: 0 0 #0000;
 
-  --text-xs: 14px;
-  --text-xs--line-height: 1.35;
-  --text-sm: 15.5px;
-  --text-sm--line-height: 1.45;
-  --text-base: 17px;
-  --text-base--line-height: 1.5;
-  --text-lg: 19px;
-  --text-xl: 21px;
-  --text-2xl: 25px;
-  --text-3xl: 30px;
-  --text-5xl: 44px;
+  --text-xs: 17px;
+  --text-xs--line-height: 1.25;
+  --text-sm: 19px;
+  --text-sm--line-height: 1.3;
+  --text-base: 21px;
+  --text-base--line-height: 1.35;
+  --text-lg: 23px;
+  --text-xl: 26px;
+  --text-2xl: 30px;
+  --text-3xl: 34px;
+  --text-5xl: 46px;
 }
 
-/* Theme tokens for the desktop, window chrome, and terminal */
+/* Theme tokens: window chrome, desktop, console */
 :root {
   color-scheme: dark;
-  --desk:
-    radial-gradient(ellipse 80% 60% at 10% 110%, rgba(233, 84, 32, 0.16), transparent 60%),
-    linear-gradient(160deg, #2c2c2c 0%, #1b1b1b 55%, #111111 100%);
-  --window-border: rgba(0, 0, 0, 0.7);
-  --window-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
-  --title-top: #383838;
-  --title-bot: #2d2d2d;
-  --title-fg: #f6f5f4;
-  --menubar-bg: #2d2d2d;
-  --menubar-fg: #deddda;
-  --tabs-bg: #232323;
-  --tab-fg: #9a9996;
-  --tab-hover: rgba(255, 255, 255, 0.05);
-  --term-bg: #1e1e1e;
-  --term-fg: #f6f5f4;
-  --term-dim: #c0bfbc;
-  --term-user: #8ae234;
-  --term-path: #729fcf;
-  --term-accent: #e95420;
-  --term-rule: #3d3d3d;
-  --term-input: #121212;
-  --term-select-bg: #f6f5f4;
-  --term-select-fg: #1e1e1e;
-  --btn-bg: linear-gradient(#5a5a5a, #444444);
+  --desk: #0b2323;
+  --desk-pattern: radial-gradient(ellipse 90% 70% at 50% 40%, #134040 0%, #0b2323 60%, #061616 100%);
+  --win-face: #3a3a3a;
+  --win-fg: #f0f0f0;
+  --win-light: #6c6c6c;
+  --win-hilite: #4c4c4c;
+  --win-shadow: #1e1e1e;
+  --win-dark: #000000;
+  --win-field: #1c1c1c;
+  --console-bg: rgba(0, 0, 0, 0.62);
+  --console-fg: #c0c0c0;
+  --console-strong: #ffffff;
+  --console-dim: #a8a8a8;
+  --console-prompt: #c0c0c0;
+  --console-link: #55ffff;
+  --console-rule: #6e6e6e;
+  --console-input: rgba(0, 0, 0, 0.55);
+  --console-select-bg: #c0c0c0;
+  --console-select-fg: #000000;
+}
+
+/* Cards inside the console stay see-through too */
+.term {
+  --color-black: rgb(0 0 0 / 0.55);
+  --color-zinc-950: rgb(0 0 0 / 0.5);
 }
 
 @media (prefers-color-scheme: light) {
   :root {
     color-scheme: light;
-    --desk:
-      radial-gradient(ellipse 80% 60% at 10% 110%, rgba(233, 84, 32, 0.14), transparent 60%),
-      radial-gradient(ellipse 70% 60% at 100% 0%, rgba(119, 41, 83, 0.08), transparent 70%),
-      linear-gradient(160deg, #f6f5f4 0%, #ebe7e4 60%, #e2dcd8 100%);
-    --window-border: rgba(0, 0, 0, 0.18);
-    --window-shadow: 0 10px 34px rgba(0, 0, 0, 0.18);
-    --title-top: #f0efee;
-    --title-bot: #e3e1df;
-    --title-fg: #2e3436;
-    --menubar-bg: #f6f5f4;
-    --menubar-fg: #2e3436;
-    --tabs-bg: #e3e1df;
-    --tab-fg: #6e6c72;
-    --tab-hover: rgba(0, 0, 0, 0.05);
-    --term-bg: #ffffff;
-    --term-fg: #171421;
-    --term-dim: #5e5c64;
-    --term-user: #4e9a06;
-    --term-path: #3465a4;
-    --term-accent: #e95420;
-    --term-rule: #deddda;
-    --term-input: #f6f5f4;
-    --term-select-bg: #171421;
-    --term-select-fg: #ffffff;
-    --btn-bg: linear-gradient(#cfcdcb, #b8b6b3);
+    --desk: #008080;
+    --desk-pattern: #008080;
+    --win-face: #c0c0c0;
+    --win-fg: #000000;
+    --win-light: #ffffff;
+    --win-hilite: #dfdfdf;
+    --win-shadow: #808080;
+    --win-dark: #000000;
+    --win-field: #ffffff;
+    --console-bg: rgba(255, 255, 255, 0.62);
+    --console-fg: #202020;
+    --console-strong: #000000;
+    --console-dim: #3a3a3a;
+    --console-prompt: #202020;
+    --console-link: #0000aa;
+    --console-rule: #8a8a8a;
+    --console-input: rgba(255, 255, 255, 0.7);
+    --console-select-bg: #000080;
+    --console-select-fg: #ffffff;
   }
 
-  /* Light Tango palette for everything printed in the terminal */
+  /* Dark VGA shades for text on the light, see-through console */
   .term {
-    --color-black: #f6f5f4;
-    --color-white: #171421;
-    --color-zinc-100: #171421;
-    --color-zinc-200: #241f31;
-    --color-zinc-300: #3d3846;
-    --color-zinc-400: #5e5c64;
-    --color-zinc-500: #5e5c64;
-    --color-zinc-600: #9a9996;
-    --color-zinc-700: #deddda;
-    --color-zinc-800: #deddda;
-    --color-zinc-900: #ebebed;
-    --color-zinc-950: #f6f5f4;
+    --color-black: rgb(255 255 255 / 0.6);
+    --color-white: #000000;
+    --color-zinc-100: #000000;
+    --color-zinc-200: #000000;
+    --color-zinc-300: #202020;
+    --color-zinc-400: #303030;
+    --color-zinc-500: #404040;
+    --color-zinc-600: #707070;
+    --color-zinc-700: #8a8a8a;
+    --color-zinc-800: #8a8a8a;
+    --color-zinc-900: #e0e0e0;
+    --color-zinc-950: rgb(255 255 255 / 0.55);
 
-    --color-emerald-100: #3f7f05;
-    --color-emerald-200: #3f7f05;
-    --color-emerald-300: #3f7f05;
-    --color-emerald-400: #4e9a06;
-    --color-emerald-500: #4e9a06;
+    --color-emerald-100: #006e00;
+    --color-emerald-200: #006e00;
+    --color-emerald-300: #006e00;
+    --color-emerald-400: #00aa00;
+    --color-emerald-500: #00aa00;
 
-    --color-cyan-100: #05787a;
-    --color-cyan-200: #05787a;
-    --color-cyan-300: #05787a;
-    --color-cyan-400: #06989a;
-    --color-cyan-500: #06989a;
+    --color-cyan-100: #006a6a;
+    --color-cyan-200: #006a6a;
+    --color-cyan-300: #006a6a;
+    --color-cyan-400: #00aaaa;
+    --color-cyan-500: #00aaaa;
 
-    --color-amber-100: #8a6a00;
-    --color-amber-200: #8a6a00;
-    --color-amber-300: #8a6a00;
-    --color-amber-400: #8a6a00;
-    --color-amber-500: #c4a000;
-    --color-yellow-400: #8a6a00;
+    --color-amber-100: #8a4500;
+    --color-amber-200: #8a4500;
+    --color-amber-300: #8a4500;
+    --color-amber-400: #8a4500;
+    --color-amber-500: #aa5500;
+    --color-yellow-400: #8a4500;
 
-    --color-orange-200: #b84f00;
-    --color-orange-300: #b84f00;
-    --color-orange-500: #e95420;
-    --color-red-400: #cc0000;
+    --color-orange-200: #aa0000;
+    --color-orange-300: #aa0000;
+    --color-orange-500: #aa0000;
+    --color-red-400: #aa0000;
 
-    --color-violet-300: #75507b;
-    --color-violet-500: #75507b;
+    --color-violet-300: #aa00aa;
+    --color-violet-500: #aa00aa;
   }
 
   /* Radar and Pong are screens inside the page: they stay dark */
@@ -171,21 +166,21 @@
     --color-black: #000000;
     --color-white: #ffffff;
     --color-zinc-100: #ffffff;
-    --color-zinc-200: #eeeeec;
-    --color-zinc-300: #d3d7cf;
-    --color-zinc-400: #babdb6;
-    --color-zinc-500: #9a9996;
-    --color-zinc-800: #3d3d3d;
-    --color-zinc-950: #121212;
-    --color-emerald-100: #8ae234;
-    --color-emerald-200: #8ae234;
-    --color-emerald-300: #8ae234;
-    --color-emerald-400: #8ae234;
-    --color-cyan-100: #34e2e2;
-    --color-cyan-200: #34e2e2;
-    --color-cyan-300: #34e2e2;
-    --color-amber-300: #fce94f;
-    background-color: #0b0f0c;
+    --color-zinc-200: #ffffff;
+    --color-zinc-300: #c0c0c0;
+    --color-zinc-400: #c0c0c0;
+    --color-zinc-500: #a8a8a8;
+    --color-zinc-800: #6e6e6e;
+    --color-zinc-950: #000000;
+    --color-emerald-100: #55ff55;
+    --color-emerald-200: #55ff55;
+    --color-emerald-300: #55ff55;
+    --color-emerald-400: #55ff55;
+    --color-cyan-100: #55ffff;
+    --color-cyan-200: #55ffff;
+    --color-cyan-300: #55ffff;
+    --color-amber-300: #ffff55;
+    background-color: #050805;
   }
 }
 
@@ -195,121 +190,179 @@
   font-feature-settings: "liga" 0, "clig" 0;
 }
 
-.ubuntu-ui {
-  font-family: "Ubuntu", "Ubuntu Mono", sans-serif;
+/* ---------- Win95 chrome ---------- */
+
+.win-ui {
+  font-family: Tahoma, "MS Sans Serif", "Microsoft Sans Serif", Geneva, Verdana, sans-serif;
+  -webkit-font-smoothing: none;
 }
 
-.ubuntu-desktop { background: var(--desk); }
+.win-desktop { background: var(--desk-pattern); background-color: var(--desk); }
 
-.term-window {
-  border: 1px solid var(--window-border);
-  box-shadow: var(--window-shadow);
+.win-bevel {
+  background: var(--win-face);
+  color: var(--win-fg);
+  box-shadow:
+    inset -1px -1px 0 var(--win-dark),
+    inset 1px 1px 0 var(--win-light),
+    inset -2px -2px 0 var(--win-shadow),
+    inset 2px 2px 0 var(--win-hilite);
 }
-.term-titlebar {
-  background: linear-gradient(var(--title-top), var(--title-bot));
-  color: var(--title-fg);
+.win-bevel-in,
+button.win-bevel:active {
+  box-shadow:
+    inset -1px -1px 0 var(--win-light),
+    inset 1px 1px 0 var(--win-dark),
+    inset -2px -2px 0 var(--win-hilite),
+    inset 2px 2px 0 var(--win-shadow);
 }
-.term-menubar { background: var(--menubar-bg); color: var(--menubar-fg); }
-.term-tabs { background: var(--tabs-bg); }
-.term-tab { color: var(--tab-fg); }
-.term-tab:hover { background: var(--tab-hover); color: var(--title-fg); }
-.term-tab-active { background: var(--term-bg); color: var(--term-fg); }
-
-.term-body { background: var(--term-bg); color: var(--term-fg); }
-.term-fg { color: var(--term-fg); }
-.term-dim { color: var(--term-dim); }
-.term-user { color: var(--term-user); }
-.term-path { color: var(--term-path); }
-.term-accent { color: var(--term-accent); }
-.term-link { text-decoration-color: var(--term-path); }
-.term-link:hover { color: var(--term-fg); }
-.term-cursor-block { background: var(--term-fg); }
-
-/* Window buttons (left, Ambiance-style) */
-.term-btn {
-  display: inline-block;
-  width: 15px;
-  height: 15px;
-  border-radius: 999px;
-  background: var(--btn-bg);
-  border: 1px solid rgba(0, 0, 0, 0.35);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+/* The window frame is drawn by the bevel; the console area inside it is see-through */
+.win-window.win-bevel {
+  background: transparent;
+  box-shadow:
+    inset -1px -1px 0 var(--win-dark),
+    inset 1px 1px 0 var(--win-light),
+    inset -2px -2px 0 var(--win-shadow),
+    inset 2px 2px 0 var(--win-hilite),
+    inset 0 0 0 3px var(--win-face);
 }
-.term-btn-close {
-  background: linear-gradient(#f7784a, #d8491a);
-  cursor: pointer;
+.win-window { color: var(--win-fg); }
+.win-face { background: var(--win-face); color: var(--win-fg); }
+
+.win-title-btn {
+  display: inline-flex;
+  width: 16px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--win-fg);
 }
-.term-btn-close:hover { background: linear-gradient(#ff8d63, #e95420); }
 
-/* ---------- Inside the terminal ---------- */
+.win-field {
+  background: var(--win-field);
+  color: var(--win-fg);
+  box-shadow:
+    inset 1px 1px 0 var(--win-shadow),
+    inset -1px -1px 0 var(--win-light),
+    inset 2px 2px 0 var(--win-dark),
+    inset -2px -2px 0 var(--win-hilite);
+  border: 0;
+  outline: none;
+}
 
-.term {
-  font-family: "Ubuntu Mono", "DejaVu Sans Mono", monospace;
-  font-size: 17px;
-  line-height: 1.45;
+.win-sunken {
+  box-shadow:
+    inset 1px 1px 0 var(--win-shadow),
+    inset -1px -1px 0 var(--win-light),
+    inset 2px 2px 0 var(--win-dark),
+    inset -2px -2px 0 var(--win-hilite);
+}
+
+.win-taskbar {
+  background: var(--win-face);
+  color: var(--win-fg);
+  box-shadow: inset 0 1px 0 var(--win-hilite), inset 0 2px 0 var(--win-light);
+}
+
+.win-start-side {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  color: #c0c0c0;
+  font-size: 18px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.win-start-side b { color: #ffffff; }
+
+/* ---------- Console ---------- */
+
+.dos-console {
+  background: var(--console-bg);
+  color: var(--console-fg);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  font-family: "VT323", "Courier New", monospace;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "clig" 0;
+  font-size: 21px;
+  line-height: 1.3;
+}
+.dos-size-small { font-size: 18px; }
+.dos-size-medium { font-size: 21px; }
+.dos-size-large { font-size: 25px; }
+@media (min-width: 768px) {
+  .dos-size-auto { font-size: 22px; }
+}
+
+.dos-fg { color: var(--console-fg); }
+.dos-strong { color: var(--console-strong); }
+.dos-dim { color: var(--console-dim); }
+.dos-prompt { color: var(--console-prompt); }
+.dos-dir { color: var(--console-fg); }
+.dos-dir:hover { background: var(--console-fg); color: var(--console-select-fg); }
+.dos-dir-active { color: var(--console-strong); }
+@media (min-width: 640px) {
+  .dos-dir-active::after { content: "  <-- you are here"; color: var(--console-dim); }
 }
 
 .term .font-semibold,
-.term .font-medium { font-weight: 700; }
+.term .font-bold,
+.term .font-medium { font-weight: 400; }
 
-.term .text-\[8px\] { font-size: 10.5px; }
-.term .text-\[10px\] { font-size: 13px; }
-.term .text-\[11px\] { font-size: 13.5px; }
-.term .text-\[12px\] { font-size: 14.5px; }
+/* Utility sizes inside the console scale with the chosen console font */
+.term .text-xs { font-size: 0.82em; }
+.term .text-sm { font-size: 0.9em; }
+.term .text-base { font-size: 1em; }
+.term .text-\[8px\] { font-size: 0.62em; }
+.term .text-\[10px\] { font-size: 0.8em; }
+.term .text-\[11px\] { font-size: 0.84em; }
+.term .text-\[12px\] { font-size: 0.88em; }
 
-/* Terminals don't shout or letter-space */
-.term .uppercase { text-transform: none; }
-.term [class*="tracking-["] { letter-spacing: 0; }
+.term [class*="tracking-["] { letter-spacing: 0.03em; }
 
 .term .rounded-3xl,
 .term .rounded-2xl,
 .term .rounded-xl,
 .term .rounded-lg,
-.term .rounded-md { border-radius: 2px; }
+.term .rounded-md { border-radius: 0; }
 .term * { box-shadow: none !important; }
 
-/* Panels are output blocks separated by thin rules */
+/* Panels: single-line boxes, see-through */
 .term .rounded-3xl.border {
   background-color: transparent;
-  border-color: var(--term-rule);
+  border-color: var(--console-rule);
 }
 
-/* Panel titles read like commands: $ buddy list */
-.term .term-title { color: var(--term-fg); }
-.term .term-title::before {
-  content: "$ ";
-  color: var(--term-user);
-  font-weight: 700;
-}
+/* Panel titles: > BUDDY LIST */
+.term .term-title { color: var(--console-strong); }
+.term .term-title::before { content: "> "; color: var(--console-dim); }
 .term .term-title svg { display: none; }
+
+.term a:not([class]) { color: var(--console-link); }
 
 .term input,
 .term textarea {
-  background-color: var(--term-input);
-  caret-color: var(--term-fg);
+  background-color: var(--console-input);
+  caret-color: var(--console-strong);
 }
 
-.term ::selection { background: var(--term-select-bg); color: var(--term-select-fg); }
+.term ::selection { background: var(--console-select-bg); color: var(--console-select-fg); }
 
 .term-cursor { animation: cursor-blink 1.05s steps(1) infinite; }
 @keyframes cursor-blink {
   50% { opacity: 0; }
 }
 
-/* Output reveal: a cover wipes away top to bottom, a line at a time */
-.term-reveal { position: relative; }
-.term-reveal::after {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  z-index: 5;
-  background: var(--term-bg);
-  pointer-events: none;
+/* Output reveal: panels print top to bottom, a line at a time (mask keeps the console see-through) */
+.term-reveal {
+  -webkit-mask: linear-gradient(#000 0 0) top / 100% 0% no-repeat;
+  mask: linear-gradient(#000 0 0) top / 100% 0% no-repeat;
 }
-.term-reveal.term-shown::after { animation: output-draw 0.7s steps(18) forwards; }
+.term-reveal.term-shown { animation: output-draw 0.8s steps(18) forwards; }
 @keyframes output-draw {
-  from { clip-path: inset(0 0 0 0); }
-  to { clip-path: inset(100% 0 0 0); }
+  from { -webkit-mask-size: 100% 0%; mask-size: 100% 0%; }
+  to { -webkit-mask-size: 100% 100%; mask-size: 100% 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

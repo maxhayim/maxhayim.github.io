@@ -258,14 +258,21 @@ function buildFlightCode(repo) {
   return `${letters}${stars}`;
 }
 
-/* ---------- Ubuntu terminal shell ---------- */
+/* ---------- MS-DOS Prompt shell ---------- */
 
-const MOTD_BANNER = "                         __                _\n   ____ ___  ____ __  __/ /_  ____ ___  __(_)___ ___\n  / __ `__ \\/ __ `/ |/_/ __ \\/ __ `/ / / / / __ `__ \\\n / / / / / / /_/ />  </ / / / /_/ / /_/ / / / / / / /\n/_/ /_/ /_/\\__,_/_/|_/_/ /_/\\__,_/\\__, /_/_/ /_/ /_/\n                                 /____/";
+const DOS_BANNER = " __  __      __  ___   _       __  __\n|  \\/  | __ _\\ \\/ / | | |_   _|  \\/  |\n| |\\/| |/ _` |\\  /| |_| | | | | |\\/| |\n| |  | | (_| |/  \\|  _  | |_| | |  | |\n|_|  |_|\\__,_/_/\\_\\_| |_|\\__, |_|  |_|\n                         |___/";
 
-const TERM_TABS = [
-  { page: "home", label: "~", href: "#/", command: "cat /etc/motd" },
-  { page: "about", label: "~/about", href: "#/about", command: "cat ~/about.txt" },
-  { page: "contact", label: "~/contact", href: "#/contact", command: "./contact.sh" },
+const DOS_PAGES = [
+  { page: "home", dir: "", href: "#/", label: "Home", command: "TYPE README.TXT" },
+  { page: "about", dir: "ABOUT", href: "#/about", label: "About", command: "TYPE ABOUT.TXT" },
+  { page: "contact", dir: "CONTACT", href: "#/contact", label: "Contact", command: "CONTACT.BAT" },
+];
+
+const DOS_FONT_SIZES = [
+  { id: "auto", label: "Auto" },
+  { id: "small", label: "7 x 12" },
+  { id: "medium", label: "8 x 16" },
+  { id: "large", label: "10 x 20" },
 ];
 
 function useClock() {
@@ -294,7 +301,7 @@ function useCrtMode() {
   return mode;
 }
 
-// Panels print in top-to-bottom like terminal output, once per page per session.
+// Panels print in top-to-bottom like console output, once per page per session.
 function useOutputReveal(currentPage, rootRef) {
   useEffect(() => {
     const root = rootRef.current;
@@ -323,23 +330,61 @@ function useOutputReveal(currentPage, rootRef) {
   }, [currentPage, rootRef]);
 }
 
-function Prompt({ path = "~", children }) {
+function dosPath(dir) {
+  return `C:\\MaXHyM${dir ? `\\${dir}` : ""}>`;
+}
+
+function Prompt({ dir = "", children }) {
   return (
     <div className="break-all">
-      <span className="term-user font-bold">max@MaXHyM</span>
-      <span className="term-fg">:</span>
-      <span className="term-path font-bold">{path}</span>
-      <span className="term-fg">$ </span>
-      <span className="term-fg">{children}</span>
+      <span className="dos-prompt">{dosPath(dir)}</span>
+      <span className="dos-fg">{children}</span>
     </div>
   );
 }
 
 function Cursor() {
-  return <span className="term-cursor ml-px inline-block h-[1.05em] w-[0.55em] translate-y-[0.18em] term-cursor-block" aria-hidden="true" />;
+  return <span className="term-cursor dos-fg" aria-hidden="true">_</span>;
 }
 
-function PowerMenu() {
+function dosDate(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  let h = d.getHours();
+  const ampm = h >= 12 ? "p" : "a";
+  h = h % 12 || 12;
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${String(d.getFullYear()).slice(2)}  ${String(h).padStart(2, " ")}:${pad(d.getMinutes())}${ampm}`;
+}
+
+function DirListing({ currentPage }) {
+  const [stamp] = useState(() => dosDate(new Date()));
+  return (
+    <div className="whitespace-pre">
+      <div className="dos-dim"> Volume in drive C is MAXHYM</div>
+      <div className="dos-dim"> Directory of C:\MaXHyM</div>
+      <div>{"\u00a0"}</div>
+      {DOS_PAGES.map((p) => (
+        <a
+          key={p.page}
+          href={p.href}
+          aria-current={p.page === currentPage ? "page" : undefined}
+          className={`dos-dir block w-fit ${p.page === currentPage ? "dos-dir-active" : ""}`}
+        >
+          {(p.dir || "HOME").padEnd(9, " ")}
+          {"<DIR>".padEnd(13, " ")}
+          {stamp}
+        </a>
+      ))}
+      <div className="dos-dim">{"         3 dir(s)   640 bytes free"}</div>
+    </div>
+  );
+}
+
+function Bevel({ as = "button", className = "", pressed = false, ...props }) {
+  const Element = as;
+  return <Element className={`win-bevel ${pressed ? "win-bevel-in" : ""} ${className}`} {...props} />;
+}
+
+function StartMenu() {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -357,51 +402,62 @@ function PowerMenu() {
     };
   }, [open]);
 
-  const item = "block w-full px-4 py-1.5 text-left hover:bg-[#E95420] hover:text-white";
+  const go = (fn) => () => {
+    setOpen(false);
+    fn();
+  };
+  const item = "flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-black hover:text-white";
 
   return (
     <div ref={ref} className="relative">
-      <button
+      <Bevel
         type="button"
+        pressed={open}
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        title="Session"
-        className={`flex h-7 items-center px-2.5 hover:bg-white/10 ${open ? "bg-white/10" : ""}`}
+        className="flex h-7 items-center gap-1.5 px-2 font-bold"
       >
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-          <path d="M7 6.5a8 8 0 1 0 10 0" />
-          <line x1="12" y1="2.5" x2="12" y2="11" />
-        </svg>
-      </button>
+        <img src="/logo_fullclear.png" alt="" className="h-4 w-auto" />
+        Start
+      </Bevel>
       {open && (
-        <div role="menu" className="absolute right-1 top-7 z-50 min-w-[170px] rounded-[3px] border border-black/40 bg-[#3C3B37] py-1 text-[13px] text-[#DFDBD2] shadow-[0_4px_14px_rgba(0,0,0,0.5)]">
-          <button
-            role="menuitem"
-            type="button"
-            className={item}
-            onClick={() => {
-              setOpen(false);
-              window.dispatchEvent(new Event("mh-reboot"));
-            }}
-          >
-            Restart…
-          </button>
-          <div className="my-1 border-t border-white/10" />
-          <button
-            role="menuitem"
-            type="button"
-            className={item}
-            onClick={() => {
-              setOpen(false);
-              window.dispatchEvent(new Event("mh-power-off"));
-            }}
-          >
-            Shut Down…
-          </button>
+        <div role="menu" className="win-bevel absolute bottom-8 left-0 z-50 flex min-w-[210px]">
+          <div className="flex w-7 items-end justify-center bg-black pb-2">
+            <span className="win-start-side">
+              <b>MaXHyM</b> 95
+            </span>
+          </div>
+          <div className="flex-1 py-1">
+            {DOS_PAGES.map((p) => (
+              <a key={p.page} role="menuitem" href={p.href} onClick={() => setOpen(false)} className={item}>
+                <span className="w-4 text-center">&#9656;</span>
+                {p.label}
+              </a>
+            ))}
+            <div className="mx-1 my-1 border-t border-[var(--win-shadow)] border-b border-b-[var(--win-light)]" />
+            <button role="menuitem" type="button" className={item} onClick={go(() => window.dispatchEvent(new Event("mh-reboot")))}>
+              <span className="w-4 text-center">&#8635;</span>
+              Restart...
+            </button>
+            <button role="menuitem" type="button" className={item} onClick={go(() => window.dispatchEvent(new Event("mh-power-off")))}>
+              <span className="w-4 text-center">&#9211;</span>
+              Shut Down...
+            </button>
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+function ToolIcon({ children, label }) {
+  return (
+    <span className="win-bevel flex h-6 w-6 items-center justify-center" title={label} aria-hidden="true">
+      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.2">
+        {children}
+      </svg>
+    </span>
   );
 }
 
@@ -410,136 +466,131 @@ function SharedShell({ currentPage, children }) {
   const now = useClock();
   const crtMode = useCrtMode();
   const rootRef = useRef(null);
+  const [fontSize, setFontSize] = useState(() => readStore("localStorage", "mh-dos-font") || "auto");
   usePageMeta();
   useOutputReveal(currentPage, rootRef);
 
-  const tab = TERM_TABS.find((t) => t.page === currentPage) || TERM_TABS[0];
+  const page = DOS_PAGES.find((p) => p.page === currentPage) || DOS_PAGES[0];
   const crtLabel = CRT_MODES.find((m) => m.id === crtMode)?.label || "Off";
-  const clock = now.toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
-  const [lastLogin] = useState(() => new Date(Date.now() - 1000 * 60 * 47).toString().split(" GMT")[0]);
+  const clock = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+  const changeFont = (e) => {
+    setFontSize(e.target.value);
+    writeStore("localStorage", "mh-dos-font", e.target.value);
+  };
 
   return (
     <>
-      {/* Top panel */}
-      <div className="mh-fixed ubuntu-ui fixed inset-x-0 top-0 z-40 flex h-7 items-center justify-between bg-gradient-to-b from-[#45443F] to-[#353430] text-[13px] text-[#DFDBD2] shadow-[0_1px_0_rgba(0,0,0,0.6)]">
-        <a href="#/" className="flex h-7 items-center gap-2 px-3 font-medium hover:bg-white/10">
-          <img src="/logo_fullclear.png" alt="" className="h-4 w-auto" />
-          maxhayim.com
-        </a>
-        <div className="flex items-center">
-          <button
-            type="button"
-            onClick={() => window.dispatchEvent(new Event("mh-crt-cycle"))}
-            title="Cycle CRT mode"
-            className="flex h-7 items-center px-2.5 hover:bg-white/10"
-          >
-            CRT: {crtLabel}
-          </button>
-          <span className="hidden h-7 items-center px-2.5 sm:flex">{clock}</span>
-          <PowerMenu />
-        </div>
-      </div>
-
-      <div
-        ref={rootRef}
-        className="mh-screen ubuntu-desktop relative min-h-screen overflow-hidden px-2 pb-6 pt-10 sm:px-4 md:px-6 md:pb-10 md:pt-12"
-      >
-        <div className="term-window mx-auto max-w-7xl overflow-hidden rounded-t-[7px] rounded-b-[3px]">
+      <div ref={rootRef} className="mh-screen win-desktop relative min-h-screen overflow-hidden px-2 pb-14 pt-3 sm:px-4 md:px-6 md:pb-16 md:pt-6">
+        <div className="win-window win-bevel mx-auto max-w-7xl p-[3px]">
           {/* Title bar */}
-          <div className="ubuntu-ui term-titlebar relative flex h-8 items-center">
-            <div className="z-10 flex items-center gap-1.5 pl-2.5">
-              <button
-                type="button"
-                title="Close (shut down)"
-                aria-label="Close and shut down"
-                onClick={() => window.dispatchEvent(new Event("mh-power-off"))}
-                className="term-btn term-btn-close"
-              />
-              <span className="term-btn" aria-hidden="true" />
-              <span className="term-btn" aria-hidden="true" />
-            </div>
-            <div className="absolute inset-x-0 truncate px-24 text-center text-[13px] font-bold">
-              max@MaXHyM: {tab.label}
-            </div>
+          <div className="win-ui flex h-[22px] items-center gap-1.5 bg-black pl-1 pr-[2px] text-white">
+            <img src="/logo_fullclear.png" alt="" className="h-4 w-auto" />
+            <div className="min-w-0 flex-1 truncate text-[13px] font-bold">MaXHyM-DOS Prompt{page.dir ? ` - ${page.dir}` : ""}</div>
+            <span className="win-bevel win-title-btn" aria-hidden="true">
+              <svg viewBox="0 0 8 7" className="h-[7px] w-2"><rect x="1" y="5" width="6" height="2" fill="currentColor" /></svg>
+            </span>
+            <span className="win-bevel win-title-btn" aria-hidden="true">
+              <svg viewBox="0 0 9 9" className="h-[9px] w-[9px]"><rect x="0.5" y="0.5" width="8" height="8" fill="none" stroke="currentColor" /><rect x="0" y="0" width="9" height="2" fill="currentColor" /></svg>
+            </span>
+            <button
+              type="button"
+              title="Close (shut down)"
+              aria-label="Close and shut down"
+              onClick={() => window.dispatchEvent(new Event("mh-power-off"))}
+              className="win-bevel win-title-btn ml-0.5"
+            >
+              <svg viewBox="0 0 8 7" className="h-[7px] w-2"><path d="M0 0l8 7M8 0L0 7" stroke="currentColor" strokeWidth="1.6" /></svg>
+            </button>
           </div>
 
-          {/* Menu bar */}
-          <div className="ubuntu-ui term-menubar hidden h-7 items-center gap-1 px-1.5 text-[13px] md:flex">
-            {["File", "Edit", "View", "Search", "Terminal", "Help"].map((m) => (
-              <span key={m} className="px-2 py-0.5">
-                {m}
-              </span>
-            ))}
+          {/* Toolbar */}
+          <div className="win-ui win-face flex flex-wrap items-center gap-1 px-1 py-1 text-[12px]">
+            <select
+              value={fontSize}
+              onChange={changeFont}
+              aria-label="Font size"
+              className="win-field h-6 w-[88px] px-1 text-[12px]"
+            >
+              {DOS_FONT_SIZES.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+            <div className="hidden items-center gap-1 sm:flex">
+              <span className="mx-1 h-5 w-px bg-[var(--win-shadow)]" />
+              <ToolIcon label="Mark"><rect x="2.5" y="2.5" width="11" height="11" strokeDasharray="1.5 1.5" /></ToolIcon>
+              <ToolIcon label="Copy"><rect x="2.5" y="2.5" width="7" height="8" /><rect x="6.5" y="5.5" width="7" height="8" /></ToolIcon>
+              <ToolIcon label="Paste"><rect x="3.5" y="3.5" width="9" height="10" /><rect x="5.5" y="2" width="5" height="3" /></ToolIcon>
+              <span className="mx-1 h-5 w-px bg-[var(--win-shadow)]" />
+              <ToolIcon label="Full screen"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" /></ToolIcon>
+              <ToolIcon label="Properties"><rect x="2.5" y="3.5" width="11" height="9" /><path d="M5 7h6M5 9.5h4" /></ToolIcon>
+              <ToolIcon label="Background"><rect x="2.5" y="3.5" width="11" height="9" /><rect x="5" y="6" width="6" height="4" fill="currentColor" /></ToolIcon>
+            </div>
+            <Bevel
+              type="button"
+              onClick={() => window.dispatchEvent(new Event("mh-crt-cycle"))}
+              title="Cycle CRT mode"
+              className="ml-auto flex h-6 items-center px-2"
+            >
+              CRT: {crtLabel}
+            </Bevel>
           </div>
 
-          {/* Tabs */}
-          <nav aria-label="Pages" className="ubuntu-ui term-tabs flex pt-1 text-[13px]">
-            {TERM_TABS.map((t) => {
-              const active = t.page === currentPage;
-              return (
-                <a
-                  key={t.page}
-                  href={t.href}
-                  aria-current={active ? "page" : undefined}
-                  className={`flex min-w-0 flex-1 items-center justify-center gap-2 truncate rounded-t-[4px] px-3 py-1.5 sm:max-w-[220px] ${
-                    active ? "term-tab-active" : "term-tab"
-                  }`}
-                >
-                  <span className="truncate">
-                    <span className="hidden sm:inline">max@MaXHyM: </span>
-                    {t.label}
-                  </span>
-                </a>
-              );
-            })}
-          </nav>
-
-          {/* Terminal body */}
-          <div className="term term-body relative px-3 py-4 sm:px-5 md:px-6 md:py-5">
-            <div className="term-dim">
-              <div>Welcome to Ubuntu 7.04 (GNU/Linux 2.6.20-15-generic i686)</div>
-              <div className="mt-3">
-                {" "}* Source:{"   "}
-                <a href="https://github.com/maxhayim" target="_blank" rel="noreferrer" className="term-link underline">
-                  https://github.com/maxhayim
-                </a>
-              </div>
-              <div className="mt-3">Last login: {lastLogin} from ttyS0</div>
+          {/* Console */}
+          <div className={`term dos-console dos-size-${fontSize} win-sunken relative px-3 py-3 sm:px-4 md:px-5 md:py-4`}>
+            <div className="dos-dim">
+              <div>MaXHyM-DOS Version 6.22</div>
+              <div>(C)Copyright maxhayim.com 2009-{currentYear}.</div>
             </div>
 
-            <div className="mt-3">
-              <Prompt>{tab.command}</Prompt>
+            <div className="mt-[1.3em]">
+              <Prompt>DIR</Prompt>
+              <DirListing currentPage={currentPage} />
+            </div>
+
+            <div className="mt-[1.3em]">
+              <Prompt dir={page.dir}>{page.command}</Prompt>
             </div>
 
             {currentPage === "home" && (
               <>
-                <pre className="mt-3 overflow-hidden font-bold leading-[1.15] term-accent [font-size:clamp(7px,2.35vw,17px)]">
-                  {MOTD_BANNER}
-                </pre>
-                <div className="mt-2 term-dim">
-                  Public repos, mesh radio tooling, and a working modem. Pick a tab above to look around.
-                </div>
+                <pre className="dos-strong mt-2 overflow-hidden leading-[1.05] [font-size:clamp(9px,2.6vw,20px)]">{DOS_BANNER}</pre>
+                <div className="dos-dim mt-1">Public repos, mesh radio tooling, and a working modem. Pick a directory above to look around.</div>
               </>
             )}
 
-            <main className="relative z-10 mt-5 flex flex-col gap-5">{children}</main>
+            <main className="relative z-10 mt-4 flex flex-col gap-5">{children}</main>
 
-            <footer className="mt-6 term-dim">
-              <Prompt>cat ~/COPYRIGHT</Prompt>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <img src="/logo_fullclear.png" alt="maxhayim logo" className="h-4 w-auto" />
-                <span>
-                  &copy; 2009 - {currentYear} MAXYIM.COM. All Rights Reserved.
-                </span>
+            <footer className="mt-6">
+              <Prompt dir={page.dir}>TYPE COPYRIGHT.TXT</Prompt>
+              <div className="dos-dim flex flex-wrap items-center gap-x-3">
+                <span>&copy; 2009 - {currentYear} MAXYIM.COM. All Rights Reserved.</span>
               </div>
-              <div className="mt-3">
-                <Prompt>
+              <div className="mt-[1.3em]">
+                <Prompt dir={page.dir}>
                   <Cursor />
                 </Prompt>
               </div>
             </footer>
           </div>
         </div>
+      </div>
+
+      {/* Taskbar */}
+      <div className="mh-fixed win-ui win-taskbar fixed inset-x-0 bottom-0 z-40 flex h-9 items-center gap-1 px-1 text-[12px]">
+        <StartMenu />
+        <Bevel as="div" pressed className="hidden h-7 min-w-0 max-w-[220px] flex-1 items-center gap-1.5 truncate px-2 font-bold sm:flex">
+          <span className="inline-block h-3.5 w-4 shrink-0 bg-black" />
+          MaXHyM-DOS Prompt
+        </Bevel>
+        <Bevel as="div" pressed className="ml-auto flex h-7 items-center gap-2 px-2">
+          <button type="button" onClick={() => window.dispatchEvent(new Event("mh-crt-cycle"))} title="Cycle CRT mode" className="hover:underline">
+            CRT
+          </button>
+          <span>{clock}</span>
+        </Bevel>
       </div>
     </>
   );
