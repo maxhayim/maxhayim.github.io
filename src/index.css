@@ -1,4 +1,9 @@
+@import url("https://fonts.googleapis.com/css2?family=VT323&display=swap");
 @import "tailwindcss";
+
+.bios-font {
+  font-family: "VT323", "Courier New", monospace;
+}
 
 /* ---------- CRT mode (toggled via <html data-crt="...">) ---------- */
 

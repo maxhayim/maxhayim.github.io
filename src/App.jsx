@@ -1703,27 +1703,40 @@ function CrtToggle() {
   );
 }
 
-/* ---------- Boot sequence ---------- */
-
-const BOOT_STEPS = [
-  { text: "Detecting Floppy Drive A ...... 1.44MB 3.5in", sound: "floppy" },
-  { text: "Detecting IDE Primary Master ... MESHNODE-HDD 540MB", sound: "seek" },
-  { text: "Detecting IDE Primary Slave .... None" },
-  { text: "Detecting IDE Secondary Master . ATAPI CD-ROM 4X", sound: "seek" },
-  { text: "Initializing COM1 .............. 14400 bps modem" },
-  { text: "" },
-  { text: "Starting MAXHAYIM-DOS...", sound: "floppy" },
-  { text: "C:\\> cd \\MAXHAYIM", sound: "seek" },
-  { text: "C:\\MAXHAYIM> start command-center.exe", sound: "seek" },
-];
+/* ---------- Boot sequence (Award-style POST -> System Configurations -> DOS) ---------- */
 
 const MEMORY_TARGET = 65536;
-const MEMORY_START_MS = 400;
-const MEMORY_STEP_MS = 70;
-const MEMORY_STEPS = 36;
-const LINES_START_MS = MEMORY_START_MS + MEMORY_STEPS * MEMORY_STEP_MS + 700;
-const LINE_MS = 650;
-const BOOT_END_MS = LINES_START_MS + BOOT_STEPS.length * LINE_MS + 1200;
+
+const IDE_DETECT = [
+  { label: "Primary Master  ", result: "MESHNODE-HDD 540MB" },
+  { label: "Primary Slave   ", result: "None" },
+  { label: "Secondary Master", result: "ATAPI CD-ROM 4X" },
+  { label: "Secondary Slave ", result: "None" },
+];
+
+const SYS_CONFIG = [
+  [
+    ["CPU Type", "MaXHyM-486DX2", "Base Memory", "640K"],
+    ["Co-Processor", "Installed", "Extended Memory", "64896K"],
+    ["CPU Clock", "66MHz", "Cache Memory", "256K"],
+  ],
+  [
+    ["Diskette Drive  A", "1.44M, 3.5 in.", "Display Type", "EGA/VGA"],
+    ["Diskette Drive  B", "None", "Serial Port(s)", "3F8 2F8"],
+    ["Pri. Master  Disk", "LBA ,Mode 4, 540MB", "Parallel Port(s)", "378"],
+    ["Pri. Slave   Disk", "None", "EDO DRAM at Row(s)", "0 1"],
+    ["Sec. Master  Disk", "CDROM,Mode 4", "SDRAM at Row(s)", "None"],
+    ["Sec. Slave   Disk", "None", "L2 Cache Type", "None"],
+  ],
+];
+
+const PCI_DEVICES = [
+  ["0", "7", "1", "8086", "1230", "IDE Controller", "14"],
+  ["0", "11", "0", "10EC", "8029", "Network Controller", "10"],
+  ["0", "17", "0", "1274", "1371", "Multimedia Device", "11"],
+];
+
+const DOS_LINES = ["Starting MaXHyM-DOS...", "", "C:\\> cd \\MAXHAYIM", "C:\\MAXHAYIM> start command-center.exe"];
 
 /*
  * Boot audio. If /audio/boot.mp3 exists it plays that recording; otherwise it
@@ -1855,25 +1868,21 @@ function createBootAudio() {
   };
 }
 
-function PowerSaverBadge() {
-  return (
-    <svg viewBox="0 0 132 84" className="h-16 w-auto md:h-20" role="img" aria-label="Power saver ready">
-      <rect x="1.5" y="1.5" width="129" height="81" rx="10" fill="none" stroke="#34d399" strokeWidth="3" />
-      <path d="M34 60 C18 52 20 26 44 20 C44 38 40 50 34 60 Z" fill="#34d399" />
-      <path d="M34 60 C36 46 40 34 44 20" stroke="#04070b" strokeWidth="2" fill="none" />
-      <path d="M62 24 a14 14 0 1 0 12 0" stroke="#34d399" strokeWidth="4" fill="none" strokeLinecap="round" />
-      <line x1="68" y1="18" x2="68" y2="36" stroke="#34d399" strokeWidth="4" strokeLinecap="round" />
-      <text x="90" y="34" fill="#34d399" fontFamily="monospace" fontSize="11" fontWeight="700">POWER</text>
-      <text x="90" y="48" fill="#34d399" fontFamily="monospace" fontSize="11" fontWeight="700">SAVER</text>
-      <text x="66" y="72" fill="#34d399" fontFamily="monospace" fontSize="9" textAnchor="middle" letterSpacing="2">GREEN PC READY</text>
-    </svg>
-  );
+function bootDateCode() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${String(d.getFullYear()).slice(2)}-i486DX2,MXH-MESH-0823-00`;
 }
 
 function BootScreen({ onDone, startPowered }) {
   const [powered, setPowered] = useState(startPowered);
+  const [screen, setScreen] = useState(1);
+  const [post, setPost] = useState(0); // how many POST blocks are visible
   const [memory, setMemory] = useState(0);
-  const [shown, setShown] = useState(0);
+  const [detect, setDetect] = useState(0); // IDE lines: 2 steps each (probing, resolved)
+  const [cfg, setCfg] = useState(0); // 1 = table, 2+ = PCI rows
+  const [dmiDots, setDmiDots] = useState(-1);
+  const [dos, setDos] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const doneRef = useRef(false);
   const audioRef = useRef(null);
@@ -1908,20 +1917,48 @@ function BootScreen({ onDone, startPowered }) {
     audio.start();
 
     const timers = [];
+    let t = 0;
     const at = (ms, fn) => timers.push(setTimeout(fn, ms));
+    const after = (ms, fn) => {
+      t += ms;
+      at(t, fn);
+    };
 
-    for (let i = 1; i <= MEMORY_STEPS; i++) {
-      at(MEMORY_START_MS + i * MEMORY_STEP_MS, () => setMemory(Math.round((MEMORY_TARGET * i) / MEMORY_STEPS)));
-    }
-    at(MEMORY_START_MS + MEMORY_STEPS * MEMORY_STEP_MS + 150, () => audio.play("beep"));
-
-    BOOT_STEPS.forEach((step, i) => {
-      at(LINES_START_MS + i * LINE_MS, () => {
-        setShown(i + 1);
-        if (step.sound) audio.play(step.sound);
+    // Screen 1: POST
+    after(300, () => setPost(1)); // BIOS header
+    after(700, () => setPost(2)); // chipset
+    after(600, () => setPost(3)); // CPU + memory test
+    for (let i = 1; i <= 36; i++) after(70, () => setMemory(Math.round((MEMORY_TARGET * i) / 36)));
+    after(150, () => audio.play("beep"));
+    after(700, () => setPost(4)); // PnP extension
+    IDE_DETECT.forEach((_, i) => {
+      after(500, () => {
+        setDetect(i * 2 + 1);
+        audio.play("seek");
       });
+      after(750, () => setDetect(i * 2 + 2));
     });
-    at(BOOT_END_MS, finish);
+
+    // Screen 2: System Configurations
+    after(1100, () => {
+      setScreen(2);
+      setCfg(1);
+      audio.play("floppy");
+    });
+    PCI_DEVICES.forEach((_, i) => after(i === 0 ? 1000 : 350, () => setCfg(i + 2)));
+    after(800, () => setDmiDots(0));
+    for (let i = 1; i <= 7; i++) after(230, () => setDmiDots(i));
+    after(400, () => audio.play("seek"));
+
+    // DOS
+    DOS_LINES.forEach((line, i) =>
+      after(i === 0 ? 500 : 550, () => {
+        setDos(i + 1);
+        if (i === 0) audio.play("floppy");
+        else if (line) audio.play("seek");
+      })
+    );
+    after(1100, finish);
 
     return () => {
       timers.forEach(clearTimeout);
@@ -1930,12 +1967,15 @@ function BootScreen({ onDone, startPowered }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [powered]);
 
+  const bright = "text-white";
+  const year = new Date().getFullYear();
+
   return (
     <div
       role="dialog"
       aria-label="Boot sequence"
       onClick={handleInput}
-      className={`fixed inset-0 z-[100] cursor-pointer overflow-hidden bg-black font-mono text-[13px] leading-6 text-zinc-300 transition-opacity duration-300 md:text-sm ${
+      className={`bios-font fixed inset-0 z-[100] cursor-pointer overflow-hidden bg-black text-[14px] leading-[1.35] text-[#aaaaaa] transition-opacity duration-300 sm:text-[20px] md:text-[24px] ${
         leaving ? "opacity-0" : "opacity-100"
       }`}
     >
@@ -1947,40 +1987,143 @@ function BootScreen({ onDone, startPowered }) {
               <line x1="12" y1="2.5" x2="12" y2="11" />
             </svg>
           </div>
-          <div className="text-zinc-400">Press any key to power on</div>
-          <div className="text-xs text-zinc-600">Sound on for the full experience</div>
+          <div>Press any key to power on</div>
+          <div className="text-[0.75em] text-zinc-600">Sound on for the full experience</div>
         </div>
-      ) : (
-        <>
-          <div className="mx-auto max-w-3xl p-6 md:p-10">
-            <div className="flex items-start justify-between gap-6">
-              <div className="flex items-start gap-3">
-                <img src="/logo_fullclear.png" alt="" className="mt-1 h-9 w-auto opacity-80" />
+      ) : screen === 1 ? (
+        <div className="relative mx-auto flex h-full max-w-6xl flex-col px-5 py-6 md:px-12 md:py-10">
+          {post >= 1 && (
+            <>
+              <img
+                src="/bios/energy-star.png"
+                alt=""
+                className="absolute right-5 top-6 w-[24%] max-w-[260px] md:right-12 md:top-10"
+              />
+              <div className="flex items-start gap-3 pr-[28%]">
+                <img src="/bios/award.png" alt="" className="mt-[0.1em] h-[2.5em] w-auto shrink-0" />
                 <div>
-                  <div className="text-zinc-100">MAXHAYIM BIOS v2.01, An Energy Star Ally</div>
-                  <div>Copyright (C) 2009-{new Date().getFullYear()} maxhayim.com</div>
+                  <div>MAXHAYIM Modular BIOS v2.01, An Energy Star Ally</div>
+                  <div>Copyright (C) 2009-{String(year).slice(2)}, maxhayim.com</div>
                 </div>
               </div>
-              <PowerSaverBadge />
+            </>
+          )}
+          {post >= 2 && <div className="mt-[1.35em]">(MXH0823E) MaXHyM i486 MeshSet(TM)</div>}
+          {post >= 3 && (
+            <div className="mt-[1.35em]">
+              <div>MaXHyM-486DX2 CPU at 66MHz</div>
+              <div className="whitespace-pre">
+                Memory Test :   {String(memory).padStart(5, " ")}K{memory >= MEMORY_TARGET ? " OK" : ""}
+              </div>
             </div>
-            <div className="mt-6">MaXHyM-486DX2 CPU at 66MHz</div>
-            <div>
-              Memory Test: <span className="text-zinc-100">{memory}K</span>
-              {memory >= MEMORY_TARGET && <span className="text-emerald-300"> OK</span>}
+          )}
+          {post >= 4 && (
+            <div className="mt-[1.35em]">
+              <div className="whitespace-pre-wrap">MaXHyM Plug and Play BIOS Extension  v1.0A</div>
+              <div>Copyright (C) {year}, maxhayim.com</div>
+              {IDE_DETECT.map((drive, i) => {
+                const step = detect - i * 2;
+                if (step < 1) return null;
+                return (
+                  <div key={drive.label} className="whitespace-pre-wrap">
+                    {"  Detecting IDE "}
+                    {drive.label}
+                    {" ... "}
+                    {step === 1 ? (
+                      <>
+                        [Press <span className={bright}>F4</span> to skip]
+                        <span className="animate-pulse">_</span>
+                      </>
+                    ) : (
+                      drive.result
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            <div className="mt-4">
-              {BOOT_STEPS.slice(0, shown).map((step, i) => (
-                <div key={i} className={step.text.startsWith("C:\\") ? "text-emerald-300" : ""}>
-                  {step.text || "\u00a0"}
+          )}
+          {post >= 1 && (
+            <div className="mt-auto">
+              <div>
+                Press <span className={bright}>DEL</span> to enter SETUP, any other key to skip
+              </div>
+              <div>{bootDateCode()}</div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="mx-auto flex h-full max-w-6xl flex-col overflow-x-auto px-3 py-6 text-[12px] sm:text-[16px] md:px-10 md:py-10 md:text-[22px]">
+          <div className="sm:min-w-[640px]">
+            <div className="text-center">System Configurations</div>
+            <div className="mt-1 border-[3px] border-double border-[#aaaaaa]">
+              {SYS_CONFIG.map((block, b) => (
+                <div key={b} className={`px-3 py-2 sm:px-4 ${b > 0 ? "border-t border-[#aaaaaa]" : ""}`}>
+                  <div className="sm:hidden">
+                    {[...block.map(([l, v]) => [l, v]), ...block.map(([, , l, v]) => [l, v])].map(([l, v]) => (
+                      <div key={l} className="grid grid-cols-[1fr_auto_1fr] gap-x-2 whitespace-pre">
+                        <span>{l}</span>
+                        <span>:</span>
+                        <span>{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {block.map(([l1, v1, l2, v2]) => (
+                    <div key={l1} className="hidden grid-cols-[1fr_auto_1.1fr_1fr_auto_0.8fr] gap-x-2 whitespace-pre sm:grid">
+                      <span>{l1}</span>
+                      <span>:</span>
+                      <span>{v1}</span>
+                      <span>{l2}</span>
+                      <span>:</span>
+                      <span className={b === 0 ? "text-right" : ""}>{v2}</span>
+                    </div>
+                  ))}
                 </div>
               ))}
-              <span className="inline-block h-4 w-2 translate-y-0.5 animate-pulse bg-zinc-300" />
+            </div>
+
+            {cfg >= 2 && (
+              <div className="mt-[2em]">
+                <div>PCI device listing.....</div>
+                <div className="grid grid-cols-[1fr_1fr_1.8fr_0.5fr] border-b border-[#aaaaaa] pb-1 sm:grid-cols-[0.8fr_1fr_1fr_1fr_1fr_1.7fr_0.4fr]">
+                  <span className="hidden sm:block">Bus No.</span>
+                  <span className="hidden sm:block">Device No.</span>
+                  <span className="hidden sm:block">Func No.</span>
+                  <span>Vendor ID</span>
+                  <span>Device ID</span>
+                  <span>Device Class</span>
+                  <span className="text-right">IRQ</span>
+                </div>
+                {PCI_DEVICES.slice(0, cfg - 1).map((row) => (
+                  <div key={row[3]} className="grid grid-cols-[1fr_1fr_1.8fr_0.5fr] pt-1 sm:grid-cols-[0.8fr_1fr_1fr_1fr_1fr_1.7fr_0.4fr]">
+                    {row.map((cell, i) => (
+                      <span
+                        key={i}
+                        className={i === 6 ? "text-right" : i < 3 ? "hidden pl-[1.5em] sm:block" : i < 5 ? "sm:pl-[1.5em]" : ""}
+                      >
+                        {cell}
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-[2em]">
+              {dmiDots >= 0 && (
+                <div className="whitespace-pre">
+                  Verifying DMI Pool Data {".".repeat(dmiDots)}
+                  {dmiDots >= 7 ? " Update Success" : ""}
+                </div>
+              )}
+              {DOS_LINES.slice(0, dos).map((line, i) => (
+                <div key={i} className={line.startsWith("C:\\") ? bright : ""}>
+                  {line || "\u00a0"}
+                </div>
+              ))}
+              {dmiDots >= 0 && <span className="animate-pulse">_</span>}
             </div>
           </div>
-          <div className="absolute inset-x-0 bottom-6 text-xs text-zinc-500">
-            <div className="mx-auto max-w-3xl px-6 md:px-10">Press any key to skip</div>
-          </div>
-        </>
+        </div>
       )}
     </div>
   );
