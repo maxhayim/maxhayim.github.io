@@ -258,128 +258,14 @@ function buildFlightCode(repo) {
   return `${letters}${stars}`;
 }
 
-/* ---------- DOS / BBS shell ---------- */
+/* ---------- Ubuntu terminal shell ---------- */
 
-// "MAXHAYIM" in the ANSI Shadow figlet font. VT323 has no block glyphs, so AnsiBanner draws it as SVG.
-const BANNER_ROWS = [
-  "███╗   ███╗ █████╗ ██╗  ██╗██╗  ██╗ █████╗ ██╗   ██╗██╗███╗   ███╗",
-  "████╗ ████║██╔══██╗╚██╗██╔╝██║  ██║██╔══██╗╚██╗ ██╔╝██║████╗ ████║",
-  "██╔████╔██║███████║ ╚███╔╝ ███████║███████║ ╚████╔╝ ██║██╔████╔██║",
-  "██║╚██╔╝██║██╔══██║ ██╔██╗ ██╔══██║██╔══██║  ╚██╔╝  ██║██║╚██╔╝██║",
-  "██║ ╚═╝ ██║██║  ██║██╔╝ ██╗██║  ██║██║  ██║   ██║   ██║██║ ╚═╝ ██║",
-  "╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚═╝╚═╝     ╚═╝",
-];
-const BANNER_COLORS = [
-  "#55FFFF",
-  "#55FFFF",
-  "#00AAAA",
-  "#00AAAA",
-  "#5555FF",
-  "#5555FF",
-];
+const MOTD_BANNER = "                         __                _\n   ____ ___  ____ __  __/ /_  ____ ___  __(_)___ ___\n  / __ `__ \\/ __ `/ |/_/ __ \\/ __ `/ / / / / __ `__ \\\n / / / / / / /_/ />  </ / / / /_/ / /_/ / / / / / / /\n/_/ /_/ /_/\\__,_/_/|_/_/ /_/\\__,_/\\__, /_/_/ /_/ /_/\n                                 /____/";
 
-function AnsiBanner() {
-  const cols = BANNER_ROWS[0].length;
-  const cellW = 10;
-  const cellH = 20;
-  const shapes = [];
-
-  BANNER_ROWS.forEach((row, y) => {
-    const fill = BANNER_COLORS[y] || BANNER_COLORS[BANNER_COLORS.length - 1];
-    let x = 0;
-    while (x < cols) {
-      if (row[x] === "█") {
-        let end = x;
-        while (row[end] === "█") end++;
-        shapes.push(
-          <rect
-            key={`b${y}-${x}`}
-            x={x * cellW}
-            y={y * cellH}
-            width={(end - x) * cellW}
-            height={cellH}
-            fill={fill}
-          />,
-        );
-        x = end;
-        continue;
-      }
-      const cx = x * cellW + cellW / 2;
-      const cy = y * cellH + cellH / 2;
-      const left = x * cellW;
-      const right = left + cellW;
-      const top = y * cellH;
-      const bottom = top + cellH;
-      const paths = {
-        "═": `M${left} ${cy}H${right}`,
-        "║": `M${cx} ${top}V${bottom}`,
-        "╔": `M${right} ${cy}H${cx}V${bottom}`,
-        "╗": `M${left} ${cy}H${cx}V${bottom}`,
-        "╚": `M${cx} ${top}V${cy}H${right}`,
-        "╝": `M${cx} ${top}V${cy}H${left}`,
-      };
-      if (paths[row[x]]) {
-        shapes.push(
-          <path
-            key={`s${y}-${x}`}
-            d={paths[row[x]]}
-            stroke="#0000AA"
-            strokeWidth="3"
-            fill="none"
-          />,
-        );
-      }
-      x++;
-    }
-  });
-
-  return (
-    <svg
-      viewBox={`0 0 ${cols * cellW} ${BANNER_ROWS.length * cellH}`}
-      className="h-auto w-full max-w-[560px]"
-      role="img"
-      aria-label="MAXHAYIM"
-      shapeRendering="crispEdges"
-    >
-      {shapes}
-    </svg>
-  );
-}
-
-const FKEYS = [
-  {
-    key: "F1",
-    label: "Home",
-    action: () => (window.location.hash = "#/"),
-    page: "home",
-  },
-  {
-    key: "F2",
-    label: "About",
-    action: () => (window.location.hash = "#/about"),
-    page: "about",
-  },
-  {
-    key: "F3",
-    label: "Contact",
-    action: () => (window.location.hash = "#/contact"),
-    page: "contact",
-  },
-  {
-    key: "F4",
-    label: "CRT",
-    action: () => window.dispatchEvent(new Event("mh-crt-cycle")),
-  },
-  {
-    key: "F5",
-    label: "Reboot",
-    action: () => window.dispatchEvent(new Event("mh-reboot")),
-  },
-  {
-    key: "F10",
-    label: "Power",
-    action: () => window.dispatchEvent(new Event("mh-power-off")),
-  },
+const TERM_TABS = [
+  { page: "home", label: "~", href: "#/", command: "cat /etc/motd" },
+  { page: "about", label: "~/about", href: "#/about", command: "cat ~/about.txt" },
+  { page: "contact", label: "~/contact", href: "#/contact", command: "./contact.sh" },
 ];
 
 function useClock() {
@@ -392,9 +278,7 @@ function useClock() {
 }
 
 function useCrtMode() {
-  const [mode, setMode] = useState(
-    () => document.documentElement.dataset.crt || "off",
-  );
+  const [mode, setMode] = useState(() => document.documentElement.dataset.crt || "off");
   useEffect(() => {
     const cycle = () => {
       const current = document.documentElement.dataset.crt || "off";
@@ -410,36 +294,115 @@ function useCrtMode() {
   return mode;
 }
 
-// Panels draw in top-to-bottom like a page arriving over a 2400 baud modem, once per page per session.
-function useModemReveal(currentPage, rootRef) {
+// Panels print in top-to-bottom like terminal output, once per page per session.
+function useOutputReveal(currentPage, rootRef) {
   useEffect(() => {
     const root = rootRef.current;
-    if (!root || prefersReducedMotion() || !("IntersectionObserver" in window))
-      return;
-    const key = `mh-modem-${currentPage}`;
+    if (!root || prefersReducedMotion() || !("IntersectionObserver" in window)) return;
+    const key = `mh-reveal-${currentPage}`;
     if (readStore("sessionStorage", key)) return;
 
     const panels = Array.from(root.querySelectorAll("main .rounded-3xl"));
-    panels.forEach((panel) => panel.classList.add("dos-reveal"));
+    panels.forEach((panel) => panel.classList.add("term-reveal"));
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (!entry.isIntersecting) return;
           writeStore("sessionStorage", key, "1");
-          entry.target.classList.add("dos-shown");
+          entry.target.classList.add("term-shown");
           observer.unobserve(entry.target);
         });
       },
-      { threshold: 0.05 },
+      { threshold: 0.05 }
     );
     panels.forEach((panel) => observer.observe(panel));
     return () => {
       observer.disconnect();
-      panels.forEach((panel) =>
-        panel.classList.remove("dos-reveal", "dos-shown"),
-      );
+      panels.forEach((panel) => panel.classList.remove("term-reveal", "term-shown"));
     };
   }, [currentPage, rootRef]);
+}
+
+function Prompt({ path = "~", children }) {
+  return (
+    <div className="break-all">
+      <span className="font-bold text-[#8AE234]">max@hxmbook</span>
+      <span className="text-white">:</span>
+      <span className="font-bold text-[#729FCF]">{path}</span>
+      <span className="text-white">$ </span>
+      <span className="text-white">{children}</span>
+    </div>
+  );
+}
+
+function Cursor() {
+  return <span className="term-cursor ml-px inline-block h-[1.05em] w-[0.55em] translate-y-[0.18em] bg-white" aria-hidden="true" />;
+}
+
+function PowerMenu() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const item = "block w-full px-4 py-1.5 text-left hover:bg-[#E95420] hover:text-white";
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="Session"
+        className={`flex h-7 items-center px-2.5 hover:bg-white/10 ${open ? "bg-white/10" : ""}`}
+      >
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+          <path d="M7 6.5a8 8 0 1 0 10 0" />
+          <line x1="12" y1="2.5" x2="12" y2="11" />
+        </svg>
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-1 top-7 z-50 min-w-[170px] rounded-[3px] border border-black/40 bg-[#3C3B37] py-1 text-[13px] text-[#DFDBD2] shadow-[0_4px_14px_rgba(0,0,0,0.5)]">
+          <button
+            role="menuitem"
+            type="button"
+            className={item}
+            onClick={() => {
+              setOpen(false);
+              window.dispatchEvent(new Event("mh-reboot"));
+            }}
+          >
+            Restart…
+          </button>
+          <div className="my-1 border-t border-white/10" />
+          <button
+            role="menuitem"
+            type="button"
+            className={item}
+            onClick={() => {
+              setOpen(false);
+              window.dispatchEvent(new Event("mh-power-off"));
+            }}
+          >
+            Shut Down…
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function SharedShell({ currentPage, children }) {
@@ -448,118 +411,136 @@ function SharedShell({ currentPage, children }) {
   const crtMode = useCrtMode();
   const rootRef = useRef(null);
   usePageMeta();
-  useModemReveal(currentPage, rootRef);
+  useOutputReveal(currentPage, rootRef);
 
-  useEffect(() => {
-    const onKey = (e) => {
-      const fkey = FKEYS.find((f) => f.key === e.key);
-      if (!fkey || e.metaKey || e.ctrlKey || e.altKey) return;
-      e.preventDefault();
-      fkey.action();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
+  const tab = TERM_TABS.find((t) => t.page === currentPage) || TERM_TABS[0];
   const crtLabel = CRT_MODES.find((m) => m.id === crtMode)?.label || "Off";
-  const time = now.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
+  const clock = now.toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+  const [lastLogin] = useState(() => new Date(Date.now() - 1000 * 60 * 47).toString().split(" GMT")[0]);
 
   return (
     <>
+      {/* Top panel */}
+      <div className="mh-fixed ubuntu-ui fixed inset-x-0 top-0 z-40 flex h-7 items-center justify-between bg-gradient-to-b from-[#45443F] to-[#353430] text-[13px] text-[#DFDBD2] shadow-[0_1px_0_rgba(0,0,0,0.6)]">
+        <a href="#/" className="flex h-7 items-center gap-2 px-3 font-medium hover:bg-white/10">
+          <img src="/logo_fullclear.png" alt="" className="h-4 w-auto" />
+          maxhayim.com
+        </a>
+        <div className="flex items-center">
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event("mh-crt-cycle"))}
+            title="Cycle CRT mode"
+            className="flex h-7 items-center px-2.5 hover:bg-white/10"
+          >
+            CRT: {crtLabel}
+          </button>
+          <span className="hidden h-7 items-center px-2.5 sm:flex">{clock}</span>
+          <PowerMenu />
+        </div>
+      </div>
+
       <div
         ref={rootRef}
-        className="mh-screen dos relative min-h-screen overflow-hidden bg-black pb-20 sm:pb-12 text-zinc-100 selection:bg-cyan-300 selection:text-black"
+        className="mh-screen ubuntu-desktop relative min-h-screen overflow-hidden px-2 pb-6 pt-10 sm:px-4 md:px-6 md:pb-10 md:pt-12"
       >
-        <div className="relative z-10 mx-auto flex max-w-7xl flex-col gap-6 px-4 py-4 md:px-6 md:py-6">
-          <header className="rounded-3xl border border-zinc-800 bg-black">
-            <div className="flex items-center justify-between gap-4 bg-[#00AAAA] px-3 py-0.5 text-black">
-              <span>MAXHAYIM BBS</span>
-              <span className="hidden sm:inline">
-                Node 1 &middot; 14400 bps &middot; ANSI
+        <div className="term-window mx-auto max-w-7xl overflow-hidden rounded-t-[7px] rounded-b-[3px] border border-black/60 shadow-[0_10px_40px_rgba(0,0,0,0.55)]">
+          {/* Title bar */}
+          <div className="ubuntu-ui relative flex h-8 items-center bg-gradient-to-b from-[#4F4E49] to-[#3C3B37] text-[#DFDBD2]">
+            <div className="z-10 flex items-center gap-1.5 pl-2.5">
+              <button
+                type="button"
+                title="Close (shut down)"
+                aria-label="Close and shut down"
+                onClick={() => window.dispatchEvent(new Event("mh-power-off"))}
+                className="term-btn term-btn-close"
+              />
+              <span className="term-btn" aria-hidden="true" />
+              <span className="term-btn" aria-hidden="true" />
+            </div>
+            <div className="absolute inset-x-0 truncate px-24 text-center text-[13px] font-bold">
+              max@hxmbook: {tab.label}
+            </div>
+          </div>
+
+          {/* Menu bar */}
+          <div className="ubuntu-ui hidden h-7 items-center gap-1 bg-[#3C3B37] px-1.5 text-[13px] text-[#DFDBD2] md:flex">
+            {["File", "Edit", "View", "Search", "Terminal", "Help"].map((m) => (
+              <span key={m} className="px-2 py-0.5">
+                {m}
               </span>
-              <span>{time}</span>
-            </div>
-            <div className="flex flex-col gap-3 px-4 py-5 md:px-6">
-              <AnsiBanner />
-              <div className="text-zinc-400">
-                <span className="text-[#FFFF55]">maxhayim.com</span> &mdash;
-                public repos, mesh radio tooling, and a working modem.
-                <span className="hidden sm:inline">
-                  {" "}Press <span className="text-white">F1</span>&ndash;
-                  <span className="text-white">F10</span> to get around.
-                </span>
+            ))}
+          </div>
+
+          {/* Tabs */}
+          <nav aria-label="Pages" className="ubuntu-ui flex bg-[#2B2A26] pt-1 text-[13px]">
+            {TERM_TABS.map((t) => {
+              const active = t.page === currentPage;
+              return (
+                <a
+                  key={t.page}
+                  href={t.href}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex min-w-0 flex-1 items-center justify-center gap-2 truncate rounded-t-[4px] px-3 py-1.5 sm:max-w-[220px] ${
+                    active ? "bg-[#300A24] text-white" : "text-[#9C9A92] hover:bg-white/5 hover:text-[#DFDBD2]"
+                  }`}
+                >
+                  <span className="truncate">
+                    <span className="hidden sm:inline">max@hxmbook: </span>
+                    {t.label}
+                  </span>
+                </a>
+              );
+            })}
+          </nav>
+
+          {/* Terminal body */}
+          <div className="term relative bg-[#300A24] px-3 py-4 text-white sm:px-5 md:px-6 md:py-5">
+            <div className="text-[#D3D7CF]">
+              <div>Welcome to Ubuntu 7.04 (GNU/Linux 2.6.20-15-generic i686)</div>
+              <div className="mt-3">
+                {" "}* Source:{"   "}
+                <a href="https://github.com/maxhayim" target="_blank" rel="noreferrer" className="underline decoration-[#729FCF] hover:text-white">
+                  https://github.com/maxhayim
+                </a>
               </div>
+              <div className="mt-3">Last login: {lastLogin} from ttyS0</div>
             </div>
-          </header>
 
-          <main className="relative z-10 flex flex-col gap-6">{children}</main>
+            <div className="mt-3">
+              <Prompt>{tab.command}</Prompt>
+            </div>
 
-          <footer className="rounded-3xl border border-zinc-800 bg-black p-4">
-            <div className="flex flex-col gap-3 text-sm text-zinc-400 md:flex-row md:items-center md:justify-between">
-              <div className="flex items-center gap-3">
-                <img
-                  src="/logo_fullclear.png"
-                  alt="maxhayim logo"
-                  className="h-6 w-auto"
-                />
+            {currentPage === "home" && (
+              <>
+                <pre className="mt-3 overflow-hidden font-bold leading-[1.15] text-[#E95420] [font-size:clamp(7px,2.35vw,17px)]">
+                  {MOTD_BANNER}
+                </pre>
+                <div className="mt-2 text-[#D3D7CF]">
+                  Public repos, mesh radio tooling, and a working modem. Pick a tab above to look around.
+                </div>
+              </>
+            )}
+
+            <main className="relative z-10 mt-5 flex flex-col gap-5">{children}</main>
+
+            <footer className="mt-6 text-[#D3D7CF]">
+              <Prompt>cat ~/COPYRIGHT</Prompt>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <img src="/logo_fullclear.png" alt="maxhayim logo" className="h-4 w-auto" />
                 <span>
                   &copy; 2009 - {currentYear} MAXYIM.COM. All Rights Reserved.
                 </span>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="border border-[#AAAAAA] px-2 text-xs text-[#AAAAAA]">
-                  Best viewed at 800&times;600
-                </span>
-                <span className="border border-[#AAAAAA] px-2 text-xs text-[#FFFF55]">
-                  16 colors
-                </span>
+              <div className="mt-3">
+                <Prompt>
+                  <Cursor />
+                </Prompt>
               </div>
-            </div>
-          </footer>
+            </footer>
+          </div>
         </div>
       </div>
-
-      <nav
-        aria-label="Function keys"
-        className="mh-fkeys dos fixed inset-x-0 bottom-0 z-40 grid grid-cols-3 gap-y-px border-t border-[#555555] bg-black text-[18px] sm:grid-cols-6"
-      >
-        {FKEYS.map((f) => {
-          const active = f.page === currentPage;
-          const label = f.key === "F4" ? `CRT:${crtLabel}` : f.label;
-          return (
-            <button
-              key={f.key}
-              type="button"
-              onClick={f.action}
-              className="flex min-w-0 items-stretch text-left"
-              title={`${f.key} ${f.label}`}
-            >
-              <span className="px-1 text-white sm:px-1.5">
-                {f.key.slice(1)}
-              </span>
-              <span
-                className={`min-w-0 flex-1 truncate px-1 text-black transition-colors sm:px-2 ${
-                  active ? "bg-[#FFFF55]" : "bg-[#00AAAA] hover:bg-[#55FFFF]"
-                }`}
-              >
-                {f.key === "F4" ? (
-                  <>
-                    <span className="sm:hidden">CRT</span>
-                    <span className="hidden sm:inline">{label}</span>
-                  </>
-                ) : (
-                  label
-                )}
-              </span>
-            </button>
-          );
-        })}
-      </nav>
     </>
   );
 }
@@ -1003,7 +984,7 @@ function HomePage() {
           <div className="md:col-span-8 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-emerald-300">
+                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-emerald-300">
                   <User className="h-3.5 w-3.5" />
                   Command Profile
                 </div>
@@ -1064,7 +1045,7 @@ function HomePage() {
           </div>
 
           <div className="md:col-span-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-            <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] dos-title text-cyan-300">
+            <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] term-title text-cyan-300">
               <Github className="h-3.5 w-3.5" />
               Quick Links
             </div>
@@ -1104,7 +1085,7 @@ function HomePage() {
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-6 md:p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400 dos-title">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400 term-title">
                 Live Repos Radar
               </h2>
               <div className="mt-1 text-sm text-zinc-500">
@@ -1243,7 +1224,7 @@ function HomePage() {
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-6 md:p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400 dos-title">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400 term-title">
                 Repo Traffic
               </h2>
               <div className="mt-1 text-sm text-zinc-500">
@@ -1307,7 +1288,7 @@ function HomePage() {
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-6 md:p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400 dos-title">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400 term-title">
                 Repo Telemetry
               </h2>
               <div className="mt-1 text-sm text-zinc-500">
@@ -1373,7 +1354,7 @@ function HomePage() {
             </div>
 
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-              <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] dos-title text-violet-300">
+              <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] term-title text-violet-300">
                 <Activity className="h-3.5 w-3.5" />
                 Active Languages
               </div>
@@ -1400,7 +1381,7 @@ function HomePage() {
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-6 md:p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400 dos-title">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400 term-title">
                 Recent Activity
               </h2>
               <div className="mt-1 text-sm text-zinc-500">
@@ -1457,7 +1438,7 @@ function HomePage() {
 
       <section className="grid gap-6 md:grid-cols-12">
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-12">
-          <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] dos-title text-orange-300">
+          <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] term-title text-orange-300">
             <CircleDot className="h-3.5 w-3.5" />
             Repo Health Lights
           </div>
@@ -1504,7 +1485,7 @@ function HomePage() {
 
       <section className="grid gap-6 md:grid-cols-12">
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl md:col-span-12">
-          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-cyan-300">
+          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-cyan-300">
             <Github className="h-3.5 w-3.5" />
             GitHub Stats
           </div>
@@ -1617,7 +1598,7 @@ function AboutPage() {
       <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
         <div className="grid gap-6 md:grid-cols-12">
           <div className="md:col-span-8 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-emerald-300">
+            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-emerald-300">
               <User className="h-3.5 w-3.5" />
               About
             </div>
@@ -1644,7 +1625,7 @@ function AboutPage() {
           </div>
 
           <div className="md:col-span-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-            <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] dos-title text-cyan-300">
+            <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] term-title text-cyan-300">
               <Monitor className="h-3.5 w-3.5" /> System Badges
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1663,7 +1644,7 @@ function AboutPage() {
 
       <section className="grid gap-6 md:grid-cols-12">
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl md:col-span-8">
-          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-emerald-300">
+          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-emerald-300">
             <Radio className="h-3.5 w-3.5" /> OS Journey Timeline
           </div>
 
@@ -1702,7 +1683,7 @@ function AboutPage() {
         </div>
 
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl md:col-span-4">
-          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-orange-300">
+          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-orange-300">
             <Terminal className="h-3.5 w-3.5" /> Favorites
           </div>
 
@@ -1747,7 +1728,7 @@ function AboutPage() {
 
       <section className="grid gap-6 md:grid-cols-12">
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl md:col-span-6">
-          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-violet-300">
+          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-violet-300">
             <Cpu className="h-3.5 w-3.5" /> Skills & Tools
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1763,7 +1744,7 @@ function AboutPage() {
         </div>
 
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl md:col-span-6">
-          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-orange-300">
+          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-orange-300">
             <Terminal className="h-3.5 w-3.5" /> MS-DOS Game Archive
           </div>
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
@@ -1818,7 +1799,7 @@ function ContactPage() {
       <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
         <div className="grid gap-6 md:grid-cols-12">
           <div className="md:col-span-12 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-emerald-300">
+            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-emerald-300">
               <Phone className="h-3.5 w-3.5" /> Contact
             </div>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-100 md:text-5xl">
@@ -1833,7 +1814,7 @@ function ContactPage() {
       </section>
 
       <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
-        <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-cyan-300">
+        <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-cyan-300">
           <Terminal className="h-3.5 w-3.5" /> Mail Operations Console
         </div>
 
@@ -1948,7 +1929,7 @@ function ContactPage() {
             </div>
 
             <div className="p-4 lg:col-span-4">
-              <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-cyan-300">
+              <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-cyan-300">
                 <Mail className="h-3.5 w-3.5" /> Embedded Relay Panel
               </div>
 
@@ -2723,7 +2704,7 @@ function BuddyList({ repos, loading }) {
     <section className="grid gap-6 md:grid-cols-12">
       <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-5 md:p-5">
         <div className="mb-4 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-amber-300">
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-amber-300">
             <Users className="h-3.5 w-3.5" /> Buddy List
           </div>
           <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
@@ -2810,7 +2791,7 @@ function BuddyList({ repos, loading }) {
       </div>
 
       <div className="flex flex-col rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-7 md:p-5">
-        <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-amber-300">
+        <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-amber-300">
           <User className="h-3.5 w-3.5" /> Buddy Info
         </div>
 
