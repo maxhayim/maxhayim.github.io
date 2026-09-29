@@ -28,6 +28,9 @@ import {
   AppWindow,
   Minus,
   Power,
+  X,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 
 const radarPositions = [
@@ -451,7 +454,8 @@ function readDockPosition() {
   }
 }
 
-function Dock({ currentPage, minimized, onMinimize, onRestore }) {
+function Dock({ currentPage, windowState, onMinimize, onRestore }) {
+  const minimized = windowState !== "open";
   const controls = useDragControls();
   const boundsRef = useRef(null);
   const dockRef = useRef(null);
@@ -531,23 +535,12 @@ function Dock({ currentPage, minimized, onMinimize, onRestore }) {
             type="button"
             onClick={minimized ? onRestore : onMinimize}
             className="os-dock-item"
-            title={minimized ? "Show window" : "Hide window"}
+            title={windowState === "closed" ? "Open window" : minimized ? "Show window" : "Hide window"}
           >
             <span className="os-knob">
               <AppWindow className="h-[18px] w-[18px]" strokeWidth={1.6} />
             </span>
-            <span>{minimized ? "show" : "hide"}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => window.dispatchEvent(new Event("mh-power-off"))}
-            className="os-dock-item"
-            title="Shut down"
-          >
-            <span className="os-knob os-knob-power">
-              <Power className="h-[18px] w-[18px]" strokeWidth={2} />
-            </span>
-            <span>power</span>
+            <span>{windowState === "closed" ? "open" : minimized ? "show" : "hide"}</span>
           </button>
         </motion.div>
       </nav>
@@ -559,23 +552,40 @@ function SharedShell({ currentPage, children }) {
   const currentYear = new Date().getFullYear();
   const now = useClock();
   const crtMode = useCrtMode();
-  const [minimized, setMinimized] = useState(false);
+  // "open", "minimized" (tucked into the dock), or "closed"
+  const [windowState, setWindowState] = useState("open");
+  const [maximized, setMaximized] = useState(false);
   const reduceMotion = prefersReducedMotion();
   usePageMeta();
 
   const page = OS_PAGES.find((p) => p.page === currentPage) || OS_PAGES[0];
   const time = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const isOpen = windowState === "open";
 
   const minimize = () => {
-    setMinimized(true);
+    setWindowState("minimized");
     window.scrollTo(0, 0);
   };
-  const restore = () => setMinimized(false);
+  const close = () => {
+    setWindowState("closed");
+    setMaximized(false);
+    window.scrollTo(0, 0);
+  };
+  const restore = () => setWindowState("open");
+  const toggleMaximize = () => {
+    setMaximized((m) => !m);
+    window.scrollTo(0, 0);
+  };
+
+  const hiddenPose =
+    windowState === "minimized"
+      ? { opacity: 0, scale: 0.92, y: 60, transitionEnd: { display: "none" } }
+      : { opacity: 0, scale: 0.97, y: 0, transitionEnd: { display: "none" } };
 
   return (
     <>
       {/* Menu bar */}
-      <header className="mh-fixed os-ui os-menubar fixed inset-x-0 top-0 z-40 flex h-11 items-center justify-between px-2 sm:px-3">
+      <header className="mh-fixed os-ui os-menubar fixed inset-x-0 top-0 z-40 flex h-11 items-center justify-between pl-2 pr-1.5 sm:pl-3 sm:pr-2">
         <SystemMenu />
         <div className="flex items-center gap-1">
           <CrtSwitch mode={crtMode} />
@@ -583,25 +593,58 @@ function SharedShell({ currentPage, children }) {
             <AnalogClock now={now} />
             <span className="hidden sm:inline">{time}</span>
           </div>
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event("mh-power-off"))}
+            title="Shut down"
+            aria-label="Shut down"
+            className="os-menubar-power"
+          >
+            <Power className="h-3.5 w-3.5" strokeWidth={2.4} />
+          </button>
         </div>
       </header>
 
-      <div className="mh-screen os-desk os-ui relative min-h-screen overflow-hidden px-3 pb-28 pt-16 sm:px-5 md:px-8">
-        
+      <div
+        className={`mh-screen os-desk os-ui relative min-h-screen overflow-hidden pb-28 ${
+          maximized ? "pt-11" : "px-3 pt-16 sm:px-5 md:px-8"
+        }`}
+      >
         <motion.div
-          className="os-window relative z-10 mx-auto max-w-7xl origin-bottom"
+          className={`os-window relative z-10 mx-auto origin-bottom ${maximized ? "os-window-max max-w-none" : "max-w-7xl"}`}
           initial={false}
-          animate={
-            minimized
-              ? { opacity: 0, scale: 0.92, y: 60, transitionEnd: { display: "none" } }
-              : { display: "block", opacity: 1, scale: 1, y: 0 }
-          }
-          transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.3, 0, 0.2, 1] }}
-          aria-hidden={minimized}
+          animate={isOpen ? { display: "block", opacity: 1, scale: 1, y: 0 } : hiddenPose}
+          transition={{ duration: reduceMotion ? 0 : windowState === "closed" ? 0.14 : 0.22, ease: [0.3, 0, 0.2, 1] }}
+          aria-hidden={!isOpen}
         >
-          {/* Window header */}
-          <div className="flex flex-wrap items-center gap-3 border-b border-[var(--os-line)] px-4 py-3 sm:px-5">
-            <div className="flex min-w-0 items-center gap-2">
+          {/* Window header: controls on the left, double-click to maximize */}
+          <div
+            className="flex flex-wrap items-center gap-3 border-b border-[var(--os-line)] px-4 py-3 sm:px-5"
+            onDoubleClick={(e) => {
+              if (e.target.closest("a, button")) return;
+              toggleMaximize();
+            }}
+          >
+            <div className="flex items-center gap-1.5">
+              <button type="button" onClick={close} title="Close" aria-label="Close window" className="os-round-btn os-round-btn-close">
+                <X className="h-3.5 w-3.5" strokeWidth={2.2} />
+              </button>
+              <button type="button" onClick={minimize} title="Minimize" aria-label="Minimize window" className="os-round-btn">
+                <Minus className="h-3.5 w-3.5" strokeWidth={2.2} />
+              </button>
+              <button
+                type="button"
+                onClick={toggleMaximize}
+                title={maximized ? "Restore size" : "Maximize"}
+                aria-label={maximized ? "Restore window size" : "Maximize window"}
+                aria-pressed={maximized}
+                className="os-round-btn"
+              >
+                {maximized ? <Minimize2 className="h-3.5 w-3.5" strokeWidth={2.2} /> : <Maximize2 className="h-3.5 w-3.5" strokeWidth={2.2} />}
+              </button>
+            </div>
+
+            <div className="flex min-w-0 items-center gap-2 select-none">
               <span className="os-led" aria-hidden="true" />
               <span className="truncate font-semibold tracking-tight">command center</span>
               <span className="text-[var(--os-ink-3)]">/ {page.label}</span>
@@ -609,26 +652,16 @@ function SharedShell({ currentPage, children }) {
 
             <nav aria-label="Pages" className="os-segment ml-auto">
               {OS_PAGES.map((p) => (
-                <a key={p.page} href={p.href} aria-current={p.page === currentPage ? "page" : undefined} className="os-segment-item">
+                <a
+                  key={p.page}
+                  href={p.href}
+                  aria-current={p.page === currentPage ? "page" : undefined}
+                  className="os-segment-item"
+                >
                   {p.label}
                 </a>
               ))}
             </nav>
-
-            <div className="flex items-center gap-1.5">
-              <button type="button" onClick={minimize} title="Minimize" aria-label="Minimize" className="os-round-btn">
-                <Minus className="h-3.5 w-3.5" strokeWidth={2} />
-              </button>
-              <button
-                type="button"
-                onClick={() => window.dispatchEvent(new Event("mh-power-off"))}
-                title="Shut down"
-                aria-label="Shut down"
-                className="os-round-btn os-round-btn-power"
-              >
-                <Power className="h-3.5 w-3.5" strokeWidth={2} />
-              </button>
-            </div>
           </div>
 
           <div className="os relative p-3 sm:p-5 md:p-6">
@@ -644,134 +677,163 @@ function SharedShell({ currentPage, children }) {
         </motion.div>
       </div>
 
-      <Dock currentPage={currentPage} minimized={minimized} onMinimize={minimize} onRestore={restore} />
+      <Dock currentPage={currentPage} windowState={windowState} onMinimize={minimize} onRestore={restore} />
     </>
   );
 }
 
+/* Pong: waits for the visitor to start; the bot is quick but beatable. */
+const PONG_TO_WIN = 5;
+const PADDLE_HALF = 11; // % of field height the paddle covers above/below its center
+
 function PongGame() {
   const fieldRef = useRef(null);
-  const animationRef = useRef(null);
-
+  const frameRef = useRef(null);
+  const lastTimeRef = useRef(0);
   const visitorYRef = useRef(50);
   const botYRef = useRef(50);
-  const ballRef = useRef({ x: 50, y: 50, vx: 0.52, vy: 0.34 });
+  const ballRef = useRef({ x: 50, y: 50, vx: 0, vy: 0 });
+  const botAimRef = useRef(0);
+  const serveAtRef = useRef(0);
+  const scoreRef = useRef({ bot: 0, visitor: 0 });
 
+  const [status, setStatus] = useState("idle"); // idle, playing, over
   const [visitorY, setVisitorY] = useState(50);
   const [botY, setBotY] = useState(50);
   const [ball, setBall] = useState({ x: 50, y: 50 });
   const [score, setScore] = useState({ bot: 0, visitor: 0 });
+  const [winner, setWinner] = useState(null);
 
   const setVisitorPosition = (clientY) => {
     const rect = fieldRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const relativeY = ((clientY - rect.top) / rect.height) * 100;
-    const clamped = Math.max(10, Math.min(90, relativeY));
+    const clamped = Math.max(PADDLE_HALF, Math.min(100 - PADDLE_HALF, ((clientY - rect.top) / rect.height) * 100));
     visitorYRef.current = clamped;
     setVisitorY(clamped);
   };
 
+  const serve = (toward) => {
+    const angle = (Math.random() * 0.8 - 0.4) * 30;
+    ballRef.current = { x: 50, y: 50, vx: toward === "visitor" ? 38 : -38, vy: angle };
+    botAimRef.current = Math.random() * 14 - 7;
+    serveAtRef.current = performance.now() + 700;
+  };
+
+  const start = () => {
+    scoreRef.current = { bot: 0, visitor: 0 };
+    setScore({ bot: 0, visitor: 0 });
+    setWinner(null);
+    botYRef.current = 50;
+    setBotY(50);
+    serve("visitor");
+    setBall({ x: 50, y: 50 });
+    lastTimeRef.current = 0;
+    setStatus("playing");
+  };
+
+  // Mouse, touch, and arrow keys move the visitor paddle while a game is on.
   useEffect(() => {
+    if (status !== "playing") return;
     const node = fieldRef.current;
     if (!node) return;
-
-    const onMouseMove = (event) => setVisitorPosition(event.clientY);
-    const onTouchMove = (event) => {
-      if (event.touches?.[0]) setVisitorPosition(event.touches[0].clientY);
-    };
-
-    const onKeyDown = (event) => {
-      if (event.key === "ArrowUp") {
-        visitorYRef.current = Math.max(10, visitorYRef.current - 4);
-        setVisitorY(visitorYRef.current);
-      }
-      if (event.key === "ArrowDown") {
-        visitorYRef.current = Math.min(90, visitorYRef.current + 4);
-        setVisitorY(visitorYRef.current);
+    const onMouseMove = (e) => setVisitorPosition(e.clientY);
+    const onTouchMove = (e) => {
+      if (e.touches?.[0]) {
+        e.preventDefault();
+        setVisitorPosition(e.touches[0].clientY);
       }
     };
-
+    const onKeyDown = (e) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault();
+      const step = e.key === "ArrowUp" ? -6 : 6;
+      visitorYRef.current = Math.max(PADDLE_HALF, Math.min(100 - PADDLE_HALF, visitorYRef.current + step));
+      setVisitorY(visitorYRef.current);
+    };
     node.addEventListener("mousemove", onMouseMove);
-    node.addEventListener("touchmove", onTouchMove, { passive: true });
+    node.addEventListener("touchmove", onTouchMove, { passive: false });
     window.addEventListener("keydown", onKeyDown);
-
     return () => {
       node.removeEventListener("mousemove", onMouseMove);
       node.removeEventListener("touchmove", onTouchMove);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, []);
+  }, [status]);
 
+  // Game loop, timed in seconds so it plays the same on any refresh rate.
   useEffect(() => {
-    const resetBall = (direction) => {
-      ballRef.current = {
-        x: 50,
-        y: 50,
-        vx: direction === "visitor" ? 0.52 : -0.52,
-        vy: Math.random() > 0.5 ? 0.34 : -0.34,
-      };
+    if (status !== "playing") return;
+
+    const point = (who) => {
+      const next = { ...scoreRef.current, [who]: scoreRef.current[who] + 1 };
+      scoreRef.current = next;
+      setScore(next);
+      if (next[who] >= PONG_TO_WIN) {
+        setWinner(who);
+        setStatus("over");
+        return true;
+      }
+      serve(who === "bot" ? "visitor" : "bot");
+      return false;
     };
 
-    const tick = () => {
-      const next = { ...ballRef.current };
+    const tick = (time) => {
+      const dt = lastTimeRef.current ? Math.min(0.05, (time - lastTimeRef.current) / 1000) : 0;
+      lastTimeRef.current = time;
 
-      next.x += next.vx;
-      next.y += next.vy;
-
-      if (next.y <= 2 || next.y >= 98) {
-        next.vy *= -1;
-        next.y = Math.max(2, Math.min(98, next.y));
+      if (document.hidden || time < serveAtRef.current) {
+        frameRef.current = requestAnimationFrame(tick);
+        return;
       }
 
-      const nextBot = Math.max(
-        10,
-        Math.min(90, botYRef.current + (next.y - botYRef.current) * 0.08),
-      );
-      botYRef.current = nextBot;
-      setBotY(nextBot);
-
-      const visitorMin = visitorYRef.current - 10;
-      const visitorMax = visitorYRef.current + 10;
-      const botMin = nextBot - 10;
-      const botMax = nextBot + 10;
-
-      if (
-        next.x >= 93 &&
-        next.y >= visitorMin &&
-        next.y <= visitorMax &&
-        next.vx > 0
-      ) {
-        next.vx = -Math.abs(next.vx);
-        next.vy += (next.y - visitorYRef.current) * 0.012;
-        next.x = 93;
+      const b = { ...ballRef.current };
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      if (b.y <= 2 || b.y >= 98) {
+        b.vy *= -1;
+        b.y = Math.max(2, Math.min(98, b.y));
       }
 
-      if (next.x <= 7 && next.y >= botMin && next.y <= botMax && next.vx < 0) {
-        next.vx = Math.abs(next.vx);
-        next.vy += (next.y - nextBot) * 0.012;
-        next.x = 7;
+      // Bot: tracks the ball only when it's coming its way, at a capped speed, with a little aim error.
+      const target = b.vx < 0 ? b.y + botAimRef.current : 50;
+      const diff = target - botYRef.current;
+      const maxStep = 46 * dt;
+      botYRef.current = Math.max(PADDLE_HALF, Math.min(100 - PADDLE_HALF, botYRef.current + Math.max(-maxStep, Math.min(maxStep, diff))));
+      setBotY(botYRef.current);
+
+      const speedUp = (v) => Math.sign(v) * Math.min(85, Math.abs(v) * 1.07);
+
+      if (b.vx > 0 && b.x >= 93 && b.x <= 97 && Math.abs(b.y - visitorYRef.current) <= PADDLE_HALF) {
+        b.vx = -speedUp(b.vx);
+        b.vy += (b.y - visitorYRef.current) * 2.4;
+        b.x = 93;
+        b.vy += Math.random() * 12 - 6;
+        // The bot reads the return a little wrong; past the paddle's reach, it misses.
+        botAimRef.current = Math.random() * 34 - 17;
+      }
+      if (b.vx < 0 && b.x <= 7 && b.x >= 3 && Math.abs(b.y - botYRef.current) <= PADDLE_HALF) {
+        b.vx = -speedUp(b.vx);
+        b.vy += (b.y - botYRef.current) * 2.4;
+        b.x = 7;
       }
 
-      if (next.x > 100) {
-        setScore((prev) => ({ ...prev, bot: prev.bot + 1 }));
-        resetBall("bot");
-      } else if (next.x < 0) {
-        setScore((prev) => ({ ...prev, visitor: prev.visitor + 1 }));
-        resetBall("visitor");
+      if (b.x > 102) {
+        if (point("bot")) return;
+      } else if (b.x < -2) {
+        if (point("visitor")) return;
       } else {
-        ballRef.current = next;
+        ballRef.current = b;
       }
 
       setBall({ x: ballRef.current.x, y: ballRef.current.y });
-      animationRef.current = requestAnimationFrame(tick);
+      frameRef.current = requestAnimationFrame(tick);
     };
 
-    animationRef.current = requestAnimationFrame(tick);
+    frameRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameRef.current);
+  }, [status]);
 
-    return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    };
-  }, []);
+  const playing = status === "playing";
 
   return (
     <div className="overflow-hidden rounded-2xl border border-emerald-500/20 bg-black p-4 shadow-inner">
@@ -782,38 +844,55 @@ function PongGame() {
 
       <div
         ref={fieldRef}
-        className="term-screen relative h-64 cursor-none rounded-xl border border-emerald-500/20 bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.08),transparent_35%),linear-gradient(to_bottom,rgba(0,0,0,0.95),rgba(4,12,8,1))] font-mono text-emerald-300"
+        className={`term-screen relative h-64 select-none overflow-hidden rounded-xl border border-emerald-500/20 bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.08),transparent_35%),linear-gradient(to_bottom,rgba(0,0,0,0.95),rgba(4,12,8,1))] font-mono text-emerald-300 ${
+          playing ? "cursor-none touch-none" : ""
+        }`}
       >
         <div className="pointer-events-none absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(74,222,128,0.12)_1px,transparent_1px)] [background-size:100%_6px]" />
         <div className="absolute inset-y-4 left-1/2 w-px -translate-x-1/2 bg-emerald-500/30" />
 
         <div
-          className="absolute left-4 w-2 -translate-y-1/2 rounded-sm bg-emerald-300 shadow-[0_0_12px_rgba(74,222,128,0.75)]"
-          style={{ top: `${botY}%`, height: "52px" }}
+          className="absolute left-4 w-2 -translate-y-1/2 rounded-sm bg-emerald-300"
+          style={{ top: `${botY}%`, height: `${PADDLE_HALF * 2}%` }}
         />
         <div
-          className="absolute right-4 w-2 -translate-y-1/2 rounded-sm bg-cyan-300 shadow-[0_0_12px_rgba(103,232,249,0.75)]"
-          style={{ top: `${visitorY}%`, height: "52px" }}
+          className="absolute right-4 w-2 -translate-y-1/2 rounded-sm bg-cyan-300"
+          style={{ top: `${visitorY}%`, height: `${PADDLE_HALF * 2}%` }}
         />
-
-        <div
-          className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-sm bg-emerald-200 shadow-[0_0_14px_rgba(167,243,208,0.95)]"
-          style={{ left: `${ball.x}%`, top: `${ball.y}%` }}
-        />
+        {playing && (
+          <div
+            className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-sm bg-emerald-200"
+            style={{ left: `${ball.x}%`, top: `${ball.y}%` }}
+          />
+        )}
 
         <div className="absolute left-1/2 top-4 -translate-x-1/2 text-center">
-          <div className="text-[10px] uppercase tracking-[0.25em] text-emerald-500/80">
-            MS-DOS MATCH
-          </div>
+          <div className="text-[10px] uppercase tracking-[0.25em] text-emerald-500/80">FIRST TO {PONG_TO_WIN}</div>
           <div className="mt-1 text-lg font-bold tracking-[0.3em] text-emerald-200">
-            {String(score.bot).padStart(2, "0")}{" "}
-            {String(score.visitor).padStart(2, "0")}
+            {String(score.bot).padStart(2, "0")} {String(score.visitor).padStart(2, "0")}
           </div>
         </div>
 
-        <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-emerald-400/80">
+        {!playing && (
+          <button
+            type="button"
+            onClick={start}
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/55 text-center"
+          >
+            {status === "over" && (
+              <span className="text-lg font-bold uppercase tracking-[0.2em] text-emerald-200">
+                {winner === "visitor" ? "YOU WIN" : "BOT WINS"}
+              </span>
+            )}
+            <span className="rounded-md border border-emerald-400/60 bg-emerald-500/15 px-4 py-2 text-sm uppercase tracking-[0.2em] text-emerald-200">
+              {status === "over" ? "Click here to play again" : "Click here to play"}
+            </span>
+            <span className="text-[10px] uppercase tracking-[0.18em] text-emerald-400/80">Mouse, touch, or arrow keys</span>
+          </button>
+        )}
+
+        <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-emerald-400/80">
           <span>BOT</span>
-          <span>MOUSE / TOUCH / ARROWS</span>
           <span>VISITOR</span>
         </div>
       </div>

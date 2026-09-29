@@ -221,7 +221,30 @@
 }
 .os-round-btn:hover { color: var(--os-ink); }
 .os-round-btn:active { transform: translateY(1px); box-shadow: 0 0 0 1px var(--os-line); }
-.os-round-btn-power { color: var(--os-accent); }
+.os-round-btn-close:hover { color: var(--os-accent); }
+
+.os-menubar-power {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  margin-left: 4px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(color-mix(in oklab, var(--os-accent) 85%, white), var(--os-accent));
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--os-accent) 70%, black), 0 1px 3px color-mix(in oklab, var(--os-accent) 45%, transparent);
+}
+.os-menubar-power:hover { filter: brightness(1.06); }
+.os-menubar-power:active { transform: translateY(1px); }
+
+/* Maximized: edge to edge under the menu bar */
+.os-window-max {
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  min-height: calc(100vh - 44px);
+}
 
 /* CRT slide switch */
 .os-switch {
