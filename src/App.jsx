@@ -491,7 +491,7 @@ function InteractiveDialup() {
   const audioRef = useRef(null);
   const [status, setStatus] = useState("idle");
   const [lines, setLines] = useState([
-    "ATDT PRODIGY-LOCAL-POP",
+    "ATDT 305-503-0823",
     "System ready. Awaiting connection command.",
   ]);
 
@@ -500,9 +500,9 @@ function InteractiveDialup() {
 
     setStatus("connecting");
     setLines([
-      "ATDT PRODIGY-LOCAL-POP",
+      "ATDT 305-503-0823",
       "Initializing modem...",
-      "Dialing local access number...",
+      "Dialing 305-503-0823...",
     ]);
 
     if (audioRef.current) {
