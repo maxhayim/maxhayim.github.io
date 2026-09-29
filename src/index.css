@@ -67,8 +67,8 @@
 /* Theme tokens: window chrome, desktop, console */
 :root {
   color-scheme: dark;
-  --desk: #0b2323;
-  --desk-pattern: radial-gradient(ellipse 90% 70% at 50% 40%, #134040 0%, #0b2323 60%, #061616 100%);
+  --desk: #1f3d12;
+  --desk-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url("/wallpaper/meadow.jpg");
   --win-face: #3a3a3a;
   --win-fg: #f0f0f0;
   --win-light: #6c6c6c;
@@ -97,8 +97,8 @@
 @media (prefers-color-scheme: light) {
   :root {
     color-scheme: light;
-    --desk: #008080;
-    --desk-pattern: #008080;
+    --desk: #3a7bd5;
+    --desk-image: url("/wallpaper/meadow.jpg");
     --win-face: #c0c0c0;
     --win-fg: #000000;
     --win-light: #ffffff;
@@ -197,7 +197,61 @@
   -webkit-font-smoothing: none;
 }
 
-.win-desktop { background: var(--desk-pattern); background-color: var(--desk); }
+.win-desktop {
+  background-color: var(--desk);
+  background-image: var(--desk-image);
+  background-size: cover;
+  background-position: center bottom;
+  background-attachment: fixed;
+  image-rendering: pixelated;
+}
+/* iOS ignores fixed backgrounds and scales them badly; let it scroll there */
+@supports (-webkit-touch-callout: none) {
+  .win-desktop { background-attachment: scroll; }
+}
+
+/* Desktop shortcut shown while the window is minimized */
+.win-desk-icon {
+  display: flex;
+  width: 96px;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
+  color: #fff;
+  font-size: 12px;
+  text-align: center;
+}
+.win-desk-icon-img {
+  display: flex;
+  width: 40px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  border: 2px solid #c0c0c0;
+  border-top-width: 5px;
+  border-top-color: #000;
+  outline: 1px solid #fff;
+  color: #c0c0c0;
+  font-family: "VT323", monospace;
+  font-size: 13px;
+}
+.win-desk-icon-label {
+  padding: 0 2px;
+  text-shadow: 1px 1px 0 #000;
+}
+.win-desk-icon:focus-visible .win-desk-icon-label,
+.win-desk-icon:hover .win-desk-icon-label {
+  background: #000080;
+  outline: 1px dotted #fff;
+}
+
+/* Active taskbar button: Win95 dithered face */
+.win-task-active {
+  background-image: repeating-conic-gradient(var(--win-light) 0 25%, var(--win-face) 0 50%);
+  background-size: 2px 2px;
+}
 
 .win-bevel {
   background: var(--win-face);

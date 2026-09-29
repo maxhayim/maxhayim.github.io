@@ -467,6 +467,14 @@ function SharedShell({ currentPage, children }) {
   const crtMode = useCrtMode();
   const rootRef = useRef(null);
   const [fontSize, setFontSize] = useState(() => readStore("localStorage", "mh-dos-font") || "auto");
+  const [minimized, setMinimized] = useState(false);
+  const reduceMotion = prefersReducedMotion();
+
+  const minimize = () => {
+    setMinimized(true);
+    window.scrollTo(0, 0);
+  };
+  const restore = () => setMinimized(false);
   usePageMeta();
   useOutputReveal(currentPage, rootRef);
 
@@ -482,14 +490,33 @@ function SharedShell({ currentPage, children }) {
   return (
     <>
       <div ref={rootRef} className="mh-screen win-desktop relative min-h-screen overflow-hidden px-2 pb-14 pt-3 sm:px-4 md:px-6 md:pb-16 md:pt-6">
-        <div className="win-window win-bevel mx-auto max-w-7xl p-[3px]">
+        {minimized && (
+          <button type="button" onClick={restore} className="win-desk-icon win-ui" title="Open MaXHyM-DOS Prompt">
+            <span className="win-desk-icon-img" aria-hidden="true">
+              <span>C:\&gt;_</span>
+            </span>
+            <span className="win-desk-icon-label">MaXHyM-DOS Prompt</span>
+          </button>
+        )}
+
+        <motion.div
+          className="win-window win-bevel mx-auto max-w-7xl origin-bottom-left p-[3px]"
+          initial={false}
+          animate={
+            minimized
+              ? { opacity: 0, scale: 0.08, y: 120, transitionEnd: { display: "none" } }
+              : { display: "block", opacity: 1, scale: 1, y: 0 }
+          }
+          transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeIn" }}
+          aria-hidden={minimized}
+        >
           {/* Title bar */}
           <div className="win-ui flex h-[22px] items-center gap-1.5 bg-black pl-1 pr-[2px] text-white">
             <img src="/logo_fullclear.png" alt="" className="h-4 w-auto" />
             <div className="min-w-0 flex-1 truncate text-[13px] font-bold">MaXHyM-DOS Prompt{page.dir ? ` - ${page.dir}` : ""}</div>
-            <span className="win-bevel win-title-btn" aria-hidden="true">
+            <button type="button" onClick={minimize} title="Minimize" aria-label="Minimize" className="win-bevel win-title-btn">
               <svg viewBox="0 0 8 7" className="h-[7px] w-2"><rect x="1" y="5" width="6" height="2" fill="currentColor" /></svg>
-            </span>
+            </button>
             <span className="win-bevel win-title-btn" aria-hidden="true">
               <svg viewBox="0 0 9 9" className="h-[9px] w-[9px]"><rect x="0.5" y="0.5" width="8" height="8" fill="none" stroke="currentColor" /><rect x="0" y="0" width="9" height="2" fill="currentColor" /></svg>
             </span>
@@ -575,15 +602,21 @@ function SharedShell({ currentPage, children }) {
               </div>
             </footer>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* Taskbar */}
       <div className="mh-fixed win-ui win-taskbar fixed inset-x-0 bottom-0 z-40 flex h-9 items-center gap-1 px-1 text-[12px]">
         <StartMenu />
-        <Bevel as="div" pressed className="hidden h-7 min-w-0 max-w-[220px] flex-1 items-center gap-1.5 truncate px-2 font-bold sm:flex">
+        <Bevel
+          type="button"
+          pressed={!minimized}
+          onClick={minimized ? restore : minimize}
+          title={minimized ? "Restore MaXHyM-DOS Prompt" : "Minimize MaXHyM-DOS Prompt"}
+          className={`flex h-7 min-w-0 max-w-[220px] flex-1 items-center gap-1.5 truncate px-2 text-left ${minimized ? "" : "font-bold win-task-active"}`}
+        >
           <span className="inline-block h-3.5 w-4 shrink-0 bg-black" />
-          MaXHyM-DOS Prompt
+          <span className="truncate">MaXHyM-DOS Prompt</span>
         </Bevel>
         <Bevel as="div" pressed className="ml-auto flex h-7 items-center gap-2 px-2">
           <button type="button" onClick={() => window.dispatchEvent(new Event("mh-crt-cycle"))} title="Cycle CRT mode" className="hover:underline">
