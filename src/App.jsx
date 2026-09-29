@@ -1397,9 +1397,16 @@ function ContactPage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const mailAudioRef = useRef(null);
+
   const handleFakeSubmit = (e) => {
     e.preventDefault();
     setSubmitted(true);
+    const audio = mailAudioRef.current;
+    if (audio) {
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
+    }
   };
 
   return (
@@ -1450,6 +1457,8 @@ function ContactPage() {
                   relay ready
                 </div>
               </div>
+
+              <audio ref={mailAudioRef} src="/audio/youve-got-mail.mp3" preload="auto" />
 
               <form className="space-y-4" onSubmit={handleFakeSubmit}>
                 <div className="grid gap-4 md:grid-cols-2">
