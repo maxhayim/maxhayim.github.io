@@ -22,15 +22,8 @@ import {
   Plane,
   Phone,
   Users,
-  RotateCcw,
   MessageSquare,
 } from "lucide-react";
-
-const navItems = [
-  { label: "Home", href: "#/" },
-  { label: "About", href: "#/about" },
-  { label: "Contact", href: "#/contact" },
-];
 
 const radarPositions = [
   { top: "14%", left: "58%" },
@@ -204,7 +197,10 @@ function useHashRoute() {
   const [route, setRoute] = useState(getRoute);
 
   useEffect(() => {
-    const onHashChange = () => setRoute(getRoute());
+    const onHashChange = () => {
+      setRoute(getRoute());
+      window.scrollTo(0, 0);
+    };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
@@ -241,7 +237,7 @@ function usePageMeta() {
     }
     metaDescription.setAttribute(
       "content",
-      "Public command center homepage for maxhayim with live repo radar, telemetry, traffic, about timeline, and contact console."
+      "Public command center homepage for maxhayim with live repo radar, telemetry, traffic, about timeline, and contact console.",
     );
   }, []);
 }
@@ -262,78 +258,309 @@ function buildFlightCode(repo) {
   return `${letters}${stars}`;
 }
 
-function SharedShell({ currentPage, children }) {
-  const currentYear = new Date().getFullYear();
-  usePageMeta();
+/* ---------- DOS / BBS shell ---------- */
+
+// "MAXHAYIM" in the ANSI Shadow figlet font. VT323 has no block glyphs, so AnsiBanner draws it as SVG.
+const BANNER_ROWS = [
+  "███╗   ███╗ █████╗ ██╗  ██╗██╗  ██╗ █████╗ ██╗   ██╗██╗███╗   ███╗",
+  "████╗ ████║██╔══██╗╚██╗██╔╝██║  ██║██╔══██╗╚██╗ ██╔╝██║████╗ ████║",
+  "██╔████╔██║███████║ ╚███╔╝ ███████║███████║ ╚████╔╝ ██║██╔████╔██║",
+  "██║╚██╔╝██║██╔══██║ ██╔██╗ ██╔══██║██╔══██║  ╚██╔╝  ██║██║╚██╔╝██║",
+  "██║ ╚═╝ ██║██║  ██║██╔╝ ██╗██║  ██║██║  ██║   ██║   ██║██║ ╚═╝ ██║",
+  "╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚═╝╚═╝     ╚═╝",
+];
+const BANNER_COLORS = [
+  "#55FFFF",
+  "#55FFFF",
+  "#00AAAA",
+  "#00AAAA",
+  "#5555FF",
+  "#5555FF",
+];
+
+function AnsiBanner() {
+  const cols = BANNER_ROWS[0].length;
+  const cellW = 10;
+  const cellH = 20;
+  const shapes = [];
+
+  BANNER_ROWS.forEach((row, y) => {
+    const fill = BANNER_COLORS[y] || BANNER_COLORS[BANNER_COLORS.length - 1];
+    let x = 0;
+    while (x < cols) {
+      if (row[x] === "█") {
+        let end = x;
+        while (row[end] === "█") end++;
+        shapes.push(
+          <rect
+            key={`b${y}-${x}`}
+            x={x * cellW}
+            y={y * cellH}
+            width={(end - x) * cellW}
+            height={cellH}
+            fill={fill}
+          />,
+        );
+        x = end;
+        continue;
+      }
+      const cx = x * cellW + cellW / 2;
+      const cy = y * cellH + cellH / 2;
+      const left = x * cellW;
+      const right = left + cellW;
+      const top = y * cellH;
+      const bottom = top + cellH;
+      const paths = {
+        "═": `M${left} ${cy}H${right}`,
+        "║": `M${cx} ${top}V${bottom}`,
+        "╔": `M${right} ${cy}H${cx}V${bottom}`,
+        "╗": `M${left} ${cy}H${cx}V${bottom}`,
+        "╚": `M${cx} ${top}V${cy}H${right}`,
+        "╝": `M${cx} ${top}V${cy}H${left}`,
+      };
+      if (paths[row[x]]) {
+        shapes.push(
+          <path
+            key={`s${y}-${x}`}
+            d={paths[row[x]]}
+            stroke="#0000AA"
+            strokeWidth="3"
+            fill="none"
+          />,
+        );
+      }
+      x++;
+    }
+  });
 
   return (
-    <div className="mh-screen relative min-h-screen overflow-hidden bg-[#04070b] text-zinc-100 selection:bg-emerald-400/30">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.12),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.10),transparent_25%)]" />
-      <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:32px_32px]" />
+    <svg
+      viewBox={`0 0 ${cols * cellW} ${BANNER_ROWS.length * cellH}`}
+      className="h-auto w-full max-w-[560px]"
+      role="img"
+      aria-label="MAXHAYIM"
+      shapeRendering="crispEdges"
+    >
+      {shapes}
+    </svg>
+  );
+}
 
-      <div className="relative z-10 mx-auto flex max-w-7xl flex-col gap-6 px-4 py-4 md:px-6 md:py-6">
-      <nav className="relative z-20 rounded-3xl border border-zinc-800 bg-black/60 p-4 shadow-2xl backdrop-blur-xl">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
-            <img src="/logo_fullclear.png" alt="maxhayim logo" className="h-10 w-auto" />
-            <div className="text-lg font-semibold tracking-[0.2em] text-zinc-100">
-              maxhayim.com
+const FKEYS = [
+  {
+    key: "F1",
+    label: "Home",
+    action: () => (window.location.hash = "#/"),
+    page: "home",
+  },
+  {
+    key: "F2",
+    label: "About",
+    action: () => (window.location.hash = "#/about"),
+    page: "about",
+  },
+  {
+    key: "F3",
+    label: "Contact",
+    action: () => (window.location.hash = "#/contact"),
+    page: "contact",
+  },
+  {
+    key: "F4",
+    label: "CRT",
+    action: () => window.dispatchEvent(new Event("mh-crt-cycle")),
+  },
+  {
+    key: "F5",
+    label: "Reboot",
+    action: () => window.dispatchEvent(new Event("mh-reboot")),
+  },
+  {
+    key: "F10",
+    label: "Power",
+    action: () => window.dispatchEvent(new Event("mh-power-off")),
+  },
+];
+
+function useClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
+
+function useCrtMode() {
+  const [mode, setMode] = useState(
+    () => document.documentElement.dataset.crt || "off",
+  );
+  useEffect(() => {
+    const cycle = () => {
+      const current = document.documentElement.dataset.crt || "off";
+      const index = CRT_MODES.findIndex((m) => m.id === current);
+      const next = CRT_MODES[(index + 1) % CRT_MODES.length].id;
+      applyCrt(next);
+      writeStore("localStorage", "mh-crt", next);
+      setMode(next);
+    };
+    window.addEventListener("mh-crt-cycle", cycle);
+    return () => window.removeEventListener("mh-crt-cycle", cycle);
+  }, []);
+  return mode;
+}
+
+// Panels draw in top-to-bottom like a page arriving over a 2400 baud modem, once per page per session.
+function useModemReveal(currentPage, rootRef) {
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || prefersReducedMotion() || !("IntersectionObserver" in window))
+      return;
+    const key = `mh-modem-${currentPage}`;
+    if (readStore("sessionStorage", key)) return;
+
+    const panels = Array.from(root.querySelectorAll("main .rounded-3xl"));
+    panels.forEach((panel) => panel.classList.add("dos-reveal"));
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          writeStore("sessionStorage", key, "1");
+          entry.target.classList.add("dos-shown");
+          observer.unobserve(entry.target);
+        });
+      },
+      { threshold: 0.05 },
+    );
+    panels.forEach((panel) => observer.observe(panel));
+    return () => {
+      observer.disconnect();
+      panels.forEach((panel) =>
+        panel.classList.remove("dos-reveal", "dos-shown"),
+      );
+    };
+  }, [currentPage, rootRef]);
+}
+
+function SharedShell({ currentPage, children }) {
+  const currentYear = new Date().getFullYear();
+  const now = useClock();
+  const crtMode = useCrtMode();
+  const rootRef = useRef(null);
+  usePageMeta();
+  useModemReveal(currentPage, rootRef);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      const fkey = FKEYS.find((f) => f.key === e.key);
+      if (!fkey || e.metaKey || e.ctrlKey || e.altKey) return;
+      e.preventDefault();
+      fkey.action();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const crtLabel = CRT_MODES.find((m) => m.id === crtMode)?.label || "Off";
+  const time = now.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
+  return (
+    <>
+      <div
+        ref={rootRef}
+        className="mh-screen dos relative min-h-screen overflow-hidden bg-black pb-20 sm:pb-12 text-zinc-100 selection:bg-cyan-300 selection:text-black"
+      >
+        <div className="relative z-10 mx-auto flex max-w-7xl flex-col gap-6 px-4 py-4 md:px-6 md:py-6">
+          <header className="rounded-3xl border border-zinc-800 bg-black">
+            <div className="flex items-center justify-between gap-4 bg-[#00AAAA] px-3 py-0.5 text-black">
+              <span>MAXHAYIM BBS</span>
+              <span className="hidden sm:inline">
+                Node 1 &middot; 14400 bps &middot; ANSI
+              </span>
+              <span>{time}</span>
             </div>
-          </div>
+            <div className="flex flex-col gap-3 px-4 py-5 md:px-6">
+              <AnsiBanner />
+              <div className="text-zinc-400">
+                <span className="text-[#FFFF55]">maxhayim.com</span> &mdash;
+                public repos, mesh radio tooling, and a working modem.
+                <span className="hidden sm:inline">
+                  {" "}Press <span className="text-white">F1</span>&ndash;
+                  <span className="text-white">F10</span> to get around.
+                </span>
+              </div>
+            </div>
+          </header>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {navItems.map((item) => {
-              const isActive =
-                (currentPage === "home" && item.href === "#/") ||
-                (currentPage === "about" && item.href === "#/about") ||
-                (currentPage === "contact" && item.href === "#/contact");
+          <main className="relative z-10 flex flex-col gap-6">{children}</main>
 
-              return (
-                <a
-                  key={item.label}
-                  href={item.href}
-                  className={`rounded-xl border px-4 py-2 text-xs uppercase tracking-[0.18em] transition ${
-                    isActive
-                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                      : "border-zinc-800 bg-zinc-950/70 text-zinc-300 hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
-                  }`}
-                >
-                  {item.label}
-                </a>
-              );
-            })}
-            <span className="mx-1 hidden h-6 w-px bg-zinc-800 md:block" aria-hidden="true" />
-            <CrtToggle />
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new Event("mh-reboot"))}
-              title="Replay the boot sequence"
-              className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-xs uppercase tracking-[0.18em] text-zinc-300 transition hover:border-cyan-500/30 hover:bg-cyan-500/10 hover:text-cyan-200"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              Reboot
-            </button>
-          </div>
+          <footer className="rounded-3xl border border-zinc-800 bg-black p-4">
+            <div className="flex flex-col gap-3 text-sm text-zinc-400 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-3">
+                <img
+                  src="/logo_fullclear.png"
+                  alt="maxhayim logo"
+                  className="h-6 w-auto"
+                />
+                <span>
+                  &copy; 2009 - {currentYear} MAXYIM.COM. All Rights Reserved.
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="border border-[#AAAAAA] px-2 text-xs text-[#AAAAAA]">
+                  Best viewed at 800&times;600
+                </span>
+                <span className="border border-[#AAAAAA] px-2 text-xs text-[#FFFF55]">
+                  16 colors
+                </span>
+              </div>
+            </div>
+          </footer>
         </div>
-      </nav>
-
-      <main className="relative z-10 flex flex-col gap-6">
-        {children}
-      </main>
-
-      <footer className="relative z-10 rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
-        <div className="flex flex-col gap-3 text-sm text-zinc-400 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
-            <img src="/logo_fullclear.png" alt="maxhayim logo" className="h-5 w-auto" />
-            <span>© 2009 - {currentYear} MAXYIM.COM. All Rights Reserved.</span>
-          </div>
-          <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-            GitHub Command Center
-          </div>
-        </div>
-      </footer>
       </div>
-    </div>
+
+      <nav
+        aria-label="Function keys"
+        className="mh-fkeys dos fixed inset-x-0 bottom-0 z-40 grid grid-cols-3 gap-y-px border-t border-[#555555] bg-black text-[18px] sm:grid-cols-6"
+      >
+        {FKEYS.map((f) => {
+          const active = f.page === currentPage;
+          const label = f.key === "F4" ? `CRT:${crtLabel}` : f.label;
+          return (
+            <button
+              key={f.key}
+              type="button"
+              onClick={f.action}
+              className="flex min-w-0 items-stretch text-left"
+              title={`${f.key} ${f.label}`}
+            >
+              <span className="px-1 text-white sm:px-1.5">
+                {f.key.slice(1)}
+              </span>
+              <span
+                className={`min-w-0 flex-1 truncate px-1 text-black transition-colors sm:px-2 ${
+                  active ? "bg-[#FFFF55]" : "bg-[#00AAAA] hover:bg-[#55FFFF]"
+                }`}
+              >
+                {f.key === "F4" ? (
+                  <>
+                    <span className="sm:hidden">CRT</span>
+                    <span className="hidden sm:inline">{label}</span>
+                  </>
+                ) : (
+                  label
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+    </>
   );
 }
 
@@ -413,7 +640,7 @@ function PongGame() {
 
       const nextBot = Math.max(
         10,
-        Math.min(90, botYRef.current + (next.y - botYRef.current) * 0.08)
+        Math.min(90, botYRef.current + (next.y - botYRef.current) * 0.08),
       );
       botYRef.current = nextBot;
       setBotY(nextBot);
@@ -423,7 +650,12 @@ function PongGame() {
       const botMin = nextBot - 10;
       const botMax = nextBot + 10;
 
-      if (next.x >= 93 && next.y >= visitorMin && next.y <= visitorMax && next.vx > 0) {
+      if (
+        next.x >= 93 &&
+        next.y >= visitorMin &&
+        next.y <= visitorMax &&
+        next.vx > 0
+      ) {
         next.vx = -Math.abs(next.vx);
         next.vy += (next.y - visitorYRef.current) * 0.012;
         next.x = 93;
@@ -489,7 +721,8 @@ function PongGame() {
             MS-DOS MATCH
           </div>
           <div className="mt-1 text-lg font-bold tracking-[0.3em] text-emerald-200">
-            {String(score.bot).padStart(2, "0")} {String(score.visitor).padStart(2, "0")}
+            {String(score.bot).padStart(2, "0")}{" "}
+            {String(score.visitor).padStart(2, "0")}
           </div>
         </div>
 
@@ -527,7 +760,10 @@ function InteractiveDialup() {
     }
 
     setTimeout(() => {
-      setLines((prev) => [...prev, "Negotiating carrier... 2400 / 9600 / 14400"]);
+      setLines((prev) => [
+        ...prev,
+        "Negotiating carrier... 2400 / 9600 / 14400",
+      ]);
     }, 1600);
 
     setTimeout(() => {
@@ -545,7 +781,9 @@ function InteractiveDialup() {
           <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-300">
             2001 • Dial-Up Initialization
           </div>
-          <div className="mt-2 text-lg font-semibold text-zinc-100">PRODIGY ISP</div>
+          <div className="mt-2 text-lg font-semibold text-zinc-100">
+            PRODIGY ISP
+          </div>
           <div className="mt-1 text-xs uppercase tracking-[0.18em] text-zinc-500">
             Local access numbers varied by city
           </div>
@@ -554,7 +792,10 @@ function InteractiveDialup() {
         <div className="flex items-center gap-3">
           <motion.div
             initial={false}
-            animate={{ opacity: status === "connected" ? [0.55, 1, 0.55] : [0.35, 0.8, 0.35] }}
+            animate={{
+              opacity:
+                status === "connected" ? [0.55, 1, 0.55] : [0.35, 0.8, 0.35],
+            }}
             transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
             className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.2em] ${
               status === "connected"
@@ -583,15 +824,16 @@ function InteractiveDialup() {
               line.includes("CONNECT")
                 ? "text-emerald-300"
                 : line.includes("ATDT")
-                ? "text-cyan-300"
-                : "text-zinc-300"
+                  ? "text-cyan-300"
+                  : "text-zinc-300"
             }`}
           >
             {line}
           </div>
         ))}
         <div className="mt-3 text-zinc-500">
-          Prodigy used local POP dial-up access rather than one universal nationwide member number.
+          Prodigy used local POP dial-up access rather than one universal
+          nationwide member number.
         </div>
       </div>
     </div>
@@ -609,18 +851,26 @@ function HomePage() {
 
     async function loadRepos() {
       try {
-        const response = await fetch("https://api.github.com/users/maxhayim/repos?per_page=100&sort=updated");
+        const response = await fetch(
+          "https://api.github.com/users/maxhayim/repos?per_page=100&sort=updated",
+        );
         if (!response.ok) throw new Error("Failed to load repositories");
         const repoList = await response.json();
 
         const filtered = repoList
           .filter((repo) => !repo.fork)
-          .filter((repo) => repo.name !== "maxhayim" && repo.name !== "maxhayim.github.io")
+          .filter(
+            (repo) =>
+              repo.name !== "maxhayim" && repo.name !== "maxhayim.github.io",
+          )
           .sort((a, b) => {
             const aStars = a.stargazers_count || 0;
             const bStars = b.stargazers_count || 0;
             if (bStars !== aStars) return bStars - aStars;
-            return new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime();
+            return (
+              new Date(b.updated_at || 0).getTime() -
+              new Date(a.updated_at || 0).getTime()
+            );
           })
           .map((repo) => ({
             name: repo.name,
@@ -631,7 +881,9 @@ function HomePage() {
             updated_at: repo.updated_at || null,
             pushed_at: repo.pushed_at || repo.updated_at || null,
             description:
-              repoDescriptions[repo.name] || repo.description || "Public repository in the maxhayim command center.",
+              repoDescriptions[repo.name] ||
+              repo.description ||
+              "Public repository in the maxhayim command center.",
           }));
 
         if (!cancelled) setRepos(filtered.length ? filtered : fallbackRepos);
@@ -654,8 +906,15 @@ function HomePage() {
 
     const liveTraffic = repos
       .filter((repo) => !repo.fork)
-      .filter((repo) => repo.name !== "maxhayim" && repo.name !== "maxhayim.github.io")
-      .sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
+      .filter(
+        (repo) =>
+          repo.name !== "maxhayim" && repo.name !== "maxhayim.github.io",
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.updated_at || 0).getTime() -
+          new Date(a.updated_at || 0).getTime(),
+      )
       .slice(0, 6)
       .map((repo, index) => ({
         from: repo.name,
@@ -686,10 +945,20 @@ function HomePage() {
   }, [repos]);
 
   const repoTelemetry = useMemo(() => {
-    const totalStars = repos.reduce((sum, repo) => sum + (repo.stargazers_count || 0), 0);
-    const totalForks = repos.reduce((sum, repo) => sum + (repo.forks_count || 0), 0);
+    const totalStars = repos.reduce(
+      (sum, repo) => sum + (repo.stargazers_count || 0),
+      0,
+    );
+    const totalForks = repos.reduce(
+      (sum, repo) => sum + (repo.forks_count || 0),
+      0,
+    );
     const languages = Array.from(
-      new Set(repos.map((repo) => repo.language).filter((lang) => lang && lang !== "—"))
+      new Set(
+        repos
+          .map((repo) => repo.language)
+          .filter((lang) => lang && lang !== "—"),
+      ),
     );
     return {
       totalRepos: repos.length,
@@ -709,11 +978,16 @@ function HomePage() {
   const recentActivity = useMemo(() => {
     return [...repos]
       .filter((repo) => repo.updated_at)
-      .sort((a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime())
+      .sort(
+        (a, b) =>
+          new Date(b.updated_at || 0).getTime() -
+          new Date(a.updated_at || 0).getTime(),
+      )
       .slice(0, 4);
   }, [repos]);
 
-  const activeConversationRepo = repoTraffic[Math.max(visibleMessages - 1, 0)]?.from;
+  const activeConversationRepo =
+    repoTraffic[Math.max(visibleMessages - 1, 0)]?.from;
 
   const telemetrySwitches = [
     { label: "Repositories", value: repoTelemetry.totalRepos, icon: Layers3 },
@@ -729,7 +1003,7 @@ function HomePage() {
           <div className="md:col-span-8 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-300">
+                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-emerald-300">
                   <User className="h-3.5 w-3.5" />
                   Command Profile
                 </div>
@@ -763,18 +1037,26 @@ function HomePage() {
             </div>
 
             <p className="mt-5 max-w-4xl text-sm leading-7 text-zinc-300 md:text-base">
-              Public repos, telemetry, activity logs, and engineering identity presented through a radar-inspired interface centered on live GitHub work.
+              Public repos, telemetry, activity logs, and engineering identity
+              presented through a radar-inspired interface centered on live
+              GitHub work.
             </p>
 
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <div className="rounded-2xl border border-emerald-500/20 bg-black/40 px-4 py-3">
                 <div className="flex items-center gap-3">
-                  <img src="/logo_fullclear.png" alt="maxhayim site logo" className="h-9 w-9" />
+                  <img
+                    src="/logo_fullclear.png"
+                    alt="maxhayim site logo"
+                    className="h-9 w-9"
+                  />
                   <div>
                     <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-300">
                       Site Emblem
                     </div>
-                    <div className="text-sm text-zinc-200">MAXHAYIM Command Mark</div>
+                    <div className="text-sm text-zinc-200">
+                      MAXHAYIM Command Mark
+                    </div>
                   </div>
                 </div>
               </div>
@@ -782,7 +1064,7 @@ function HomePage() {
           </div>
 
           <div className="md:col-span-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-            <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-300">
+            <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] dos-title text-cyan-300">
               <Github className="h-3.5 w-3.5" />
               Quick Links
             </div>
@@ -822,7 +1104,7 @@ function HomePage() {
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-6 md:p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400 dos-title">
                 Live Repos Radar
               </h2>
               <div className="mt-1 text-sm text-zinc-500">
@@ -863,7 +1145,11 @@ function HomePage() {
               <div
                 key={size}
                 className="absolute left-1/2 top-1/2 rounded-full border border-emerald-500/20"
-                style={{ width: `${size}px`, height: `${size}px`, transform: "translate(-50%, -50%)" }}
+                style={{
+                  width: `${size}px`,
+                  height: `${size}px`,
+                  transform: "translate(-50%, -50%)",
+                }}
               />
             ))}
 
@@ -877,7 +1163,11 @@ function HomePage() {
                 <div className="absolute h-52 w-52 rounded-full border border-emerald-500/10" />
                 <motion.div
                   animate={{ scale: [1, 1.18, 1], opacity: [0.35, 0.12, 0.35] }}
-                  transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                  transition={{
+                    duration: 2.4,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
                   className="absolute h-10 w-10 rounded-full border border-emerald-300/20"
                 />
                 <div className="h-3 w-3 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.95)]" />
@@ -900,14 +1190,24 @@ function HomePage() {
                     scale: isActive ? [1.05, 1.18, 1.05] : [1, 1.08, 1],
                     y: isActive ? [0, -3, 0] : [0, -2, 0],
                   }}
-                  transition={{ duration: isActive ? 0.9 : 2.8 + index * 0.25, repeat: Infinity, ease: "easeInOut" }}
+                  transition={{
+                    duration: isActive ? 0.9 : 2.8 + index * 0.25,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
                 >
                   <div className="relative flex items-center gap-2">
                     <motion.div
                       animate={{ rotate: [0, 3, -3, 0] }}
-                      transition={{ duration: 2 + index * 0.15, repeat: Infinity, ease: "easeInOut" }}
+                      transition={{
+                        duration: 2 + index * 0.15,
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                      }}
                     >
-                      <Plane className={`h-4 w-4 ${isActive ? "text-cyan-300" : "text-emerald-300"}`} />
+                      <Plane
+                        className={`h-4 w-4 ${isActive ? "text-cyan-300" : "text-emerald-300"}`}
+                      />
                     </motion.div>
 
                     <div
@@ -943,7 +1243,7 @@ function HomePage() {
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-6 md:p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400 dos-title">
                 Repo Traffic
               </h2>
               <div className="mt-1 text-sm text-zinc-500">
@@ -971,19 +1271,29 @@ function HomePage() {
                   >
                     <div
                       className={`max-w-[88%] rounded-2xl border px-3 py-3 shadow-lg ${
-                        isTx ? "border-emerald-500/25 bg-emerald-500/10" : "border-cyan-500/25 bg-cyan-500/10"
+                        isTx
+                          ? "border-emerald-500/25 bg-emerald-500/10"
+                          : "border-cyan-500/25 bg-cyan-500/10"
                       }`}
                     >
                       <div className="mb-2 flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em]">
-                          <span className={isTx ? "text-emerald-300" : "text-cyan-300"}>{entry.tag}</span>
+                          <span
+                            className={
+                              isTx ? "text-emerald-300" : "text-cyan-300"
+                            }
+                          >
+                            {entry.tag}
+                          </span>
                           <span className="text-zinc-400">{entry.from}</span>
                         </div>
                         <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
                           {entry.time}
                         </span>
                       </div>
-                      <p className="font-mono text-[12px] leading-6 text-zinc-200">{entry.message}</p>
+                      <p className="font-mono text-[12px] leading-6 text-zinc-200">
+                        {entry.message}
+                      </p>
                     </div>
                   </motion.div>
                 );
@@ -997,7 +1307,7 @@ function HomePage() {
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-6 md:p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400 dos-title">
                 Repo Telemetry
               </h2>
               <div className="mt-1 text-sm text-zinc-500">
@@ -1030,20 +1340,30 @@ function HomePage() {
                         <div className="text-xs uppercase tracking-[0.2em] text-zinc-400">
                           {item.label}
                         </div>
-                        <div className="text-sm text-zinc-200">{item.value}</div>
+                        <div className="text-sm text-zinc-200">
+                          {item.value}
+                        </div>
                       </div>
                     </div>
 
                     <motion.div
                       initial={false}
-                      animate={{ backgroundColor: enabled ? "rgb(34 197 94)" : "rgb(63 63 70)" }}
+                      animate={{
+                        backgroundColor: enabled
+                          ? "rgb(34 197 94)"
+                          : "rgb(63 63 70)",
+                      }}
                       transition={{ duration: 0.35 }}
                       className="relative h-6 w-11 rounded-full"
                     >
                       <motion.div
                         initial={false}
                         animate={{ x: enabled ? 18 : 0 }}
-                        transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 260,
+                          damping: 20,
+                        }}
                         className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white"
                       />
                     </motion.div>
@@ -1053,7 +1373,7 @@ function HomePage() {
             </div>
 
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-              <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-violet-300">
+              <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] dos-title text-violet-300">
                 <Activity className="h-3.5 w-3.5" />
                 Active Languages
               </div>
@@ -1068,7 +1388,9 @@ function HomePage() {
                     </div>
                   ))
                 ) : (
-                  <div className="text-sm text-zinc-400">No language data available.</div>
+                  <div className="text-sm text-zinc-400">
+                    No language data available.
+                  </div>
                 )}
               </div>
             </div>
@@ -1078,7 +1400,7 @@ function HomePage() {
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-6 md:p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-400 dos-title">
                 Recent Activity
               </h2>
               <div className="mt-1 text-sm text-zinc-500">
@@ -1103,7 +1425,9 @@ function HomePage() {
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-zinc-100">{repo.name}</div>
+                      <div className="text-sm font-semibold text-zinc-100">
+                        {repo.name}
+                      </div>
                       <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
                         {buildFlightCode(repo)}
                       </div>
@@ -1133,7 +1457,7 @@ function HomePage() {
 
       <section className="grid gap-6 md:grid-cols-12">
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-12">
-          <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-orange-300">
+          <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] dos-title text-orange-300">
             <CircleDot className="h-3.5 w-3.5" />
             Repo Health Lights
           </div>
@@ -1142,7 +1466,10 @@ function HomePage() {
             {[
               { label: "GitHub API", state: loadingRepos ? "warn" : "ok" },
               { label: "Radar Link", state: repos.length ? "ok" : "down" },
-              { label: "Traffic Feed", state: repoTraffic.length > 0 ? "ok" : "warn" },
+              {
+                label: "Traffic Feed",
+                state: repoTraffic.length > 0 ? "ok" : "warn",
+              },
             ].map((light) => (
               <div
                 key={light.label}
@@ -1154,14 +1481,18 @@ function HomePage() {
                       light.state === "ok"
                         ? "bg-emerald-400 shadow-[0_0_10px_rgba(74,222,128,0.8)]"
                         : light.state === "warn"
-                        ? "bg-yellow-400 shadow-[0_0_10px_rgba(250,204,21,0.8)]"
-                        : "bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.8)]"
+                          ? "bg-yellow-400 shadow-[0_0_10px_rgba(250,204,21,0.8)]"
+                          : "bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.8)]"
                     }`}
                   />
                   {light.label}
                 </div>
                 <div className="text-xs font-medium text-zinc-200">
-                  {light.state === "ok" ? "Online" : light.state === "warn" ? "Pending" : "Offline"}
+                  {light.state === "ok"
+                    ? "Online"
+                    : light.state === "warn"
+                      ? "Pending"
+                      : "Offline"}
                 </div>
               </div>
             ))}
@@ -1173,34 +1504,52 @@ function HomePage() {
 
       <section className="grid gap-6 md:grid-cols-12">
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl md:col-span-12">
-          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-300">
+          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-cyan-300">
             <Github className="h-3.5 w-3.5" />
             GitHub Stats
           </div>
 
           <div className="grid gap-4 md:grid-cols-5">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Repositories</div>
-              <div className="mt-2 text-3xl font-semibold text-zinc-100">{repoTelemetry.totalRepos}</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                Repositories
+              </div>
+              <div className="mt-2 text-3xl font-semibold text-zinc-100">
+                {repoTelemetry.totalRepos}
+              </div>
             </div>
 
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Stars</div>
-              <div className="mt-2 text-3xl font-semibold text-zinc-100">{repoTelemetry.totalStars}</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                Stars
+              </div>
+              <div className="mt-2 text-3xl font-semibold text-zinc-100">
+                {repoTelemetry.totalStars}
+              </div>
             </div>
 
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Forks</div>
-              <div className="mt-2 text-3xl font-semibold text-zinc-100">{repoTelemetry.totalForks}</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                Forks
+              </div>
+              <div className="mt-2 text-3xl font-semibold text-zinc-100">
+                {repoTelemetry.totalForks}
+              </div>
             </div>
 
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Languages</div>
-              <div className="mt-2 text-3xl font-semibold text-zinc-100">{repoTelemetry.languages.length}</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                Languages
+              </div>
+              <div className="mt-2 text-3xl font-semibold text-zinc-100">
+                {repoTelemetry.languages.length}
+              </div>
             </div>
 
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Top Repo</div>
+              <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                Top Repo
+              </div>
               <div className="mt-2 truncate text-base font-semibold text-zinc-100">
                 {repos[0]?.name || "—"}
               </div>
@@ -1209,7 +1558,9 @@ function HomePage() {
 
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-              <div className="mb-3 text-[10px] uppercase tracking-[0.22em] text-zinc-500">Top Languages</div>
+              <div className="mb-3 text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                Top Languages
+              </div>
               <div className="flex flex-wrap gap-2">
                 {repoTelemetry.languages.length ? (
                   repoTelemetry.languages.slice(0, 8).map((lang) => (
@@ -1221,13 +1572,17 @@ function HomePage() {
                     </span>
                   ))
                 ) : (
-                  <span className="text-sm text-zinc-500">No language data available.</span>
+                  <span className="text-sm text-zinc-500">
+                    No language data available.
+                  </span>
                 )}
               </div>
             </div>
 
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-              <div className="mb-3 text-[10px] uppercase tracking-[0.22em] text-zinc-500">Recent Repository Updates</div>
+              <div className="mb-3 text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                Recent Repository Updates
+              </div>
               <div className="space-y-3">
                 {recentActivity.slice(0, 3).map((repo) => (
                   <div
@@ -1235,7 +1590,9 @@ function HomePage() {
                     className="flex items-center justify-between rounded-xl border border-zinc-800 bg-black/30 px-3 py-3"
                   >
                     <div>
-                      <div className="text-sm font-medium text-zinc-200">{repo.name}</div>
+                      <div className="text-sm font-medium text-zinc-200">
+                        {repo.name}
+                      </div>
                       <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
                         {repo.language || "—"}
                       </div>
@@ -1260,7 +1617,7 @@ function AboutPage() {
       <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
         <div className="grid gap-6 md:grid-cols-12">
           <div className="md:col-span-8 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-300">
+            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-emerald-300">
               <User className="h-3.5 w-3.5" />
               About
             </div>
@@ -1272,19 +1629,22 @@ function AboutPage() {
                 <MapPin className="h-4 w-4 text-cyan-300" /> MIA
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Globe className="h-4 w-4 text-emerald-300" /> OS Journey / Design / Code
+                <Globe className="h-4 w-4 text-emerald-300" /> OS Journey /
+                Design / Code
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <Clock3 className="h-4 w-4 text-orange-300" /> Personal Timeline
               </span>
             </div>
             <p className="mt-5 max-w-4xl text-sm leading-7 text-zinc-300 md:text-base">
-              This page is a command-center style profile of the systems, interfaces, software eras, and creative path that brought coding back into focus.
+              This page is a command-center style profile of the systems,
+              interfaces, software eras, and creative path that brought coding
+              back into focus.
             </p>
           </div>
 
           <div className="md:col-span-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-            <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-300">
+            <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] dos-title text-cyan-300">
               <Monitor className="h-3.5 w-3.5" /> System Badges
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1303,7 +1663,7 @@ function AboutPage() {
 
       <section className="grid gap-6 md:grid-cols-12">
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl md:col-span-8">
-          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-300">
+          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-emerald-300">
             <Radio className="h-3.5 w-3.5" /> OS Journey Timeline
           </div>
 
@@ -1326,9 +1686,13 @@ function AboutPage() {
                         <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.2em] text-cyan-300">
                           {item.year}
                         </span>
-                        <h3 className="text-base font-semibold text-zinc-100">{item.title}</h3>
+                        <h3 className="text-base font-semibold text-zinc-100">
+                          {item.title}
+                        </h3>
                       </div>
-                      <p className="mt-2 text-sm leading-6 text-zinc-400">{item.text}</p>
+                      <p className="mt-2 text-sm leading-6 text-zinc-400">
+                        {item.text}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1338,16 +1702,21 @@ function AboutPage() {
         </div>
 
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl md:col-span-4">
-          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-orange-300">
+          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-orange-300">
             <Terminal className="h-3.5 w-3.5" /> Favorites
           </div>
 
           <div className="space-y-4">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-              <h3 className="text-sm font-semibold text-zinc-100">Favorite Operating Systems</h3>
+              <h3 className="text-sm font-semibold text-zinc-100">
+                Favorite Operating Systems
+              </h3>
               <ul className="mt-3 space-y-2 text-sm text-zinc-400">
                 {favoriteSystems.map((item) => (
-                  <li key={item} className="rounded-xl border border-zinc-800 bg-black/30 px-3 py-2">
+                  <li
+                    key={item}
+                    className="rounded-xl border border-zinc-800 bg-black/30 px-3 py-2"
+                  >
                     {item}
                   </li>
                 ))}
@@ -1355,11 +1724,18 @@ function AboutPage() {
             </div>
 
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-              <h3 className="text-sm font-semibold text-zinc-100">Favorite Applications Growing Up</h3>
-              <p className="mt-2 text-xs text-zinc-500">Some may no longer be maintained.</p>
+              <h3 className="text-sm font-semibold text-zinc-100">
+                Favorite Applications Growing Up
+              </h3>
+              <p className="mt-2 text-xs text-zinc-500">
+                Some may no longer be maintained.
+              </p>
               <ul className="mt-3 space-y-2 text-sm text-zinc-400">
                 {favoriteApps.map((item) => (
-                  <li key={item} className="rounded-xl border border-zinc-800 bg-black/30 px-3 py-2">
+                  <li
+                    key={item}
+                    className="rounded-xl border border-zinc-800 bg-black/30 px-3 py-2"
+                  >
                     {item}
                   </li>
                 ))}
@@ -1371,7 +1747,7 @@ function AboutPage() {
 
       <section className="grid gap-6 md:grid-cols-12">
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl md:col-span-6">
-          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-violet-300">
+          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-violet-300">
             <Cpu className="h-3.5 w-3.5" /> Skills & Tools
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1387,15 +1763,19 @@ function AboutPage() {
         </div>
 
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl md:col-span-6">
-          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-orange-300">
+          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-orange-300">
             <Terminal className="h-3.5 w-3.5" /> MS-DOS Game Archive
           </div>
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
             <div className="flex flex-col gap-4">
               <div>
-                <div className="text-sm font-semibold text-zinc-100">Pong-Style MS-DOS Game</div>
+                <div className="text-sm font-semibold text-zinc-100">
+                  Pong-Style MS-DOS Game
+                </div>
                 <p className="mt-2 text-sm leading-6 text-zinc-400">
-                  One of the earliest programming projects was a Pong-style game built during the MS-DOS phase. It represents an early step in logic, motion, and classic software thinking.
+                  One of the earliest programming projects was a Pong-style game
+                  built during the MS-DOS phase. It represents an early step in
+                  logic, motion, and classic software thinking.
                 </p>
               </div>
               <PongGame />
@@ -1408,7 +1788,12 @@ function AboutPage() {
 }
 
 function ContactPage() {
-  const [formData, setFormData] = useState({ name: "", email: "", subject: "", message: "" });
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    subject: "",
+    message: "",
+  });
   const [submitted, setSubmitted] = useState(false);
 
   const handleInputChange = (e) => {
@@ -1433,21 +1818,22 @@ function ContactPage() {
       <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
         <div className="grid gap-6 md:grid-cols-12">
           <div className="md:col-span-12 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-300">
+            <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-emerald-300">
               <Phone className="h-3.5 w-3.5" /> Contact
             </div>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-100 md:text-5xl">
               Contact
             </h1>
             <p className="mt-5 max-w-4xl text-sm leading-7 text-zinc-300 md:text-base">
-              A mail-console style contact page with an embedded relay panel and terminal-inspired composition window.
+              A mail-console style contact page with an embedded relay panel and
+              terminal-inspired composition window.
             </p>
           </div>
         </div>
       </section>
 
       <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
-        <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-300">
+        <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-cyan-300">
           <Terminal className="h-3.5 w-3.5" /> Mail Operations Console
         </div>
 
@@ -1477,7 +1863,11 @@ function ContactPage() {
                 </div>
               </div>
 
-              <audio ref={mailAudioRef} src="/audio/youve-got-mail.mp3" preload="auto" />
+              <audio
+                ref={mailAudioRef}
+                src="/audio/youve-got-mail.mp3"
+                preload="auto"
+              />
 
               <form className="space-y-4" onSubmit={handleFakeSubmit}>
                 <div className="grid gap-4 md:grid-cols-2">
@@ -1550,14 +1940,15 @@ function ContactPage() {
 
                 {submitted && (
                   <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-200">
-                    Message staged in demo mode. Public site relay is intentionally simulated only.
+                    Message staged in demo mode. Public site relay is
+                    intentionally simulated only.
                   </div>
                 )}
               </form>
             </div>
 
             <div className="p-4 lg:col-span-4">
-              <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-300">
+              <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-cyan-300">
                 <Mail className="h-3.5 w-3.5" /> Embedded Relay Panel
               </div>
 
@@ -1570,7 +1961,9 @@ function ContactPage() {
                     <div className="mt-2 text-sm font-semibold text-zinc-100">
                       contact-terminal.local
                     </div>
-                    <div className="mt-1 text-xs text-zinc-400">Payload staging</div>
+                    <div className="mt-1 text-xs text-zinc-400">
+                      Payload staging
+                    </div>
                   </div>
 
                   <div className="relative flex flex-col items-center gap-2 px-1">
@@ -1581,7 +1974,11 @@ function ContactPage() {
                     <div className="h-px w-8 bg-cyan-400/60" />
                     <motion.div
                       animate={{ y: [0, -10, 0], opacity: [0.35, 1, 0.35] }}
-                      transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+                      transition={{
+                        duration: 1.8,
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                      }}
                       className="absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.95)]"
                     />
                   </div>
@@ -1593,21 +1990,36 @@ function ContactPage() {
                     <div className="mt-2 text-sm font-semibold text-zinc-100">
                       github-mail.gateway
                     </div>
-                    <div className="mt-1 text-xs text-zinc-400">Relay online</div>
+                    <div className="mt-1 text-xs text-zinc-400">
+                      Relay online
+                    </div>
                   </div>
                 </div>
 
                 <div className="rounded-2xl border border-zinc-800 bg-black/40 p-4 font-mono text-xs text-zinc-300">
-                  <div className="text-emerald-300">[TX] HELO contact-terminal.local</div>
-                  <div className="mt-1 text-cyan-300">[RX] 250 github-mail.gateway ready</div>
-                  <div className="mt-1">
-                    [TX] MAIL FROM: &lt;{formData.email || "demo-user@terminal.local"}&gt;
+                  <div className="text-emerald-300">
+                    [TX] HELO contact-terminal.local
                   </div>
-                  <div className="mt-1">[TX] RCPT TO: &lt;demo-relay@maxhayim.github.io&gt;</div>
-                  <div className="mt-1">[TX] SUBJECT: {formData.subject || "Website Contact"}</div>
+                  <div className="mt-1 text-cyan-300">
+                    [RX] 250 github-mail.gateway ready
+                  </div>
+                  <div className="mt-1">
+                    [TX] MAIL FROM: &lt;
+                    {formData.email || "demo-user@terminal.local"}&gt;
+                  </div>
+                  <div className="mt-1">
+                    [TX] RCPT TO: &lt;demo-relay@maxhayim.github.io&gt;
+                  </div>
+                  <div className="mt-1">
+                    [TX] SUBJECT: {formData.subject || "Website Contact"}
+                  </div>
                   <motion.div
                     animate={{ opacity: [0.45, 1, 0.45] }}
-                    transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                    transition={{
+                      duration: 1.5,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                    }}
                     className="mt-1 text-cyan-300"
                   >
                     [RX] DATA stream accepted, payload ready...
@@ -1656,7 +2068,10 @@ function writeStore(store, key, value) {
 }
 
 function prefersReducedMotion() {
-  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+  );
 }
 
 /* ---------- CRT mode ---------- */
@@ -1670,37 +2085,6 @@ const CRT_MODES = [
 
 function applyCrt(mode) {
   document.documentElement.dataset.crt = mode;
-}
-
-function CrtToggle() {
-  const [mode, setMode] = useState(() => document.documentElement.dataset.crt || "off");
-
-  const cycle = () => {
-    const index = CRT_MODES.findIndex((m) => m.id === mode);
-    const next = CRT_MODES[(index + 1) % CRT_MODES.length].id;
-    setMode(next);
-    applyCrt(next);
-    writeStore("localStorage", "mh-crt", next);
-  };
-
-  const active = mode !== "off";
-  const label = CRT_MODES.find((m) => m.id === mode)?.label || "Off";
-
-  return (
-    <button
-      type="button"
-      onClick={cycle}
-      title="Cycle CRT mode: off, color, green phosphor, amber phosphor"
-      className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs uppercase tracking-[0.18em] transition ${
-        active
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-          : "border-zinc-800 bg-zinc-950/70 text-zinc-300 hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
-      }`}
-    >
-      <Monitor className="h-3.5 w-3.5" />
-      CRT: {label}
-    </button>
-  );
 }
 
 /* ---------- Boot sequence (Award-style POST -> System Configurations -> DOS) ---------- */
@@ -1736,7 +2120,12 @@ const PCI_DEVICES = [
   ["0", "17", "0", "1274", "1371", "Multimedia Device", "11"],
 ];
 
-const DOS_LINES = ["Starting MaXHyM-DOS...", "", "C:\\> cd \\MAXHAYIM", "C:\\MAXHAYIM> start command-center.exe"];
+const DOS_LINES = [
+  "Starting MaXHyM-DOS...",
+  "",
+  "C:\\> cd \\MAXHAYIM",
+  "C:\\MAXHAYIM> start command-center.exe",
+];
 
 /*
  * Boot audio. If /audio/boot.mp3 exists it plays that recording; otherwise it
@@ -1874,8 +2263,13 @@ function bootDateCode() {
   return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${String(d.getFullYear()).slice(2)}-i486DX2,MXH-MESH-0823-00`;
 }
 
-function BootScreen({ onDone, startPowered }) {
-  const [powered, setPowered] = useState(startPowered);
+const SHUTDOWN_ORANGE = "#dc7a3c";
+
+// mode: "gate" (first visit, waits for a key), "powered" (reboot, starts immediately), "off" (shut down screen)
+function BootScreen({ onDone, mode }) {
+  const [phase, setPhase] = useState(mode === "powered" ? "on" : mode);
+  const powered = phase === "on";
+  const [shutdownVisible, setShutdownVisible] = useState(false);
   const [screen, setScreen] = useState(1);
   const [post, setPost] = useState(0); // how many POST blocks are visible
   const [memory, setMemory] = useState(0);
@@ -1895,11 +2289,19 @@ function BootScreen({ onDone, startPowered }) {
     setTimeout(onDone, 350);
   };
 
-  // Before power-on, any key or click powers on. After, any key or click skips.
+  // Shut down or power-on screen: any key or click powers on. While booting: any key or click skips.
   const handleInput = () => {
-    if (!powered) setPowered(true);
+    if (phase === "off" && !shutdownVisible) return;
+    if (!powered) setPhase("on");
     else finish();
   };
+
+  // Win95-style: screen goes dark for a moment, then the message appears.
+  useEffect(() => {
+    if (phase !== "off") return;
+    const t = setTimeout(() => setShutdownVisible(true), 900);
+    return () => clearTimeout(t);
+  }, [phase]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -1928,7 +2330,8 @@ function BootScreen({ onDone, startPowered }) {
     after(300, () => setPost(1)); // BIOS header
     after(700, () => setPost(2)); // chipset
     after(600, () => setPost(3)); // CPU + memory test
-    for (let i = 1; i <= 36; i++) after(70, () => setMemory(Math.round((MEMORY_TARGET * i) / 36)));
+    for (let i = 1; i <= 36; i++)
+      after(70, () => setMemory(Math.round((MEMORY_TARGET * i) / 36)));
     after(150, () => audio.play("beep"));
     after(700, () => setPost(4)); // PnP extension
     IDE_DETECT.forEach((_, i) => {
@@ -1945,7 +2348,9 @@ function BootScreen({ onDone, startPowered }) {
       setCfg(1);
       audio.play("floppy");
     });
-    PCI_DEVICES.forEach((_, i) => after(i === 0 ? 1000 : 350, () => setCfg(i + 2)));
+    PCI_DEVICES.forEach((_, i) =>
+      after(i === 0 ? 1000 : 350, () => setCfg(i + 2)),
+    );
     after(800, () => setDmiDots(0));
     for (let i = 1; i <= 7; i++) after(230, () => setDmiDots(i));
     after(400, () => audio.play("seek"));
@@ -1956,7 +2361,7 @@ function BootScreen({ onDone, startPowered }) {
         setDos(i + 1);
         if (i === 0) audio.play("floppy");
         else if (line) audio.play("seek");
-      })
+      }),
     );
     after(1100, finish);
 
@@ -1979,16 +2384,42 @@ function BootScreen({ onDone, startPowered }) {
         leaving ? "opacity-0" : "opacity-100"
       }`}
     >
-      {!powered ? (
-        <div className="flex h-full flex-col items-center justify-center gap-5 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-zinc-700 text-zinc-400 transition hover:border-emerald-400 hover:text-emerald-300">
-            <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M7 6.5a8 8 0 1 0 10 0" />
-              <line x1="12" y1="2.5" x2="12" y2="11" />
-            </svg>
+      {phase === "off" ? (
+        <div
+          className={`flex h-full flex-col items-center justify-center px-6 text-center text-[28px] leading-[1.3] transition-opacity duration-500 sm:text-[40px] md:text-[52px] ${
+            shutdownVisible ? "opacity-100" : "opacity-0"
+          }`}
+          style={{ color: SHUTDOWN_ORANGE }}
+        >
+          <div>
+            It&rsquo;s now safe to turn off
+            <br />
+            your computer.
           </div>
+          <div className="absolute inset-x-0 bottom-8 text-[18px] opacity-50 md:text-[22px]">
+            Press any key to power on
+          </div>
+        </div>
+      ) : phase === "gate" ? (
+        <div
+          className="flex h-full flex-col items-center justify-center gap-6 px-6 text-center text-[28px] leading-[1.3] sm:text-[40px] md:text-[52px]"
+          style={{ color: SHUTDOWN_ORANGE }}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="h-14 w-14 md:h-16 md:w-16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          >
+            <path d="M7 6.5a8 8 0 1 0 10 0" />
+            <line x1="12" y1="2.5" x2="12" y2="11" />
+          </svg>
           <div>Press any key to power on</div>
-          <div className="text-[0.75em] text-zinc-600">Sound on for the full experience</div>
+          <div className="text-[18px] opacity-50 md:text-[22px]">
+            Sound on for the full experience
+          </div>
         </div>
       ) : screen === 1 ? (
         <div className="relative mx-auto flex h-full max-w-6xl flex-col px-5 py-6 md:px-12 md:py-10">
@@ -2000,26 +2431,39 @@ function BootScreen({ onDone, startPowered }) {
                 className="absolute right-5 top-6 w-[24%] max-w-[260px] md:right-12 md:top-10"
               />
               <div className="flex items-start gap-3 pr-[28%]">
-                <img src="/bios/award.png" alt="" className="mt-[0.1em] h-[2.5em] w-auto shrink-0" />
+                <img
+                  src="/bios/award.png"
+                  alt=""
+                  className="mt-[0.1em] h-[2.5em] w-auto shrink-0"
+                />
                 <div>
                   <div>MAXHAYIM Modular BIOS v2.01, An Energy Star Ally</div>
-                  <div>Copyright (C) 2009-{String(year).slice(2)}, maxhayim.com</div>
+                  <div>
+                    Copyright (C) 2009-{String(year).slice(2)}, maxhayim.com
+                  </div>
                 </div>
               </div>
             </>
           )}
-          {post >= 2 && <div className="mt-[1.35em]">(MXH0823E) MaXHyM i486 MeshSet(TM)</div>}
+          {post >= 2 && (
+            <div className="mt-[1.35em]">
+              (MXH0823E) MaXHyM i486 MeshSet(TM)
+            </div>
+          )}
           {post >= 3 && (
             <div className="mt-[1.35em]">
               <div>MaXHyM-486DX2 CPU at 66MHz</div>
               <div className="whitespace-pre">
-                Memory Test :   {String(memory).padStart(5, " ")}K{memory >= MEMORY_TARGET ? " OK" : ""}
+                Memory Test : {String(memory).padStart(5, " ")}K
+                {memory >= MEMORY_TARGET ? " OK" : ""}
               </div>
             </div>
           )}
           {post >= 4 && (
             <div className="mt-[1.35em]">
-              <div className="whitespace-pre-wrap">MaXHyM Plug and Play BIOS Extension  v1.0A</div>
+              <div className="whitespace-pre-wrap">
+                MaXHyM Plug and Play BIOS Extension v1.0A
+              </div>
               <div>Copyright (C) {year}, maxhayim.com</div>
               {IDE_DETECT.map((drive, i) => {
                 const step = detect - i * 2;
@@ -2045,7 +2489,8 @@ function BootScreen({ onDone, startPowered }) {
           {post >= 1 && (
             <div className="mt-auto">
               <div>
-                Press <span className={bright}>DEL</span> to enter SETUP, any other key to skip
+                Press <span className={bright}>DEL</span> to enter SETUP, any
+                other key to skip
               </div>
               <div>{bootDateCode()}</div>
             </div>
@@ -2057,10 +2502,19 @@ function BootScreen({ onDone, startPowered }) {
             <div className="text-center">System Configurations</div>
             <div className="mt-1 border-[3px] border-double border-[#aaaaaa]">
               {SYS_CONFIG.map((block, b) => (
-                <div key={b} className={`px-3 py-2 sm:px-4 ${b > 0 ? "border-t border-[#aaaaaa]" : ""}`}>
+                <div
+                  key={b}
+                  className={`px-3 py-2 sm:px-4 ${b > 0 ? "border-t border-[#aaaaaa]" : ""}`}
+                >
                   <div className="sm:hidden">
-                    {[...block.map(([l, v]) => [l, v]), ...block.map(([, , l, v]) => [l, v])].map(([l, v]) => (
-                      <div key={l} className="grid grid-cols-[1fr_auto_1fr] gap-x-2 whitespace-pre">
+                    {[
+                      ...block.map(([l, v]) => [l, v]),
+                      ...block.map(([, , l, v]) => [l, v]),
+                    ].map(([l, v]) => (
+                      <div
+                        key={l}
+                        className="grid grid-cols-[1fr_auto_1fr] gap-x-2 whitespace-pre"
+                      >
                         <span>{l}</span>
                         <span>:</span>
                         <span>{v}</span>
@@ -2068,7 +2522,10 @@ function BootScreen({ onDone, startPowered }) {
                     ))}
                   </div>
                   {block.map(([l1, v1, l2, v2]) => (
-                    <div key={l1} className="hidden grid-cols-[1fr_auto_1.1fr_1fr_auto_0.8fr] gap-x-2 whitespace-pre sm:grid">
+                    <div
+                      key={l1}
+                      className="hidden grid-cols-[1fr_auto_1.1fr_1fr_auto_0.8fr] gap-x-2 whitespace-pre sm:grid"
+                    >
                       <span>{l1}</span>
                       <span>:</span>
                       <span>{v1}</span>
@@ -2094,11 +2551,22 @@ function BootScreen({ onDone, startPowered }) {
                   <span className="text-right">IRQ</span>
                 </div>
                 {PCI_DEVICES.slice(0, cfg - 1).map((row) => (
-                  <div key={row[3]} className="grid grid-cols-[1fr_1fr_1.8fr_0.5fr] pt-1 sm:grid-cols-[0.8fr_1fr_1fr_1fr_1fr_1.7fr_0.4fr]">
+                  <div
+                    key={row[3]}
+                    className="grid grid-cols-[1fr_1fr_1.8fr_0.5fr] pt-1 sm:grid-cols-[0.8fr_1fr_1fr_1fr_1fr_1.7fr_0.4fr]"
+                  >
                     {row.map((cell, i) => (
                       <span
                         key={i}
-                        className={i === 6 ? "text-right" : i < 3 ? "hidden pl-[1.5em] sm:block" : i < 5 ? "sm:pl-[1.5em]" : ""}
+                        className={
+                          i === 6
+                            ? "text-right"
+                            : i < 3
+                              ? "hidden pl-[1.5em] sm:block"
+                              : i < 5
+                                ? "sm:pl-[1.5em]"
+                                : ""
+                        }
                       >
                         {cell}
                       </span>
@@ -2158,7 +2626,11 @@ function timeAgo(value) {
 }
 
 const STATUS_STYLE = {
-  online: { dot: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]", text: "text-emerald-300", label: "Online" },
+  online: {
+    dot: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]",
+    text: "text-emerald-300",
+    label: "Online",
+  },
   away: { dot: "bg-amber-400", text: "text-amber-300", label: "Away" },
   offline: { dot: "bg-zinc-600", text: "text-zinc-500", label: "Offline" },
 };
@@ -2166,7 +2638,9 @@ const STATUS_STYLE = {
 function BuddyList({ repos, loading }) {
   const [awayMessages, setAwayMessages] = useState(() => {
     try {
-      const cached = JSON.parse(readStore("sessionStorage", AWAY_CACHE_KEY) || "null");
+      const cached = JSON.parse(
+        readStore("sessionStorage", AWAY_CACHE_KEY) || "null",
+      );
       if (cached && Date.now() - cached.ts < AWAY_CACHE_MS) return cached.map;
     } catch {
       /* ignore */
@@ -2183,9 +2657,9 @@ function BuddyList({ repos, loading }) {
         .sort(
           (a, b) =>
             new Date(b.pushed_at || b.updated_at || 0).getTime() -
-            new Date(a.pushed_at || a.updated_at || 0).getTime()
+            new Date(a.pushed_at || a.updated_at || 0).getTime(),
         ),
-    [repos]
+    [repos],
   );
 
   const groups = ["online", "away", "offline"].map((status) => ({
@@ -2194,7 +2668,8 @@ function BuddyList({ repos, loading }) {
   }));
   // Offline starts collapsed, unless nobody else is signed on.
   const hasActive = groups[0].members.length + groups[1].members.length > 0;
-  const isCollapsed = (status) => collapsed[status] ?? (status === "offline" && hasActive);
+  const isCollapsed = (status) =>
+    collapsed[status] ?? (status === "offline" && hasActive);
 
   // Latest commit message becomes the away message, for the buddies that were active recently.
   useEffect(() => {
@@ -2208,19 +2683,25 @@ function BuddyList({ repos, loading }) {
     Promise.all(
       targets.map(async (buddy) => {
         try {
-          const res = await fetch(`https://api.github.com/repos/maxhayim/${buddy.name}/commits?per_page=1`);
+          const res = await fetch(
+            `https://api.github.com/repos/maxhayim/${buddy.name}/commits?per_page=1`,
+          );
           if (!res.ok) return [buddy.name, null];
           const [latest] = await res.json();
           return [buddy.name, latest?.commit?.message?.split("\n")[0] || null];
         } catch {
           return [buddy.name, null];
         }
-      })
+      }),
     ).then((entries) => {
       if (cancelled) return;
       setAwayMessages((prev) => {
         const map = { ...prev, ...Object.fromEntries(entries) };
-        writeStore("sessionStorage", AWAY_CACHE_KEY, JSON.stringify({ ts: Date.now(), map }));
+        writeStore(
+          "sessionStorage",
+          AWAY_CACHE_KEY,
+          JSON.stringify({ ts: Date.now(), map }),
+        );
         return map;
       });
     });
@@ -2234,13 +2715,15 @@ function BuddyList({ repos, loading }) {
   const selected = buddies.find((b) => b.name === selectedName) || buddies[0];
   const onlineCount = groups[0].members.length;
   const selectedStyle = selected ? STATUS_STYLE[selected.status] : null;
-  const selectedAway = selected ? awayMessages[selected.name] || selected.description : null;
+  const selectedAway = selected
+    ? awayMessages[selected.name] || selected.description
+    : null;
 
   return (
     <section className="grid gap-6 md:grid-cols-12">
       <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-5 md:p-5">
         <div className="mb-4 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-amber-300">
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-amber-300">
             <Users className="h-3.5 w-3.5" /> Buddy List
           </div>
           <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
@@ -2249,9 +2732,15 @@ function BuddyList({ repos, loading }) {
         </div>
 
         <div className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
-          <img src="/avatar.jpg" alt="" className="h-10 w-10 rounded-lg border border-zinc-800 object-cover" />
+          <img
+            src="/avatar.jpg"
+            alt=""
+            className="h-10 w-10 rounded-lg border border-zinc-800 object-cover"
+          />
           <div className="min-w-0">
-            <div className="truncate font-mono text-sm text-zinc-100">maxhayim</div>
+            <div className="truncate font-mono text-sm text-zinc-100">
+              maxhayim
+            </div>
             <div className="text-xs text-emerald-300">Available</div>
           </div>
         </div>
@@ -2261,12 +2750,23 @@ function BuddyList({ repos, loading }) {
             <div key={status} className="mb-1">
               <button
                 type="button"
-                onClick={() => setCollapsed((c) => ({ ...c, [status]: !isCollapsed(status) }))}
+                onClick={() =>
+                  setCollapsed((c) => ({
+                    ...c,
+                    [status]: !isCollapsed(status),
+                  }))
+                }
                 aria-expanded={!isCollapsed(status)}
                 className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-zinc-400 hover:bg-zinc-900"
               >
-                <span className={`inline-block transition-transform ${isCollapsed(status) ? "" : "rotate-90"}`}>▸</span>
-                <span className="font-semibold text-zinc-300">{STATUS_STYLE[status].label}</span>
+                <span
+                  className={`inline-block transition-transform ${isCollapsed(status) ? "" : "rotate-90"}`}
+                >
+                  ▸
+                </span>
+                <span className="font-semibold text-zinc-300">
+                  {STATUS_STYLE[status].label}
+                </span>
                 <span>
                   ({members.length}/{buddies.length})
                 </span>
@@ -2281,13 +2781,22 @@ function BuddyList({ repos, loading }) {
                       type="button"
                       onClick={() => setSelectedName(buddy.name)}
                       className={`flex w-full items-center gap-2 rounded-lg py-1.5 pl-7 pr-2 text-left transition ${
-                        isSelected ? "bg-amber-500/10 text-amber-100" : "text-zinc-300 hover:bg-zinc-900"
+                        isSelected
+                          ? "bg-amber-500/10 text-amber-100"
+                          : "text-zinc-300 hover:bg-zinc-900"
                       } ${buddy.status === "offline" ? "opacity-60" : ""}`}
                     >
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_STYLE[buddy.status].dot}`} />
-                      <span className="min-w-0 flex-1 truncate">{buddy.name}</span>
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${STATUS_STYLE[buddy.status].dot}`}
+                      />
+                      <span className="min-w-0 flex-1 truncate">
+                        {buddy.name}
+                      </span>
                       {buddy.status === "away" && awayMessages[buddy.name] && (
-                        <MessageSquare className="h-3 w-3 shrink-0 text-amber-300" aria-label="Has away message" />
+                        <MessageSquare
+                          className="h-3 w-3 shrink-0 text-amber-300"
+                          aria-label="Has away message"
+                        />
                       )}
                       <span className="shrink-0 text-[10px] text-zinc-500">
                         {timeAgo(buddy.pushed_at || buddy.updated_at)}
@@ -2301,45 +2810,65 @@ function BuddyList({ repos, loading }) {
       </div>
 
       <div className="flex flex-col rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-7 md:p-5">
-        <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-amber-300">
+        <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] dos-title text-amber-300">
           <User className="h-3.5 w-3.5" /> Buddy Info
         </div>
 
         {selected ? (
           <div className="flex flex-1 flex-col gap-4">
             <div className="flex flex-wrap items-center gap-3">
-              <h3 className="font-mono text-xl text-zinc-100">{selected.name}</h3>
+              <h3 className="font-mono text-xl text-zinc-100">
+                {selected.name}
+              </h3>
               <span
                 className={`flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[10px] uppercase tracking-[0.2em] ${selectedStyle.text}`}
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${selectedStyle.dot}`} />
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${selectedStyle.dot}`}
+                />
                 {selectedStyle.label}
               </span>
             </div>
 
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
               <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                {awayMessages[selected.name] ? "Away message · latest commit" : "Profile"}
+                {awayMessages[selected.name]
+                  ? "Away message · latest commit"
+                  : "Profile"}
               </div>
-              <p className="mt-2 font-mono text-sm italic leading-6 text-zinc-200">{selectedAway}</p>
+              <p className="mt-2 font-mono text-sm italic leading-6 text-zinc-200">
+                {selectedAway}
+              </p>
             </div>
 
             <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {[
-                ["Last push", formatDate(selected.pushed_at || selected.updated_at)],
+                [
+                  "Last push",
+                  formatDate(selected.pushed_at || selected.updated_at),
+                ],
                 ["Language", selected.language || "—"],
                 ["Stars", selected.stargazers_count ?? 0],
                 ["Forks", selected.forks_count ?? 0],
               ].map(([label, value]) => (
-                <div key={label} className="rounded-xl border border-zinc-800 bg-black/30 px-3 py-2">
-                  <dt className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</dt>
-                  <dd className="mt-1 truncate text-sm text-zinc-100">{value}</dd>
+                <div
+                  key={label}
+                  className="rounded-xl border border-zinc-800 bg-black/30 px-3 py-2"
+                >
+                  <dt className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                    {label}
+                  </dt>
+                  <dd className="mt-1 truncate text-sm text-zinc-100">
+                    {value}
+                  </dd>
                 </div>
               ))}
             </dl>
 
             {awayMessages[selected.name] && selected.description && (
-              <p className="text-sm leading-6 text-zinc-400">{selected.description}</p>
+              <p className="text-sm leading-6 text-zinc-400">
+                {selected.description}
+              </p>
             )}
 
             <a
@@ -2364,30 +2893,48 @@ function BuddyList({ repos, loading }) {
 export default function App() {
   const route = useHashRoute();
   const [booting, setBooting] = useState(
-    () => !readStore("localStorage", "mh-booted") && !prefersReducedMotion()
+    () => !readStore("localStorage", "mh-booted") && !prefersReducedMotion(),
   );
-  // Reboot comes from a click, so sound is allowed right away; first visits start at the power button.
-  const [startPowered, setStartPowered] = useState(false);
+  // First visits wait at the power-on screen (browsers need a key or click before sound can play).
+  // Reboot starts straight away; Power shows the shut-down screen.
+  const [bootMode, setBootMode] = useState("gate");
 
   useEffect(() => {
     applyCrt(readStore("localStorage", "mh-crt") || "off");
     const reboot = () => {
       window.scrollTo(0, 0);
-      setStartPowered(true);
+      setBootMode("powered");
+      setBooting(true);
+    };
+    const powerOff = () => {
+      window.scrollTo(0, 0);
+      setBootMode("off");
       setBooting(true);
     };
     window.addEventListener("mh-reboot", reboot);
-    return () => window.removeEventListener("mh-reboot", reboot);
+    window.addEventListener("mh-power-off", powerOff);
+    return () => {
+      window.removeEventListener("mh-reboot", reboot);
+      window.removeEventListener("mh-power-off", powerOff);
+    };
   }, []);
 
-  const page = route === "about" ? <AboutPage /> : route === "contact" ? <ContactPage /> : <HomePage />;
+  const page =
+    route === "about" ? (
+      <AboutPage />
+    ) : route === "contact" ? (
+      <ContactPage />
+    ) : (
+      <HomePage />
+    );
 
   return (
     <>
       {page}
       {booting && (
         <BootScreen
-          startPowered={startPowered}
+          key={bootMode}
+          mode={bootMode}
           onDone={() => {
             writeStore("localStorage", "mh-booted", "1");
             setBooting(false);
