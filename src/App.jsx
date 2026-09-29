@@ -326,17 +326,17 @@ function useOutputReveal(currentPage, rootRef) {
 function Prompt({ path = "~", children }) {
   return (
     <div className="break-all">
-      <span className="font-bold text-[#8AE234]">max@hxmbook</span>
-      <span className="text-white">:</span>
-      <span className="font-bold text-[#729FCF]">{path}</span>
-      <span className="text-white">$ </span>
-      <span className="text-white">{children}</span>
+      <span className="term-user font-bold">max@MaXHyM</span>
+      <span className="term-fg">:</span>
+      <span className="term-path font-bold">{path}</span>
+      <span className="term-fg">$ </span>
+      <span className="term-fg">{children}</span>
     </div>
   );
 }
 
 function Cursor() {
-  return <span className="term-cursor ml-px inline-block h-[1.05em] w-[0.55em] translate-y-[0.18em] bg-white" aria-hidden="true" />;
+  return <span className="term-cursor ml-px inline-block h-[1.05em] w-[0.55em] translate-y-[0.18em] term-cursor-block" aria-hidden="true" />;
 }
 
 function PowerMenu() {
@@ -444,9 +444,9 @@ function SharedShell({ currentPage, children }) {
         ref={rootRef}
         className="mh-screen ubuntu-desktop relative min-h-screen overflow-hidden px-2 pb-6 pt-10 sm:px-4 md:px-6 md:pb-10 md:pt-12"
       >
-        <div className="term-window mx-auto max-w-7xl overflow-hidden rounded-t-[7px] rounded-b-[3px] border border-black/60 shadow-[0_10px_40px_rgba(0,0,0,0.55)]">
+        <div className="term-window mx-auto max-w-7xl overflow-hidden rounded-t-[7px] rounded-b-[3px]">
           {/* Title bar */}
-          <div className="ubuntu-ui relative flex h-8 items-center bg-gradient-to-b from-[#4F4E49] to-[#3C3B37] text-[#DFDBD2]">
+          <div className="ubuntu-ui term-titlebar relative flex h-8 items-center">
             <div className="z-10 flex items-center gap-1.5 pl-2.5">
               <button
                 type="button"
@@ -459,12 +459,12 @@ function SharedShell({ currentPage, children }) {
               <span className="term-btn" aria-hidden="true" />
             </div>
             <div className="absolute inset-x-0 truncate px-24 text-center text-[13px] font-bold">
-              max@hxmbook: {tab.label}
+              max@MaXHyM: {tab.label}
             </div>
           </div>
 
           {/* Menu bar */}
-          <div className="ubuntu-ui hidden h-7 items-center gap-1 bg-[#3C3B37] px-1.5 text-[13px] text-[#DFDBD2] md:flex">
+          <div className="ubuntu-ui term-menubar hidden h-7 items-center gap-1 px-1.5 text-[13px] md:flex">
             {["File", "Edit", "View", "Search", "Terminal", "Help"].map((m) => (
               <span key={m} className="px-2 py-0.5">
                 {m}
@@ -473,7 +473,7 @@ function SharedShell({ currentPage, children }) {
           </div>
 
           {/* Tabs */}
-          <nav aria-label="Pages" className="ubuntu-ui flex bg-[#2B2A26] pt-1 text-[13px]">
+          <nav aria-label="Pages" className="ubuntu-ui term-tabs flex pt-1 text-[13px]">
             {TERM_TABS.map((t) => {
               const active = t.page === currentPage;
               return (
@@ -482,11 +482,11 @@ function SharedShell({ currentPage, children }) {
                   href={t.href}
                   aria-current={active ? "page" : undefined}
                   className={`flex min-w-0 flex-1 items-center justify-center gap-2 truncate rounded-t-[4px] px-3 py-1.5 sm:max-w-[220px] ${
-                    active ? "bg-[#300A24] text-white" : "text-[#9C9A92] hover:bg-white/5 hover:text-[#DFDBD2]"
+                    active ? "term-tab-active" : "term-tab"
                   }`}
                 >
                   <span className="truncate">
-                    <span className="hidden sm:inline">max@hxmbook: </span>
+                    <span className="hidden sm:inline">max@MaXHyM: </span>
                     {t.label}
                   </span>
                 </a>
@@ -495,12 +495,12 @@ function SharedShell({ currentPage, children }) {
           </nav>
 
           {/* Terminal body */}
-          <div className="term relative bg-[#300A24] px-3 py-4 text-white sm:px-5 md:px-6 md:py-5">
-            <div className="text-[#D3D7CF]">
+          <div className="term term-body relative px-3 py-4 sm:px-5 md:px-6 md:py-5">
+            <div className="term-dim">
               <div>Welcome to Ubuntu 7.04 (GNU/Linux 2.6.20-15-generic i686)</div>
               <div className="mt-3">
                 {" "}* Source:{"   "}
-                <a href="https://github.com/maxhayim" target="_blank" rel="noreferrer" className="underline decoration-[#729FCF] hover:text-white">
+                <a href="https://github.com/maxhayim" target="_blank" rel="noreferrer" className="term-link underline">
                   https://github.com/maxhayim
                 </a>
               </div>
@@ -513,10 +513,10 @@ function SharedShell({ currentPage, children }) {
 
             {currentPage === "home" && (
               <>
-                <pre className="mt-3 overflow-hidden font-bold leading-[1.15] text-[#E95420] [font-size:clamp(7px,2.35vw,17px)]">
+                <pre className="mt-3 overflow-hidden font-bold leading-[1.15] term-accent [font-size:clamp(7px,2.35vw,17px)]">
                   {MOTD_BANNER}
                 </pre>
-                <div className="mt-2 text-[#D3D7CF]">
+                <div className="mt-2 term-dim">
                   Public repos, mesh radio tooling, and a working modem. Pick a tab above to look around.
                 </div>
               </>
@@ -524,7 +524,7 @@ function SharedShell({ currentPage, children }) {
 
             <main className="relative z-10 mt-5 flex flex-col gap-5">{children}</main>
 
-            <footer className="mt-6 text-[#D3D7CF]">
+            <footer className="mt-6 term-dim">
               <Prompt>cat ~/COPYRIGHT</Prompt>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <img src="/logo_fullclear.png" alt="maxhayim logo" className="h-4 w-auto" />
@@ -678,7 +678,7 @@ function PongGame() {
 
       <div
         ref={fieldRef}
-        className="relative h-64 cursor-none rounded-xl border border-emerald-500/20 bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.08),transparent_35%),linear-gradient(to_bottom,rgba(0,0,0,0.95),rgba(4,12,8,1))] font-mono text-emerald-300"
+        className="term-screen relative h-64 cursor-none rounded-xl border border-emerald-500/20 bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.08),transparent_35%),linear-gradient(to_bottom,rgba(0,0,0,0.95),rgba(4,12,8,1))] font-mono text-emerald-300"
       >
         <div className="pointer-events-none absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(74,222,128,0.12)_1px,transparent_1px)] [background-size:100%_6px]" />
         <div className="absolute inset-y-4 left-1/2 w-px -translate-x-1/2 bg-emerald-500/30" />
@@ -1098,7 +1098,7 @@ function HomePage() {
             </span>
           </div>
 
-          <div className="relative h-[360px] overflow-hidden rounded-2xl border border-emerald-500/20 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.12),rgba(3,7,18,0.96)_55%)]">
+          <div className="term-screen relative h-[360px] overflow-hidden rounded-2xl border border-emerald-500/20 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.12),rgba(3,7,18,0.96)_55%)]">
             <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(16,185,129,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(16,185,129,0.12)_1px,transparent_1px)] [background-size:36px_36px]" />
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,transparent_43%,rgba(16,185,129,0.05)_44%,transparent_45%,transparent_100%)]" />
 
@@ -1345,7 +1345,7 @@ function HomePage() {
                           stiffness: 260,
                           damping: 20,
                         }}
-                        className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white"
+                        className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-[#ffffff]"
                       />
                     </motion.div>
                   </motion.div>
@@ -1818,7 +1818,7 @@ function ContactPage() {
           <Terminal className="h-3.5 w-3.5" /> Mail Operations Console
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-[#061017] shadow-inner">
+        <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-inner">
           <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-3">
             <span className="h-3 w-3 rounded-full bg-red-400" />
             <span className="h-3 w-3 rounded-full bg-yellow-400" />
@@ -2104,8 +2104,8 @@ const PCI_DEVICES = [
 const DOS_LINES = [
   "Starting MaXHyM-DOS...",
   "",
-  "C:\\> cd \\MAXHAYIM",
-  "C:\\MAXHAYIM> start command-center.exe",
+  "C:\\> cd \\MaXHyM",
+  "C:\\MaXHyM> start command-center.exe",
 ];
 
 /*

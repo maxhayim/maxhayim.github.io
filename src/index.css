@@ -1,25 +1,25 @@
 @import url("https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&family=Ubuntu:wght@400;500;700&family=VT323&display=swap");
 @import "tailwindcss";
 
-/* ---------- Ubuntu terminal theme: aubergine background, Tango palette, Ubuntu Mono ---------- */
+/* ---------- Ubuntu terminal theme: dark by default, light when the browser prefers it ---------- */
 
 @theme {
   --font-sans: "Ubuntu Mono", "DejaVu Sans Mono", monospace;
   --font-mono: "Ubuntu Mono", "DejaVu Sans Mono", monospace;
 
-  /* Tango palette (GNOME Terminal)
-     normal: #2E3436 #CC0000 #4E9A06 #C4A000 #3465A4 #75507B #06989A #D3D7CF
-     bright: #555753 #EF2929 #8AE234 #FCE94F #729FCF #AD7FA8 #34E2E2 #EEEEEC */
+  /* Dark palette: Tango bright colors on charcoal.
+     Tango: #2E3436 #CC0000 #4E9A06 #C4A000 #3465A4 #75507B #06989A #D3D7CF
+            #555753 #EF2929 #8AE234 #FCE94F #729FCF #AD7FA8 #34E2E2 #EEEEEC */
   --color-zinc-100: #ffffff;
   --color-zinc-200: #eeeeec;
   --color-zinc-300: #d3d7cf;
   --color-zinc-400: #babdb6;
-  --color-zinc-500: #a09ba0;
-  --color-zinc-600: #6e5a69;
-  --color-zinc-700: #5e2750;
-  --color-zinc-800: #5e2750;
-  --color-zinc-900: #4a1a3d;
-  --color-zinc-950: #2c001e;
+  --color-zinc-500: #9a9996;
+  --color-zinc-600: #5e5c64;
+  --color-zinc-700: #3d3d3d;
+  --color-zinc-800: #3d3d3d;
+  --color-zinc-900: #2a2a2a;
+  --color-zinc-950: #121212;
 
   --color-emerald-100: #8ae234;
   --color-emerald-200: #8ae234;
@@ -64,6 +64,131 @@
   --text-5xl: 44px;
 }
 
+/* Theme tokens for the desktop, window chrome, and terminal */
+:root {
+  color-scheme: dark;
+  --desk:
+    radial-gradient(ellipse 80% 60% at 10% 110%, rgba(233, 84, 32, 0.16), transparent 60%),
+    linear-gradient(160deg, #2c2c2c 0%, #1b1b1b 55%, #111111 100%);
+  --window-border: rgba(0, 0, 0, 0.7);
+  --window-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  --title-top: #383838;
+  --title-bot: #2d2d2d;
+  --title-fg: #f6f5f4;
+  --menubar-bg: #2d2d2d;
+  --menubar-fg: #deddda;
+  --tabs-bg: #232323;
+  --tab-fg: #9a9996;
+  --tab-hover: rgba(255, 255, 255, 0.05);
+  --term-bg: #1e1e1e;
+  --term-fg: #f6f5f4;
+  --term-dim: #c0bfbc;
+  --term-user: #8ae234;
+  --term-path: #729fcf;
+  --term-accent: #e95420;
+  --term-rule: #3d3d3d;
+  --term-input: #121212;
+  --term-select-bg: #f6f5f4;
+  --term-select-fg: #1e1e1e;
+  --btn-bg: linear-gradient(#5a5a5a, #444444);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --desk:
+      radial-gradient(ellipse 80% 60% at 10% 110%, rgba(233, 84, 32, 0.14), transparent 60%),
+      radial-gradient(ellipse 70% 60% at 100% 0%, rgba(119, 41, 83, 0.08), transparent 70%),
+      linear-gradient(160deg, #f6f5f4 0%, #ebe7e4 60%, #e2dcd8 100%);
+    --window-border: rgba(0, 0, 0, 0.18);
+    --window-shadow: 0 10px 34px rgba(0, 0, 0, 0.18);
+    --title-top: #f0efee;
+    --title-bot: #e3e1df;
+    --title-fg: #2e3436;
+    --menubar-bg: #f6f5f4;
+    --menubar-fg: #2e3436;
+    --tabs-bg: #e3e1df;
+    --tab-fg: #6e6c72;
+    --tab-hover: rgba(0, 0, 0, 0.05);
+    --term-bg: #ffffff;
+    --term-fg: #171421;
+    --term-dim: #5e5c64;
+    --term-user: #4e9a06;
+    --term-path: #3465a4;
+    --term-accent: #e95420;
+    --term-rule: #deddda;
+    --term-input: #f6f5f4;
+    --term-select-bg: #171421;
+    --term-select-fg: #ffffff;
+    --btn-bg: linear-gradient(#cfcdcb, #b8b6b3);
+  }
+
+  /* Light Tango palette for everything printed in the terminal */
+  .term {
+    --color-black: #f6f5f4;
+    --color-white: #171421;
+    --color-zinc-100: #171421;
+    --color-zinc-200: #241f31;
+    --color-zinc-300: #3d3846;
+    --color-zinc-400: #5e5c64;
+    --color-zinc-500: #5e5c64;
+    --color-zinc-600: #9a9996;
+    --color-zinc-700: #deddda;
+    --color-zinc-800: #deddda;
+    --color-zinc-900: #ebebed;
+    --color-zinc-950: #f6f5f4;
+
+    --color-emerald-100: #3f7f05;
+    --color-emerald-200: #3f7f05;
+    --color-emerald-300: #3f7f05;
+    --color-emerald-400: #4e9a06;
+    --color-emerald-500: #4e9a06;
+
+    --color-cyan-100: #05787a;
+    --color-cyan-200: #05787a;
+    --color-cyan-300: #05787a;
+    --color-cyan-400: #06989a;
+    --color-cyan-500: #06989a;
+
+    --color-amber-100: #8a6a00;
+    --color-amber-200: #8a6a00;
+    --color-amber-300: #8a6a00;
+    --color-amber-400: #8a6a00;
+    --color-amber-500: #c4a000;
+    --color-yellow-400: #8a6a00;
+
+    --color-orange-200: #b84f00;
+    --color-orange-300: #b84f00;
+    --color-orange-500: #e95420;
+    --color-red-400: #cc0000;
+
+    --color-violet-300: #75507b;
+    --color-violet-500: #75507b;
+  }
+
+  /* Radar and Pong are screens inside the page: they stay dark */
+  .term .term-screen {
+    --color-black: #000000;
+    --color-white: #ffffff;
+    --color-zinc-100: #ffffff;
+    --color-zinc-200: #eeeeec;
+    --color-zinc-300: #d3d7cf;
+    --color-zinc-400: #babdb6;
+    --color-zinc-500: #9a9996;
+    --color-zinc-800: #3d3d3d;
+    --color-zinc-950: #121212;
+    --color-emerald-100: #8ae234;
+    --color-emerald-200: #8ae234;
+    --color-emerald-300: #8ae234;
+    --color-emerald-400: #8ae234;
+    --color-cyan-100: #34e2e2;
+    --color-cyan-200: #34e2e2;
+    --color-cyan-300: #34e2e2;
+    --color-amber-300: #fce94f;
+    background-color: #0b0f0c;
+  }
+}
+
 .bios-font {
   font-family: "VT323", "Courier New", monospace;
   font-variant-ligatures: none;
@@ -74,13 +199,31 @@
   font-family: "Ubuntu", "Ubuntu Mono", sans-serif;
 }
 
-/* Desktop wallpaper behind the terminal window: warm Ubuntu-style gradient */
-.ubuntu-desktop {
-  background:
-    radial-gradient(ellipse 90% 70% at 15% 110%, rgba(233, 84, 32, 0.55), transparent 60%),
-    radial-gradient(ellipse 80% 60% at 100% 0%, rgba(119, 41, 83, 0.9), transparent 70%),
-    linear-gradient(160deg, #772953 0%, #4a1439 45%, #2c001e 100%);
+.ubuntu-desktop { background: var(--desk); }
+
+.term-window {
+  border: 1px solid var(--window-border);
+  box-shadow: var(--window-shadow);
 }
+.term-titlebar {
+  background: linear-gradient(var(--title-top), var(--title-bot));
+  color: var(--title-fg);
+}
+.term-menubar { background: var(--menubar-bg); color: var(--menubar-fg); }
+.term-tabs { background: var(--tabs-bg); }
+.term-tab { color: var(--tab-fg); }
+.term-tab:hover { background: var(--tab-hover); color: var(--title-fg); }
+.term-tab-active { background: var(--term-bg); color: var(--term-fg); }
+
+.term-body { background: var(--term-bg); color: var(--term-fg); }
+.term-fg { color: var(--term-fg); }
+.term-dim { color: var(--term-dim); }
+.term-user { color: var(--term-user); }
+.term-path { color: var(--term-path); }
+.term-accent { color: var(--term-accent); }
+.term-link { text-decoration-color: var(--term-path); }
+.term-link:hover { color: var(--term-fg); }
+.term-cursor-block { background: var(--term-fg); }
 
 /* Window buttons (left, Ambiance-style) */
 .term-btn {
@@ -88,8 +231,8 @@
   width: 15px;
   height: 15px;
   border-radius: 999px;
-  background: linear-gradient(#7a7973, #57564f);
-  border: 1px solid rgba(0, 0, 0, 0.55);
+  background: var(--btn-bg);
+  border: 1px solid rgba(0, 0, 0, 0.35);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 .term-btn-close {
@@ -118,7 +261,6 @@
 .term .uppercase { text-transform: none; }
 .term [class*="tracking-["] { letter-spacing: 0; }
 
-/* Panels are output blocks separated by thin rules, square like a terminal grid */
 .term .rounded-3xl,
 .term .rounded-2xl,
 .term .rounded-xl,
@@ -126,27 +268,28 @@
 .term .rounded-md { border-radius: 2px; }
 .term * { box-shadow: none !important; }
 
+/* Panels are output blocks separated by thin rules */
 .term .rounded-3xl.border {
   background-color: transparent;
-  border-color: #5e2750;
+  border-color: var(--term-rule);
 }
 
 /* Panel titles read like commands: $ buddy list */
-.term .term-title { color: #eeeeec; }
+.term .term-title { color: var(--term-fg); }
 .term .term-title::before {
   content: "$ ";
-  color: #8ae234;
+  color: var(--term-user);
   font-weight: 700;
 }
 .term .term-title svg { display: none; }
 
 .term input,
 .term textarea {
-  background-color: #2c001e;
-  caret-color: #ffffff;
+  background-color: var(--term-input);
+  caret-color: var(--term-fg);
 }
 
-.term ::selection { background: #eeeeec; color: #300a24; }
+.term ::selection { background: var(--term-select-bg); color: var(--term-select-fg); }
 
 .term-cursor { animation: cursor-blink 1.05s steps(1) infinite; }
 @keyframes cursor-blink {
@@ -160,7 +303,7 @@
   position: absolute;
   inset: -2px;
   z-index: 5;
-  background: #300a24;
+  background: var(--term-bg);
   pointer-events: none;
 }
 .term-reveal.term-shown::after { animation: output-draw 0.7s steps(18) forwards; }
