@@ -3,6 +3,8 @@
 
 .bios-font {
   font-family: "VT323", "Courier New", monospace;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "clig" 0;
 }
 
 /* ---------- CRT mode (toggled via <html data-crt="...">) ---------- */
