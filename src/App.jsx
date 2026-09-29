@@ -461,6 +461,113 @@ function ToolIcon({ children, label }) {
   );
 }
 
+
+/* ---------- Desktop shortcuts: original 32x32 pixel icons in the Win95 palette ---------- */
+
+function PixelIcon({ children }) {
+  return (
+    <svg viewBox="0 0 32 32" className="h-8 w-8" shapeRendering="crispEdges" aria-hidden="true">
+      {children}
+    </svg>
+  );
+}
+
+const DESKTOP_ICONS = {
+  prompt: (
+    <PixelIcon>
+      <rect x="2" y="4" width="28" height="24" fill="#000" />
+      <rect x="3" y="5" width="26" height="4" fill="#000080" />
+      <rect x="25" y="6" width="3" height="2" fill="#c0c0c0" />
+      <rect x="3" y="9" width="26" height="18" fill="#000" />
+      <rect x="5" y="12" width="2" height="2" fill="#c0c0c0" />
+      <rect x="7" y="14" width="2" height="2" fill="#c0c0c0" />
+      <rect x="5" y="16" width="2" height="2" fill="#c0c0c0" />
+      <rect x="11" y="18" width="6" height="2" fill="#c0c0c0" />
+      <rect x="2" y="4" width="28" height="1" fill="#fff" />
+      <rect x="2" y="4" width="1" height="24" fill="#fff" />
+    </PixelIcon>
+  ),
+  home: (
+    <PixelIcon>
+      <path d="M16 3 L3 15 H6 V29 H26 V15 H29 Z" fill="#000" />
+      <path d="M16 5 L5 15 H27 Z" fill="#aa0000" />
+      <rect x="7" y="15" width="18" height="13" fill="#ffffcc" />
+      <rect x="7" y="15" width="18" height="1" fill="#000" />
+      <rect x="10" y="18" width="5" height="4" fill="#55ffff" />
+      <rect x="10" y="18" width="5" height="1" fill="#000" />
+      <rect x="12" y="18" width="1" height="4" fill="#000" />
+      <rect x="18" y="19" width="4" height="9" fill="#aa5500" />
+      <rect x="21" y="23" width="1" height="1" fill="#ffff55" />
+      <rect x="22" y="6" width="3" height="6" fill="#555" />
+    </PixelIcon>
+  ),
+  about: (
+    <PixelIcon>
+      <path d="M6 2 H21 L27 8 V30 H6 Z" fill="#000" />
+      <path d="M7 3 H20 V9 H26 V29 H7 Z" fill="#fff" />
+      <path d="M21 4 L25 8 H21 Z" fill="#c0c0c0" />
+      <rect x="9" y="12" width="14" height="1" fill="#000080" />
+      <rect x="9" y="15" width="12" height="1" fill="#808080" />
+      <rect x="9" y="18" width="14" height="1" fill="#808080" />
+      <rect x="9" y="21" width="10" height="1" fill="#808080" />
+      <rect x="9" y="24" width="13" height="1" fill="#808080" />
+      <rect x="9" y="6" width="3" height="3" fill="#0000aa" />
+    </PixelIcon>
+  ),
+  contact: (
+    <PixelIcon>
+      <rect x="2" y="7" width="28" height="19" fill="#000" />
+      <rect x="3" y="8" width="26" height="17" fill="#ffffcc" />
+      <path d="M3 8 L16 18 L29 8" fill="none" stroke="#000" strokeWidth="1" />
+      <path d="M3 25 L12 16 M29 25 L20 16" fill="none" stroke="#808080" strokeWidth="1" />
+      <rect x="23" y="10" width="5" height="5" fill="#aa0000" />
+      <rect x="24" y="11" width="3" height="3" fill="#ff5555" />
+    </PixelIcon>
+  ),
+};
+
+function ShortcutArrow() {
+  return (
+    <svg viewBox="0 0 10 10" className="absolute bottom-0 left-0 h-[10px] w-[10px]" shapeRendering="crispEdges" aria-hidden="true">
+      <rect x="0" y="0" width="10" height="10" fill="#fff" />
+      <rect x="0" y="0" width="10" height="10" fill="none" stroke="#000" />
+      <path d="M3 7 L7 3 M4 3 H7 V6" stroke="#000" strokeWidth="1.3" fill="none" />
+    </svg>
+  );
+}
+
+function DesktopIcons({ currentPage, minimized, onRestore }) {
+  const shortcuts = [
+    { id: "home", label: "Home", href: "#/" },
+    { id: "about", label: "About", href: "#/about" },
+    { id: "contact", label: "Contact", href: "#/contact" },
+  ];
+
+  return (
+    <nav aria-label="Desktop" className="win-ui absolute left-1 top-2 z-0 flex flex-col gap-1 sm:left-2 sm:top-3">
+      <button type="button" onClick={onRestore} className="win-desk-icon" title={minimized ? "Open MaXHyM-DOS Prompt" : "MaXHyM-DOS Prompt"}>
+        <span className="relative">{DESKTOP_ICONS.prompt}</span>
+        <span className="win-desk-icon-label">MaXHyM-DOS Prompt</span>
+      </button>
+      {shortcuts.map((sc) => (
+        <a
+          key={sc.id}
+          href={sc.href}
+          onClick={() => sc.id === currentPage && onRestore()}
+          aria-current={sc.id === currentPage ? "page" : undefined}
+          className={`win-desk-icon ${sc.id === currentPage ? "win-desk-icon-current" : ""}`}
+        >
+          <span className="relative">
+            {DESKTOP_ICONS[sc.id]}
+            <ShortcutArrow />
+          </span>
+          <span className="win-desk-icon-label">{sc.label}</span>
+        </a>
+      ))}
+    </nav>
+  );
+}
+
 function SharedShell({ currentPage, children }) {
   const currentYear = new Date().getFullYear();
   const now = useClock();
@@ -489,18 +596,11 @@ function SharedShell({ currentPage, children }) {
 
   return (
     <>
-      <div ref={rootRef} className="mh-screen win-desktop relative min-h-screen overflow-hidden px-2 pb-14 pt-3 sm:px-4 md:px-6 md:pb-16 md:pt-6">
-        {minimized && (
-          <button type="button" onClick={restore} className="win-desk-icon win-ui" title="Open MaXHyM-DOS Prompt">
-            <span className="win-desk-icon-img" aria-hidden="true">
-              <span>C:\&gt;_</span>
-            </span>
-            <span className="win-desk-icon-label">MaXHyM-DOS Prompt</span>
-          </button>
-        )}
+      <div ref={rootRef} className="mh-screen win-desktop relative min-h-screen overflow-hidden px-2 pb-14 pt-3 sm:px-4 md:px-6 md:pb-16 md:pt-6 lg:pl-[116px]">
+        <DesktopIcons currentPage={currentPage} minimized={minimized} onRestore={restore} />
 
         <motion.div
-          className="win-window win-bevel mx-auto max-w-7xl origin-bottom-left p-[3px]"
+          className="win-window win-bevel relative z-10 mx-auto max-w-7xl origin-bottom-left p-[3px]"
           initial={false}
           animate={
             minimized
