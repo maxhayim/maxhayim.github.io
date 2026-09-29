@@ -1705,86 +1705,283 @@ function CrtToggle() {
 
 /* ---------- Boot sequence ---------- */
 
-const BOOT_LINES = [
-  "Detecting IDE Primary Master ... MESHNODE-HDD 540MB",
-  "Detecting IDE Primary Slave .... None",
-  "Detecting IDE Secondary Master . ATAPI CD-ROM 4X",
-  "Initializing COM1 .............. 14400 bps modem",
-  "",
-  "Starting MAXHAYIM-DOS...",
-  "C:\\> cd \\MAXHAYIM",
-  "C:\\MAXHAYIM> start command-center.exe",
+const BOOT_STEPS = [
+  { text: "Detecting Floppy Drive A ...... 1.44MB 3.5in", sound: "floppy" },
+  { text: "Detecting IDE Primary Master ... MESHNODE-HDD 540MB", sound: "seek" },
+  { text: "Detecting IDE Primary Slave .... None" },
+  { text: "Detecting IDE Secondary Master . ATAPI CD-ROM 4X", sound: "seek" },
+  { text: "Initializing COM1 .............. 14400 bps modem" },
+  { text: "" },
+  { text: "Starting MAXHAYIM-DOS...", sound: "floppy" },
+  { text: "C:\\> cd \\MAXHAYIM", sound: "seek" },
+  { text: "C:\\MAXHAYIM> start command-center.exe", sound: "seek" },
 ];
 
-function BootScreen({ onDone }) {
+const MEMORY_TARGET = 65536;
+const MEMORY_START_MS = 400;
+const MEMORY_STEP_MS = 70;
+const MEMORY_STEPS = 36;
+const LINES_START_MS = MEMORY_START_MS + MEMORY_STEPS * MEMORY_STEP_MS + 700;
+const LINE_MS = 650;
+const BOOT_END_MS = LINES_START_MS + BOOT_STEPS.length * LINE_MS + 1200;
+
+/*
+ * Boot audio. If /audio/boot.mp3 exists it plays that recording; otherwise it
+ * synthesizes the PC sounds: drive spin-up hum, POST beep, floppy grind, disk seeks.
+ */
+function createBootAudio() {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  let ctx = null;
+  let master = null;
+  let recording = null;
+  let stopped = false;
+
+  const noiseBuffer = () => {
+    const length = ctx.sampleRate;
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+    return buffer;
+  };
+
+  const synth = {
+    hum() {
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(40, t);
+      osc.frequency.exponentialRampToValueAtTime(180, t + 2.5);
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.12, t + 1.5);
+      gain.gain.linearRampToValueAtTime(0.05, t + 4);
+      osc.connect(gain).connect(master);
+      osc.start(t);
+
+      const fan = ctx.createBufferSource();
+      fan.buffer = noiseBuffer();
+      fan.loop = true;
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 500;
+      const fanGain = ctx.createGain();
+      fanGain.gain.setValueAtTime(0, t);
+      fanGain.gain.linearRampToValueAtTime(0.06, t + 1);
+      fan.connect(lp).connect(fanGain).connect(master);
+      fan.start(t);
+    },
+    beep() {
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square";
+      osc.frequency.value = 1000;
+      gain.gain.setValueAtTime(0.08, t);
+      gain.gain.setValueAtTime(0, t + 0.18);
+      osc.connect(gain).connect(master);
+      osc.start(t);
+      osc.stop(t + 0.2);
+    },
+    seek() {
+      const count = 3 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < count; i++) {
+        const t = ctx.currentTime + i * (0.04 + Math.random() * 0.06);
+        const src = ctx.createBufferSource();
+        src.buffer = noiseBuffer();
+        const bp = ctx.createBiquadFilter();
+        bp.type = "bandpass";
+        bp.frequency.value = 1800 + Math.random() * 1500;
+        bp.Q.value = 2;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.5, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
+        src.connect(bp).connect(gain).connect(master);
+        src.start(t);
+        src.stop(t + 0.03);
+      }
+    },
+    floppy() {
+      const t0 = ctx.currentTime;
+      for (let i = 0; i < 4; i++) {
+        const t = t0 + i * 0.16;
+        const osc = ctx.createOscillator();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(55 + i * 12, t);
+        const bp = ctx.createBiquadFilter();
+        bp.type = "bandpass";
+        bp.frequency.value = 400;
+        bp.Q.value = 1.5;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.25, t + 0.02);
+        gain.gain.linearRampToValueAtTime(0, t + 0.13);
+        osc.connect(bp).connect(gain).connect(master);
+        osc.start(t);
+        osc.stop(t + 0.14);
+      }
+    },
+  };
+
+  return {
+    start() {
+      recording = new Audio("/audio/boot.mp3");
+      recording.play().catch(() => {
+        recording = null;
+        if (stopped || !AudioCtx) return;
+        ctx = new AudioCtx();
+        master = ctx.createGain();
+        master.gain.value = 0.7;
+        master.connect(ctx.destination);
+        synth.hum();
+      });
+    },
+    play(name) {
+      if (!ctx || stopped) return;
+      synth[name]?.();
+    },
+    stop() {
+      stopped = true;
+      if (recording) {
+        recording.pause();
+        recording = null;
+      }
+      if (ctx) {
+        const c = ctx;
+        master.gain.setTargetAtTime(0, c.currentTime, 0.1);
+        setTimeout(() => c.close?.(), 400);
+        ctx = null;
+      }
+    },
+  };
+}
+
+function PowerSaverBadge() {
+  return (
+    <svg viewBox="0 0 132 84" className="h-16 w-auto md:h-20" role="img" aria-label="Power saver ready">
+      <rect x="1.5" y="1.5" width="129" height="81" rx="10" fill="none" stroke="#34d399" strokeWidth="3" />
+      <path d="M34 60 C18 52 20 26 44 20 C44 38 40 50 34 60 Z" fill="#34d399" />
+      <path d="M34 60 C36 46 40 34 44 20" stroke="#04070b" strokeWidth="2" fill="none" />
+      <path d="M62 24 a14 14 0 1 0 12 0" stroke="#34d399" strokeWidth="4" fill="none" strokeLinecap="round" />
+      <line x1="68" y1="18" x2="68" y2="36" stroke="#34d399" strokeWidth="4" strokeLinecap="round" />
+      <text x="90" y="34" fill="#34d399" fontFamily="monospace" fontSize="11" fontWeight="700">POWER</text>
+      <text x="90" y="48" fill="#34d399" fontFamily="monospace" fontSize="11" fontWeight="700">SAVER</text>
+      <text x="66" y="72" fill="#34d399" fontFamily="monospace" fontSize="9" textAnchor="middle" letterSpacing="2">GREEN PC READY</text>
+    </svg>
+  );
+}
+
+function BootScreen({ onDone, startPowered }) {
+  const [powered, setPowered] = useState(startPowered);
   const [memory, setMemory] = useState(0);
   const [shown, setShown] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const doneRef = useRef(false);
+  const audioRef = useRef(null);
 
   const finish = () => {
     if (doneRef.current) return;
     doneRef.current = true;
+    audioRef.current?.stop();
     setLeaving(true);
     setTimeout(onDone, 350);
   };
 
-  useEffect(() => {
-    const timers = [];
-    const memoryTarget = 65536;
-    const memorySteps = 24;
-    for (let i = 1; i <= memorySteps; i++) {
-      timers.push(setTimeout(() => setMemory(Math.round((memoryTarget * i) / memorySteps)), i * 38));
-    }
-    const linesStart = memorySteps * 38 + 250;
-    BOOT_LINES.forEach((_, i) => {
-      timers.push(setTimeout(() => setShown(i + 1), linesStart + i * 230));
-    });
-    timers.push(setTimeout(finish, linesStart + BOOT_LINES.length * 230 + 700));
+  // Before power-on, any key or click powers on. After, any key or click skips.
+  const handleInput = () => {
+    if (!powered) setPowered(true);
+    else finish();
+  };
 
-    const skip = () => finish();
-    window.addEventListener("keydown", skip);
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.repeat) return;
+      handleInput();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  useEffect(() => {
+    if (!powered) return;
+    const audio = createBootAudio();
+    audioRef.current = audio;
+    audio.start();
+
+    const timers = [];
+    const at = (ms, fn) => timers.push(setTimeout(fn, ms));
+
+    for (let i = 1; i <= MEMORY_STEPS; i++) {
+      at(MEMORY_START_MS + i * MEMORY_STEP_MS, () => setMemory(Math.round((MEMORY_TARGET * i) / MEMORY_STEPS)));
+    }
+    at(MEMORY_START_MS + MEMORY_STEPS * MEMORY_STEP_MS + 150, () => audio.play("beep"));
+
+    BOOT_STEPS.forEach((step, i) => {
+      at(LINES_START_MS + i * LINE_MS, () => {
+        setShown(i + 1);
+        if (step.sound) audio.play(step.sound);
+      });
+    });
+    at(BOOT_END_MS, finish);
+
     return () => {
       timers.forEach(clearTimeout);
-      window.removeEventListener("keydown", skip);
+      audio.stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [powered]);
 
   return (
     <div
       role="dialog"
       aria-label="Boot sequence"
-      onClick={finish}
+      onClick={handleInput}
       className={`fixed inset-0 z-[100] cursor-pointer overflow-hidden bg-black font-mono text-[13px] leading-6 text-zinc-300 transition-opacity duration-300 md:text-sm ${
         leaving ? "opacity-0" : "opacity-100"
       }`}
     >
-      <div className="mx-auto max-w-3xl p-6 md:p-10">
-        <div className="flex items-start justify-between gap-6">
-          <div>
-            <div className="text-zinc-100">MAXHAYIM BIOS v2.01, An Energy Star Ally</div>
-            <div>Copyright (C) 2009-{new Date().getFullYear()} maxhayim.com</div>
+      {!powered ? (
+        <div className="flex h-full flex-col items-center justify-center gap-5 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-zinc-700 text-zinc-400 transition hover:border-emerald-400 hover:text-emerald-300">
+            <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M7 6.5a8 8 0 1 0 10 0" />
+              <line x1="12" y1="2.5" x2="12" y2="11" />
+            </svg>
           </div>
-          <img src="/logo_fullclear.png" alt="" className="h-12 w-auto opacity-80" />
+          <div className="text-zinc-400">Press any key to power on</div>
+          <div className="text-xs text-zinc-600">Sound on for the full experience</div>
         </div>
-        <div className="mt-6">HXM-486DX2 CPU at 66MHz</div>
-        <div>
-          Memory Test: <span className="text-zinc-100">{memory}K</span>
-          {memory >= 65536 && <span className="text-emerald-300"> OK</span>}
-        </div>
-        <div className="mt-4">
-          {BOOT_LINES.slice(0, shown).map((line, i) => (
-            <div key={i} className={line.startsWith("C:\\") ? "text-emerald-300" : ""}>
-              {line || "\u00a0"}
+      ) : (
+        <>
+          <div className="mx-auto max-w-3xl p-6 md:p-10">
+            <div className="flex items-start justify-between gap-6">
+              <div className="flex items-start gap-3">
+                <img src="/logo_fullclear.png" alt="" className="mt-1 h-9 w-auto opacity-80" />
+                <div>
+                  <div className="text-zinc-100">MAXHAYIM BIOS v2.01, An Energy Star Ally</div>
+                  <div>Copyright (C) 2009-{new Date().getFullYear()} maxhayim.com</div>
+                </div>
+              </div>
+              <PowerSaverBadge />
             </div>
-          ))}
-          <span className="inline-block h-4 w-2 translate-y-0.5 animate-pulse bg-zinc-300" />
-        </div>
-      </div>
-      <div className="absolute inset-x-0 bottom-6 text-center text-xs text-zinc-500">
-        Press any key or click to skip
-      </div>
+            <div className="mt-6">MaXHyM-486DX2 CPU at 66MHz</div>
+            <div>
+              Memory Test: <span className="text-zinc-100">{memory}K</span>
+              {memory >= MEMORY_TARGET && <span className="text-emerald-300"> OK</span>}
+            </div>
+            <div className="mt-4">
+              {BOOT_STEPS.slice(0, shown).map((step, i) => (
+                <div key={i} className={step.text.startsWith("C:\\") ? "text-emerald-300" : ""}>
+                  {step.text || "\u00a0"}
+                </div>
+              ))}
+              <span className="inline-block h-4 w-2 translate-y-0.5 animate-pulse bg-zinc-300" />
+            </div>
+          </div>
+          <div className="absolute inset-x-0 bottom-6 text-xs text-zinc-500">
+            <div className="mx-auto max-w-3xl px-6 md:px-10">Press any key to skip</div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -2026,11 +2223,14 @@ export default function App() {
   const [booting, setBooting] = useState(
     () => !readStore("localStorage", "mh-booted") && !prefersReducedMotion()
   );
+  // Reboot comes from a click, so sound is allowed right away; first visits start at the power button.
+  const [startPowered, setStartPowered] = useState(false);
 
   useEffect(() => {
     applyCrt(readStore("localStorage", "mh-crt") || "off");
     const reboot = () => {
       window.scrollTo(0, 0);
+      setStartPowered(true);
       setBooting(true);
     };
     window.addEventListener("mh-reboot", reboot);
@@ -2044,6 +2244,7 @@ export default function App() {
       {page}
       {booting && (
         <BootScreen
+          startPowered={startPowered}
           onDone={() => {
             writeStore("localStorage", "mh-booted", "1");
             setBooting(false);
