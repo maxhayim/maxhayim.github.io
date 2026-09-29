@@ -1,1 +1,42 @@
 @import "tailwindcss";
+
+/* ---------- CRT mode (toggled via <html data-crt="...">) ---------- */
+
+html[data-crt="color"] body::after,
+html[data-crt="green"] body::after,
+html[data-crt="amber"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(to bottom, transparent 0, transparent 2px, rgba(0, 0, 0, 0.28) 3px),
+    radial-gradient(ellipse at center, transparent 58%, rgba(0, 0, 0, 0.6) 100%);
+  animation: crt-flicker 5s infinite;
+}
+
+html[data-crt="color"] .mh-screen,
+html[data-crt="green"] .mh-screen,
+html[data-crt="amber"] .mh-screen {
+  text-shadow: 0 0 3px rgba(255, 255, 255, 0.28);
+}
+
+html[data-crt="green"] .mh-screen {
+  filter: grayscale(1) sepia(1) hue-rotate(65deg) saturate(3.5) brightness(1.05);
+}
+
+html[data-crt="amber"] .mh-screen {
+  filter: grayscale(1) sepia(1) hue-rotate(-12deg) saturate(4) brightness(1.05);
+}
+
+@keyframes crt-flicker {
+  0%, 100% { opacity: 1; }
+  48% { opacity: 0.93; }
+  50% { opacity: 1; }
+  52% { opacity: 0.96; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-crt] body::after { animation: none; }
+}

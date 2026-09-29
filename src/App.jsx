@@ -21,6 +21,9 @@ import {
   Shield,
   Plane,
   Phone,
+  Users,
+  RotateCcw,
+  MessageSquare,
 } from "lucide-react";
 
 const navItems = [
@@ -264,11 +267,12 @@ function SharedShell({ currentPage, children }) {
   usePageMeta();
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[#04070b] text-zinc-100 selection:bg-emerald-400/30">
+    <div className="mh-screen relative min-h-screen overflow-hidden bg-[#04070b] text-zinc-100 selection:bg-emerald-400/30">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.12),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.10),transparent_25%)]" />
       <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:32px_32px]" />
 
-      <nav className="relative z-20 mx-auto mt-4 max-w-7xl rounded-3xl border border-zinc-800 bg-black/60 p-4 shadow-2xl backdrop-blur-xl">
+      <div className="relative z-10 mx-auto flex max-w-7xl flex-col gap-6 px-4 py-4 md:px-6 md:py-6">
+      <nav className="relative z-20 rounded-3xl border border-zinc-800 bg-black/60 p-4 shadow-2xl backdrop-blur-xl">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
             <img src="/logo_fullclear.png" alt="maxhayim logo" className="h-10 w-auto" />
@@ -277,7 +281,7 @@ function SharedShell({ currentPage, children }) {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {navItems.map((item) => {
               const isActive =
                 (currentPage === "home" && item.href === "#/") ||
@@ -298,15 +302,26 @@ function SharedShell({ currentPage, children }) {
                 </a>
               );
             })}
+            <span className="mx-1 hidden h-6 w-px bg-zinc-800 md:block" aria-hidden="true" />
+            <CrtToggle />
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event("mh-reboot"))}
+              title="Replay the boot sequence"
+              className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-xs uppercase tracking-[0.18em] text-zinc-300 transition hover:border-cyan-500/30 hover:bg-cyan-500/10 hover:text-cyan-200"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reboot
+            </button>
           </div>
         </div>
       </nav>
 
-      <main className="relative z-10 mx-auto flex max-w-7xl flex-col gap-6 p-4 md:p-6">
+      <main className="relative z-10 flex flex-col gap-6">
         {children}
       </main>
 
-      <footer className="relative z-10 mx-auto mb-4 max-w-7xl rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
+      <footer className="relative z-10 rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
         <div className="flex flex-col gap-3 text-sm text-zinc-400 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
             <img src="/logo_fullclear.png" alt="maxhayim logo" className="h-5 w-auto" />
@@ -317,6 +332,7 @@ function SharedShell({ currentPage, children }) {
           </div>
         </div>
       </footer>
+      </div>
     </div>
   );
 }
@@ -613,6 +629,7 @@ function HomePage() {
             forks_count: repo.forks_count ?? 0,
             language: repo.language || "—",
             updated_at: repo.updated_at || null,
+            pushed_at: repo.pushed_at || repo.updated_at || null,
             description:
               repoDescriptions[repo.name] || repo.description || "Public repository in the maxhayim command center.",
           }));
@@ -1152,6 +1169,8 @@ function HomePage() {
         </div>
       </section>
 
+      <BuddyList repos={repos} loading={loadingRepos} />
+
       <section className="grid gap-6 md:grid-cols-12">
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl md:col-span-12">
           <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-cyan-300">
@@ -1618,9 +1637,419 @@ function ContactPage() {
   );
 }
 
+/* ---------- storage helpers (private mode / blocked storage safe) ---------- */
+
+function readStore(store, key) {
+  try {
+    return window[store].getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStore(store, key, value) {
+  try {
+    window[store].setItem(key, value);
+  } catch {
+    /* ignore */
+  }
+}
+
+function prefersReducedMotion() {
+  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+}
+
+/* ---------- CRT mode ---------- */
+
+const CRT_MODES = [
+  { id: "off", label: "Off" },
+  { id: "color", label: "Color" },
+  { id: "green", label: "Green" },
+  { id: "amber", label: "Amber" },
+];
+
+function applyCrt(mode) {
+  document.documentElement.dataset.crt = mode;
+}
+
+function CrtToggle() {
+  const [mode, setMode] = useState(() => document.documentElement.dataset.crt || "off");
+
+  const cycle = () => {
+    const index = CRT_MODES.findIndex((m) => m.id === mode);
+    const next = CRT_MODES[(index + 1) % CRT_MODES.length].id;
+    setMode(next);
+    applyCrt(next);
+    writeStore("localStorage", "mh-crt", next);
+  };
+
+  const active = mode !== "off";
+  const label = CRT_MODES.find((m) => m.id === mode)?.label || "Off";
+
+  return (
+    <button
+      type="button"
+      onClick={cycle}
+      title="Cycle CRT mode: off, color, green phosphor, amber phosphor"
+      className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs uppercase tracking-[0.18em] transition ${
+        active
+          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+          : "border-zinc-800 bg-zinc-950/70 text-zinc-300 hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
+      }`}
+    >
+      <Monitor className="h-3.5 w-3.5" />
+      CRT: {label}
+    </button>
+  );
+}
+
+/* ---------- Boot sequence ---------- */
+
+const BOOT_LINES = [
+  "Detecting IDE Primary Master ... MESHNODE-HDD 540MB",
+  "Detecting IDE Primary Slave .... None",
+  "Detecting IDE Secondary Master . ATAPI CD-ROM 4X",
+  "Initializing COM1 .............. 14400 bps modem",
+  "",
+  "Starting MAXHAYIM-DOS...",
+  "C:\\> cd \\MAXHAYIM",
+  "C:\\MAXHAYIM> start command-center.exe",
+];
+
+function BootScreen({ onDone }) {
+  const [memory, setMemory] = useState(0);
+  const [shown, setShown] = useState(0);
+  const [leaving, setLeaving] = useState(false);
+  const doneRef = useRef(false);
+
+  const finish = () => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    setLeaving(true);
+    setTimeout(onDone, 350);
+  };
+
+  useEffect(() => {
+    const timers = [];
+    const memoryTarget = 65536;
+    const memorySteps = 24;
+    for (let i = 1; i <= memorySteps; i++) {
+      timers.push(setTimeout(() => setMemory(Math.round((memoryTarget * i) / memorySteps)), i * 38));
+    }
+    const linesStart = memorySteps * 38 + 250;
+    BOOT_LINES.forEach((_, i) => {
+      timers.push(setTimeout(() => setShown(i + 1), linesStart + i * 230));
+    });
+    timers.push(setTimeout(finish, linesStart + BOOT_LINES.length * 230 + 700));
+
+    const skip = () => finish();
+    window.addEventListener("keydown", skip);
+    return () => {
+      timers.forEach(clearTimeout);
+      window.removeEventListener("keydown", skip);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div
+      role="dialog"
+      aria-label="Boot sequence"
+      onClick={finish}
+      className={`fixed inset-0 z-[100] cursor-pointer overflow-hidden bg-black font-mono text-[13px] leading-6 text-zinc-300 transition-opacity duration-300 md:text-sm ${
+        leaving ? "opacity-0" : "opacity-100"
+      }`}
+    >
+      <div className="mx-auto max-w-3xl p-6 md:p-10">
+        <div className="flex items-start justify-between gap-6">
+          <div>
+            <div className="text-zinc-100">MAXHAYIM BIOS v2.01, An Energy Star Ally</div>
+            <div>Copyright (C) 2009-{new Date().getFullYear()} maxhayim.com</div>
+          </div>
+          <img src="/logo_fullclear.png" alt="" className="h-12 w-auto opacity-80" />
+        </div>
+        <div className="mt-6">HXM-486DX2 CPU at 66MHz</div>
+        <div>
+          Memory Test: <span className="text-zinc-100">{memory}K</span>
+          {memory >= 65536 && <span className="text-emerald-300"> OK</span>}
+        </div>
+        <div className="mt-4">
+          {BOOT_LINES.slice(0, shown).map((line, i) => (
+            <div key={i} className={line.startsWith("C:\\") ? "text-emerald-300" : ""}>
+              {line || "\u00a0"}
+            </div>
+          ))}
+          <span className="inline-block h-4 w-2 translate-y-0.5 animate-pulse bg-zinc-300" />
+        </div>
+      </div>
+      <div className="absolute inset-x-0 bottom-6 text-center text-xs text-zinc-500">
+        Press any key or click to skip
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Buddy List ---------- */
+
+const AWAY_CACHE_KEY = "mh-buddy-away-v1";
+const AWAY_CACHE_MS = 30 * 60 * 1000;
+
+function daysSince(value) {
+  if (!value) return Infinity;
+  return (Date.now() - new Date(value).getTime()) / 86400000;
+}
+
+function buddyStatus(repo) {
+  const days = daysSince(repo.pushed_at || repo.updated_at);
+  if (days <= 7) return "online";
+  if (days <= 30) return "away";
+  return "offline";
+}
+
+function timeAgo(value) {
+  const days = daysSince(value);
+  if (!Number.isFinite(days)) return "never";
+  const minutes = days * 1440;
+  if (minutes < 60) return `${Math.max(1, Math.round(minutes))}m`;
+  if (days < 1) return `${Math.round(minutes / 60)}h`;
+  if (days < 60) return `${Math.round(days)}d`;
+  if (days < 365) return `${Math.round(days / 30)}mo`;
+  return `${Math.round(days / 365)}y`;
+}
+
+const STATUS_STYLE = {
+  online: { dot: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]", text: "text-emerald-300", label: "Online" },
+  away: { dot: "bg-amber-400", text: "text-amber-300", label: "Away" },
+  offline: { dot: "bg-zinc-600", text: "text-zinc-500", label: "Offline" },
+};
+
+function BuddyList({ repos, loading }) {
+  const [awayMessages, setAwayMessages] = useState(() => {
+    try {
+      const cached = JSON.parse(readStore("sessionStorage", AWAY_CACHE_KEY) || "null");
+      if (cached && Date.now() - cached.ts < AWAY_CACHE_MS) return cached.map;
+    } catch {
+      /* ignore */
+    }
+    return {};
+  });
+  const [collapsed, setCollapsed] = useState({});
+  const [selectedName, setSelectedName] = useState(null);
+
+  const buddies = useMemo(
+    () =>
+      [...repos]
+        .map((repo) => ({ ...repo, status: buddyStatus(repo) }))
+        .sort(
+          (a, b) =>
+            new Date(b.pushed_at || b.updated_at || 0).getTime() -
+            new Date(a.pushed_at || a.updated_at || 0).getTime()
+        ),
+    [repos]
+  );
+
+  const groups = ["online", "away", "offline"].map((status) => ({
+    status,
+    members: buddies.filter((b) => b.status === status),
+  }));
+  // Offline starts collapsed, unless nobody else is signed on.
+  const hasActive = groups[0].members.length + groups[1].members.length > 0;
+  const isCollapsed = (status) => collapsed[status] ?? (status === "offline" && hasActive);
+
+  // Latest commit message becomes the away message, for the buddies that were active recently.
+  useEffect(() => {
+    if (loading) return;
+    const targets = buddies
+      .filter((b) => b.status !== "offline" && !(b.name in awayMessages))
+      .slice(0, 10);
+    if (!targets.length) return;
+    let cancelled = false;
+
+    Promise.all(
+      targets.map(async (buddy) => {
+        try {
+          const res = await fetch(`https://api.github.com/repos/maxhayim/${buddy.name}/commits?per_page=1`);
+          if (!res.ok) return [buddy.name, null];
+          const [latest] = await res.json();
+          return [buddy.name, latest?.commit?.message?.split("\n")[0] || null];
+        } catch {
+          return [buddy.name, null];
+        }
+      })
+    ).then((entries) => {
+      if (cancelled) return;
+      setAwayMessages((prev) => {
+        const map = { ...prev, ...Object.fromEntries(entries) };
+        writeStore("sessionStorage", AWAY_CACHE_KEY, JSON.stringify({ ts: Date.now(), map }));
+        return map;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buddies, loading]);
+
+  const selected = buddies.find((b) => b.name === selectedName) || buddies[0];
+  const onlineCount = groups[0].members.length;
+  const selectedStyle = selected ? STATUS_STYLE[selected.status] : null;
+  const selectedAway = selected ? awayMessages[selected.name] || selected.description : null;
+
+  return (
+    <section className="grid gap-6 md:grid-cols-12">
+      <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-5 md:p-5">
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-amber-300">
+            <Users className="h-3.5 w-3.5" /> Buddy List
+          </div>
+          <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+            {loading ? "Signing on…" : `${onlineCount} online`}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
+          <img src="/avatar.jpg" alt="" className="h-10 w-10 rounded-lg border border-zinc-800 object-cover" />
+          <div className="min-w-0">
+            <div className="truncate font-mono text-sm text-zinc-100">maxhayim</div>
+            <div className="text-xs text-emerald-300">Available</div>
+          </div>
+        </div>
+
+        <div className="mt-3 max-h-[360px] overflow-y-auto rounded-2xl border border-zinc-800 bg-black/40 p-2 font-mono text-sm">
+          {groups.map(({ status, members }) => (
+            <div key={status} className="mb-1">
+              <button
+                type="button"
+                onClick={() => setCollapsed((c) => ({ ...c, [status]: !isCollapsed(status) }))}
+                aria-expanded={!isCollapsed(status)}
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-zinc-400 hover:bg-zinc-900"
+              >
+                <span className={`inline-block transition-transform ${isCollapsed(status) ? "" : "rotate-90"}`}>▸</span>
+                <span className="font-semibold text-zinc-300">{STATUS_STYLE[status].label}</span>
+                <span>
+                  ({members.length}/{buddies.length})
+                </span>
+              </button>
+
+              {!isCollapsed(status) &&
+                members.map((buddy) => {
+                  const isSelected = selected?.name === buddy.name;
+                  return (
+                    <button
+                      key={buddy.name}
+                      type="button"
+                      onClick={() => setSelectedName(buddy.name)}
+                      className={`flex w-full items-center gap-2 rounded-lg py-1.5 pl-7 pr-2 text-left transition ${
+                        isSelected ? "bg-amber-500/10 text-amber-100" : "text-zinc-300 hover:bg-zinc-900"
+                      } ${buddy.status === "offline" ? "opacity-60" : ""}`}
+                    >
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_STYLE[buddy.status].dot}`} />
+                      <span className="min-w-0 flex-1 truncate">{buddy.name}</span>
+                      {buddy.status === "away" && awayMessages[buddy.name] && (
+                        <MessageSquare className="h-3 w-3 shrink-0 text-amber-300" aria-label="Has away message" />
+                      )}
+                      <span className="shrink-0 text-[10px] text-zinc-500">
+                        {timeAgo(buddy.pushed_at || buddy.updated_at)}
+                      </span>
+                    </button>
+                  );
+                })}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-col rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-7 md:p-5">
+        <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-amber-300">
+          <User className="h-3.5 w-3.5" /> Buddy Info
+        </div>
+
+        {selected ? (
+          <div className="flex flex-1 flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <h3 className="font-mono text-xl text-zinc-100">{selected.name}</h3>
+              <span
+                className={`flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[10px] uppercase tracking-[0.2em] ${selectedStyle.text}`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${selectedStyle.dot}`} />
+                {selectedStyle.label}
+              </span>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+                {awayMessages[selected.name] ? "Away message · latest commit" : "Profile"}
+              </div>
+              <p className="mt-2 font-mono text-sm italic leading-6 text-zinc-200">{selectedAway}</p>
+            </div>
+
+            <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                ["Last push", formatDate(selected.pushed_at || selected.updated_at)],
+                ["Language", selected.language || "—"],
+                ["Stars", selected.stargazers_count ?? 0],
+                ["Forks", selected.forks_count ?? 0],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-zinc-800 bg-black/30 px-3 py-2">
+                  <dt className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</dt>
+                  <dd className="mt-1 truncate text-sm text-zinc-100">{value}</dd>
+                </div>
+              ))}
+            </dl>
+
+            {awayMessages[selected.name] && selected.description && (
+              <p className="text-sm leading-6 text-zinc-400">{selected.description}</p>
+            )}
+
+            <a
+              href={selected.html_url}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-auto inline-flex w-fit items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs uppercase tracking-[0.18em] text-amber-200 transition hover:bg-amber-500/20"
+            >
+              <ExternalLink className="h-3.5 w-3.5" /> Open repository
+            </a>
+          </div>
+        ) : (
+          <p className="text-sm text-zinc-500">No buddies signed on yet.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/* ---------- App ---------- */
+
 export default function App() {
   const route = useHashRoute();
-  if (route === "about") return <AboutPage />;
-  if (route === "contact") return <ContactPage />;
-  return <HomePage />;
+  const [booting, setBooting] = useState(
+    () => !readStore("localStorage", "mh-booted") && !prefersReducedMotion()
+  );
+
+  useEffect(() => {
+    applyCrt(readStore("localStorage", "mh-crt") || "off");
+    const reboot = () => {
+      window.scrollTo(0, 0);
+      setBooting(true);
+    };
+    window.addEventListener("mh-reboot", reboot);
+    return () => window.removeEventListener("mh-reboot", reboot);
+  }, []);
+
+  const page = route === "about" ? <AboutPage /> : route === "contact" ? <ContactPage /> : <HomePage />;
+
+  return (
+    <>
+      {page}
+      {booting && (
+        <BootScreen
+          onDone={() => {
+            writeStore("localStorage", "mh-booted", "1");
+            setBooting(false);
+          }}
+        />
+      )}
+    </>
+  );
 }
