@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, animate, useDragControls, useMotionValue } from "framer-motion";
 import {
   Radar,
   Star,
@@ -440,35 +440,118 @@ function CrtSwitch({ mode }) {
   );
 }
 
-function DesktopShortcuts({ currentPage, minimized, onRestore }) {
+
+/* Dock: a hi-fi front panel you can pick up by its speaker grille and move anywhere */
+function readDockPosition() {
+  try {
+    const saved = JSON.parse(readStore("localStorage", "mh-dock-pos") || "null");
+    return saved && Number.isFinite(saved.x) && Number.isFinite(saved.y) ? saved : { x: 0, y: 0 };
+  } catch {
+    return { x: 0, y: 0 };
+  }
+}
+
+function Dock({ currentPage, minimized, onMinimize, onRestore }) {
+  const controls = useDragControls();
+  const boundsRef = useRef(null);
+  const dockRef = useRef(null);
+  const [start] = useState(readDockPosition);
+  const x = useMotionValue(start.x);
+  const y = useMotionValue(start.y);
+
+  const save = () => writeStore("localStorage", "mh-dock-pos", JSON.stringify({ x: x.get(), y: y.get() }));
+  const reset = () => {
+    animate(x, 0, { duration: 0.25 });
+    animate(y, 0, { duration: 0.25 });
+    writeStore("localStorage", "mh-dock-pos", JSON.stringify({ x: 0, y: 0 }));
+  };
+
+  // If the window shrinks and the dock ends up off screen, bring it home.
+  useEffect(() => {
+    const fit = () => {
+      const el = dockRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      if (r.left < 0 || r.right > window.innerWidth || r.top < 44 || r.bottom > window.innerHeight) {
+        x.set(0);
+        y.set(0);
+        writeStore("localStorage", "mh-dock-pos", JSON.stringify({ x: 0, y: 0 }));
+      }
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [x, y]);
+
   return (
-    <nav
-      aria-label="Desktop"
-      className={`absolute left-3 top-16 z-0 flex-col gap-3 sm:left-5 sm:top-[72px] ${minimized ? "flex" : "hidden lg:flex"}`}
-    >
-      {minimized && (
-        <button type="button" onClick={onRestore} className="os-shortcut" title="Open window">
-          <span className="os-knob">
-            <AppWindow className="h-5 w-5" strokeWidth={1.6} />
-          </span>
-          <span>window</span>
-        </button>
-      )}
-      {OS_PAGES.map(({ page, label, href, Icon }) => (
-        <a
-          key={page}
-          href={href}
-          onClick={() => page === currentPage && onRestore()}
-          aria-current={page === currentPage ? "page" : undefined}
-          className="os-shortcut"
+    <>
+      <div ref={boundsRef} className="pointer-events-none fixed inset-x-1 bottom-1 top-12" aria-hidden="true" />
+      <nav aria-label="Dock" className="mh-fixed os-ui pointer-events-none fixed inset-x-0 bottom-3 z-40 flex justify-center px-2">
+        <motion.div
+          ref={dockRef}
+          drag
+          dragControls={controls}
+          dragListener={false}
+          dragMomentum={false}
+          dragElastic={0}
+          dragConstraints={boundsRef}
+          onDragEnd={save}
+          style={{ x, y }}
+          className="os-dock pointer-events-auto flex items-end gap-2.5 px-2.5 py-2 sm:gap-5 sm:px-4"
         >
-          <span className="os-knob">
-            <Icon className="h-5 w-5" strokeWidth={1.6} />
-          </span>
-          <span>{label}</span>
-        </a>
-      ))}
-    </nav>
+          <div
+            className="os-grille os-dock-grip h-11 w-8 rounded-md sm:w-16"
+            onPointerDown={(e) => controls.start(e)}
+            onDoubleClick={reset}
+            title="Drag to move the dock. Double-click to put it back."
+            aria-hidden="true"
+          />
+          {OS_PAGES.map(({ page, label, href, Icon }) => {
+            const active = page === currentPage && !minimized;
+            return (
+              <a
+                key={page}
+                href={href}
+                onClick={() => page === currentPage && onRestore()}
+                aria-current={page === currentPage ? "page" : undefined}
+                className="os-dock-item"
+              >
+                <span className="os-knob">
+                  <Icon className="h-[18px] w-[18px]" strokeWidth={1.6} />
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className={`os-dot ${active ? "os-dot-on" : ""}`} aria-hidden="true" />
+                  {label}
+                </span>
+              </a>
+            );
+          })}
+          <span className="mb-5 h-8 w-px bg-[var(--os-line)]" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={minimized ? onRestore : onMinimize}
+            className="os-dock-item"
+            title={minimized ? "Show window" : "Hide window"}
+          >
+            <span className="os-knob">
+              <AppWindow className="h-[18px] w-[18px]" strokeWidth={1.6} />
+            </span>
+            <span>{minimized ? "show" : "hide"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event("mh-power-off"))}
+            className="os-dock-item"
+            title="Shut down"
+          >
+            <span className="os-knob os-knob-power">
+              <Power className="h-[18px] w-[18px]" strokeWidth={2} />
+            </span>
+            <span>power</span>
+          </button>
+        </motion.div>
+      </nav>
+    </>
   );
 }
 
@@ -503,10 +586,8 @@ function SharedShell({ currentPage, children }) {
         </div>
       </header>
 
-      <div className="mh-screen os-desk os-ui relative min-h-screen overflow-hidden px-3 pb-28 pt-16 sm:px-5 md:px-8 lg:pl-[128px]">
-        <div className="os-grille os-desk-grille pointer-events-none absolute right-8 top-20 hidden h-40 w-40 rounded-full lg:block" aria-hidden="true" />
-        <DesktopShortcuts currentPage={currentPage} minimized={minimized} onRestore={restore} />
-
+      <div className="mh-screen os-desk os-ui relative min-h-screen overflow-hidden px-3 pb-28 pt-16 sm:px-5 md:px-8">
+        
         <motion.div
           className="os-window relative z-10 mx-auto max-w-7xl origin-bottom"
           initial={false}
@@ -563,55 +644,7 @@ function SharedShell({ currentPage, children }) {
         </motion.div>
       </div>
 
-      {/* Dock: a hi-fi front panel */}
-      <nav aria-label="Dock" className="mh-fixed os-ui fixed inset-x-0 bottom-3 z-40 flex justify-center px-3">
-        <div className="os-dock flex items-end gap-3 px-3 py-2 sm:gap-5 sm:px-4">
-          <div className="os-grille hidden h-11 w-16 rounded-md sm:block" aria-hidden="true" />
-          {OS_PAGES.map(({ page, label, href, Icon }) => {
-            const active = page === currentPage && !minimized;
-            return (
-              <a
-                key={page}
-                href={href}
-                onClick={() => page === currentPage && restore()}
-                aria-current={page === currentPage ? "page" : undefined}
-                className="os-dock-item"
-              >
-                <span className="os-knob">
-                  <Icon className="h-[18px] w-[18px]" strokeWidth={1.6} />
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className={`os-dot ${active ? "os-dot-on" : ""}`} aria-hidden="true" />
-                  {label}
-                </span>
-              </a>
-            );
-          })}
-          <span className="mb-5 h-8 w-px bg-[var(--os-line)]" aria-hidden="true" />
-          <button
-            type="button"
-            onClick={minimized ? restore : minimize}
-            className="os-dock-item"
-            title={minimized ? "Show window" : "Hide window"}
-          >
-            <span className="os-knob">
-              <AppWindow className="h-[18px] w-[18px]" strokeWidth={1.6} />
-            </span>
-            <span>{minimized ? "show" : "hide"}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => window.dispatchEvent(new Event("mh-power-off"))}
-            className="os-dock-item"
-            title="Shut down"
-          >
-            <span className="os-knob os-knob-power">
-              <Power className="h-[18px] w-[18px]" strokeWidth={2} />
-            </span>
-            <span>power</span>
-          </button>
-        </div>
-      </nav>
+      <Dock currentPage={currentPage} minimized={minimized} onMinimize={minimize} onRestore={restore} />
     </>
   );
 }

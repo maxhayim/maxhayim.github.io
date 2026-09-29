@@ -56,6 +56,7 @@
 :root {
   color-scheme: light;
   --os-desk: #e7e3da;
+  --os-wallpaper: url("/wallpaper/system6-calm.jpg");
   --os-case: #f3f1ec;
   --os-card: #fbfaf7;
   --os-ink: #262624;
@@ -78,6 +79,7 @@
   :root {
     color-scheme: dark;
     --os-desk: #151514;
+    --os-wallpaper: linear-gradient(rgba(10, 10, 9, 0.5), rgba(10, 10, 9, 0.5)), url("/wallpaper/system6-calm.jpg");
     --os-case: #201f1d;
     --os-card: #292826;
     --os-ink: #eeebe4;
@@ -134,7 +136,16 @@
   font-feature-settings: "tnum" 0;
 }
 
-.os-desk { background: var(--os-desk); }
+.os-desk {
+  background-color: var(--os-desk);
+  background-image: var(--os-wallpaper);
+  background-size: cover;
+  background-position: 70% center;
+  background-attachment: fixed;
+}
+@supports (-webkit-touch-callout: none) {
+  .os-desk { background-attachment: scroll; }
+}
 
 /* Speaker grille: the signature perforation */
 .os-grille {
@@ -142,7 +153,6 @@
   background-size: 7px 7px;
   background-position: center;
 }
-.os-desk-grille { opacity: 0.9; }
 
 .os-menubar {
   background: color-mix(in oklab, var(--os-case) 88%, transparent);
@@ -255,25 +265,31 @@
 }
 
 .os-dock {
-  background: color-mix(in oklab, var(--os-case) 92%, transparent);
-  border: 1px solid var(--os-line);
+  background: color-mix(in oklab, var(--os-case) 42%, transparent);
+  border: 1px solid color-mix(in oklab, var(--os-case) 55%, transparent);
   border-radius: 22px;
-  box-shadow: var(--os-shadow);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(18px) saturate(1.4);
 }
+.os-dock-grip {
+  cursor: grab;
+  touch-action: none;
+}
+.os-dock-grip:active { cursor: grabbing; }
 .os-dock-item {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 3px;
   font-size: 12px;
-  color: var(--os-ink-2);
+  color: var(--os-ink);
+  text-shadow: 0 1px 2px color-mix(in oklab, var(--os-case) 80%, transparent);
 }
 .os-dock-item:hover .os-knob,
-.os-shortcut:hover .os-knob { transform: translateY(-1px); }
+.os-dock-item:focus-visible .os-knob { transform: translateY(-1px); }
 .os-dock-item:active .os-knob,
-.os-shortcut:active .os-knob { transform: translateY(1px); }
+.os-dock-item:focus-visible:active .os-knob { transform: translateY(1px); }
 .os-dock-item[aria-current="page"] { color: var(--os-ink); }
 
 .os-dot {
@@ -283,18 +299,6 @@
   background: var(--os-line);
 }
 .os-dot-on { background: var(--os-accent); }
-
-.os-shortcut {
-  display: flex;
-  width: 72px;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--os-ink-2);
-}
-.os-shortcut[aria-current="page"] { color: var(--os-ink); }
-.os-shortcut[aria-current="page"] .os-knob { box-shadow: 0 0 0 2px var(--os-accent), 0 2px 4px rgba(0, 0, 0, 0.1); }
 
 /* ---------- Content inside the window ---------- */
 
