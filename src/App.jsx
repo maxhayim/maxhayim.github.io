@@ -221,6 +221,8 @@ const skills = [
 function useHashRoute() {
   const getRoute = () => {
     const hash = window.location.hash || "#/";
+    if (hash === "#/gits") return "gits";
+    if (hash === "#/internet") return "internet";
     if (hash === "#/about") return "about";
     if (hash === "#/contact") return "contact";
     return "home";
@@ -245,7 +247,9 @@ const SITE_DESCRIPTION =
   "Max Hayim's personal website, built as comcen os: a late-1990s-style operating system with live GitHub projects, telemetry, and interactive experiments.";
 const PAGE_TITLES = {
   home: "comcen os — maxhayim.com",
+  gits: "Gits — comcen os",
   about: "About — comcen os",
+  internet: "Internet — comcen os",
   contact: "Contact — comcen os",
 };
 
@@ -308,7 +312,9 @@ function buildFlightCode(repo) {
 
 const OS_PAGES = [
   { page: "home", label: "home", href: "#/", Icon: House },
+  { page: "gits", label: "gits", href: "#/gits", Icon: Github },
   { page: "about", label: "about", href: "#/about", Icon: FileText },
+  { page: "internet", label: "internet", href: "#/internet", Icon: Globe },
   { page: "contact", label: "contact", href: "#/contact", Icon: Mail },
 ];
 
@@ -2185,16 +2191,28 @@ function PongGame() {
   );
 }
 
-function InteractiveDialup() {
+function InteractiveDialup({ onConnected, onDisconnected }) {
   const audioRef = useRef(null);
+  const timersRef = useRef([]);
   const [status, setStatus] = useState("idle");
+
+  useEffect(() => () => timersRef.current.forEach(clearTimeout), []);
+
+  const hangUp = () => {
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+    audioRef.current?.pause();
+    setStatus("idle");
+    setLines((prev) => [...prev, "ATH0", "NO CARRIER"]);
+    onDisconnected?.();
+  };
   const [lines, setLines] = useState([
     "ATDT 305-503-0823",
     "System ready. Awaiting connection command.",
   ]);
 
   const startDialup = () => {
-    if (status === "connecting") return;
+    if (status !== "idle") return;
 
     setStatus("connecting");
     setLines([
@@ -2205,17 +2223,16 @@ function InteractiveDialup() {
 
     if (audioRef.current) playSound(audioRef.current).catch(() => {});
 
-    setTimeout(() => {
-      setLines((prev) => [
-        ...prev,
-        "Negotiating carrier... 2400 / 9600 / 14400",
-      ]);
-    }, 1600);
-
-    setTimeout(() => {
-      setLines((prev) => [...prev, "CONNECT 2400"]);
-      setStatus("connected");
-    }, 4200);
+    timersRef.current.push(
+      setTimeout(() => {
+        setLines((prev) => [...prev, "Negotiating carrier... 2400 / 9600 / 14400"]);
+      }, 1600),
+      setTimeout(() => {
+        setLines((prev) => [...prev, "CONNECT 14400", "Logging on to the network..."]);
+        setStatus("connected");
+        onConnected?.();
+      }, 4200),
+    );
   };
 
   return (
@@ -2249,16 +2266,26 @@ function InteractiveDialup() {
                 : "border-cyan-500/20 bg-cyan-500/10 text-cyan-300"
             }`}
           >
-            {status === "connected" ? "CONNECTED" : "READY"}
+            {status === "connected" ? "CONNECTED" : status === "connecting" ? "DIALING" : "READY"}
           </motion.div>
 
-          <button
-            type="button"
-            onClick={startDialup}
-            className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs uppercase tracking-[0.2em] text-emerald-300 transition hover:bg-emerald-500/20"
-          >
-            Connect
-          </button>
+          {status === "idle" ? (
+            <button
+              type="button"
+              onClick={startDialup}
+              className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs uppercase tracking-[0.2em] text-emerald-300 transition hover:bg-emerald-500/20"
+            >
+              Connect
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={hangUp}
+              className="rounded-xl border border-zinc-700 bg-zinc-950/70 px-4 py-2 text-xs uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-zinc-900"
+            >
+              Disconnect
+            </button>
+          )}
         </div>
       </div>
 
@@ -2287,6 +2314,108 @@ function InteractiveDialup() {
 }
 
 function HomePage() {
+  return (
+    <SharedShell currentPage="home">
+      <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
+        <div className="grid gap-6 md:grid-cols-12">
+          <div className="md:col-span-8 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
+            <div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-emerald-300">
+                  <User className="h-3.5 w-3.5" />
+                  Command Profile
+                </div>
+                <h1 className="mt-2 break-words text-[26px] font-semibold tracking-tight text-zinc-100 sm:text-3xl md:text-5xl">
+                  maxhayim.com
+                </h1>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-zinc-400">
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin className="h-4 w-4 text-cyan-300" />
+                MIA
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Globe className="h-4 w-4 text-emerald-300" />
+                Public Command Center Homepage
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Shield className="h-4 w-4 text-violet-300" />
+                Open Repositories Only
+              </span>
+            </div>
+
+            <p className="mt-5 max-w-4xl text-sm leading-7 text-zinc-300 md:text-base">
+              comcen os is a communications center operating system imagined
+              through a late-1990s vision of the future, combining public
+              repositories, telemetry, activity logs, and engineering identity
+              within a radar-inspired interface centered on live GitHub
+              activity. The site also includes live, interactive elements that
+              explore how a communications-focused operating system could look,
+              feel, and function.
+            </p>
+          </div>
+
+          <div className="md:col-span-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
+            <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] term-title text-cyan-300">
+              <Github className="h-3.5 w-3.5" />
+              Quick Links
+            </div>
+
+            <div className="space-y-3">
+              <a
+                href="https://github.com/maxhayim"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between rounded-xl border border-zinc-800 bg-black/40 px-4 py-3 text-sm text-zinc-300 transition hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
+              >
+                GitHub Profile
+                <ExternalLink className="h-4 w-4" />
+              </a>
+
+              <a
+                href="#/gits"
+                className="flex items-center justify-between rounded-xl border border-zinc-800 bg-black/40 px-4 py-3 text-sm text-zinc-300 transition hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
+              >
+                Gits
+                <ExternalLink className="h-4 w-4" />
+              </a>
+
+              <a
+                href="#/about"
+                className="flex items-center justify-between rounded-xl border border-zinc-800 bg-black/40 px-4 py-3 text-sm text-zinc-300 transition hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
+              >
+                About
+                <ExternalLink className="h-4 w-4" />
+              </a>
+
+              <a
+                href="#/internet"
+                className="flex items-center justify-between rounded-xl border border-zinc-800 bg-black/40 px-4 py-3 text-sm text-zinc-300 transition hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
+              >
+                Internet
+                <ExternalLink className="h-4 w-4" />
+              </a>
+
+              <a
+                href="#/contact"
+                className="flex items-center justify-between rounded-xl border border-zinc-800 bg-black/40 px-4 py-3 text-sm text-zinc-300 transition hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
+              >
+                Contact
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <BuddyList />
+    </SharedShell>
+  );
+}
+
+function GitsPage() {
   const [repos, setRepos] = useState(fallbackRepos);
   const [loadingRepos, setLoadingRepos] = useState(true);
   const [visibleMessages, setVisibleMessages] = useState(1);
@@ -2443,83 +2572,20 @@ function HomePage() {
   ];
 
   return (
-    <SharedShell currentPage="home">
+    <SharedShell currentPage="gits">
       <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
-        <div className="grid gap-6 md:grid-cols-12">
-          <div className="md:col-span-8 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-            <div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-emerald-300">
-                  <User className="h-3.5 w-3.5" />
-                  Command Profile
-                </div>
-                <h1 className="mt-2 break-words text-[26px] font-semibold tracking-tight text-zinc-100 sm:text-3xl md:text-5xl">
-                  maxhayim.com
-                </h1>
-              </div>
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-zinc-400">
-              <span className="inline-flex items-center gap-1.5">
-                <MapPin className="h-4 w-4 text-cyan-300" />
-                MIA
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Globe className="h-4 w-4 text-emerald-300" />
-                Public Command Center Homepage
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Shield className="h-4 w-4 text-violet-300" />
-                Open Repositories Only
-              </span>
-            </div>
-
-            <p className="mt-5 max-w-4xl text-sm leading-7 text-zinc-300 md:text-base">
-              comcen os is a communications center operating system imagined
-              through a late-1990s vision of the future, combining public
-              repositories, telemetry, activity logs, and engineering identity
-              within a radar-inspired interface centered on live GitHub
-              activity. The site also includes live, interactive elements that
-              explore how a communications-focused operating system could look,
-              feel, and function.
-            </p>
-          </div>
-
-          <div className="md:col-span-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-            <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] term-title text-cyan-300">
-              <Github className="h-3.5 w-3.5" />
-              Quick Links
-            </div>
-
-            <div className="space-y-3">
-              <a
-                href="https://github.com/maxhayim"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center justify-between rounded-xl border border-zinc-800 bg-black/40 px-4 py-3 text-sm text-zinc-300 transition hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
-              >
-                GitHub Profile
-                <ExternalLink className="h-4 w-4" />
-              </a>
-
-              <a
-                href="#/about"
-                className="flex items-center justify-between rounded-xl border border-zinc-800 bg-black/40 px-4 py-3 text-sm text-zinc-300 transition hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
-              >
-                About
-                <ExternalLink className="h-4 w-4" />
-              </a>
-
-              <a
-                href="#/contact"
-                className="flex items-center justify-between rounded-xl border border-zinc-800 bg-black/40 px-4 py-3 text-sm text-zinc-300 transition hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
-              >
-                Contact
-                <ExternalLink className="h-4 w-4" />
-              </a>
-            </div>
-          </div>
+        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-emerald-300">
+          <Github className="h-3.5 w-3.5" />
+          Gits
         </div>
+        <h1 className="mt-2 text-[26px] font-semibold tracking-tight text-zinc-100 sm:text-3xl md:text-5xl">Gits</h1>
+        <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-300 md:text-base">
+          Live GitHub activity from{" "}
+          <a href="https://github.com/maxhayim" target="_blank" rel="noreferrer" className="underline decoration-zinc-600 underline-offset-4 hover:text-zinc-100">
+            github.com/maxhayim
+          </a>
+          : the repos radar, traffic, telemetry, recent activity, and stats.
+        </p>
       </section>
 
       <section className="grid gap-6 md:grid-cols-12">
@@ -3028,7 +3094,235 @@ function HomePage() {
         </div>
       </section>
 
-      <BuddyList />
+    </SharedShell>
+  );
+}
+
+
+/* ---------- Internet: dial up, then browse. A short free trial keeps it from being abused. ---------- */
+
+// ProtoWeb is an HTTP proxy (wayback.protoweb.org:7851), which a static page can't route through.
+// If you host a relay such as github.com/jlyttle/protoweb-proxy, put its address here and the
+// browser will show the real restored sites. Left empty, it shows the built-in start page.
+const PROTOWEB_RELAY_URL = "";
+const TRIAL_MINUTES = 3;
+const TRIAL_KEY = "comcen_trial_end";
+
+function readTrialEnd() {
+  const fromStore = Number(readStore("localStorage", TRIAL_KEY));
+  const match = document.cookie.match(new RegExp(`(?:^|; )${TRIAL_KEY}=([^;]*)`));
+  const fromCookie = match ? Number(decodeURIComponent(match[1])) : NaN;
+  const values = [fromStore, fromCookie].filter((n) => Number.isFinite(n) && n > 0);
+  return values.length ? Math.min(...values) : null;
+}
+
+function startTrial() {
+  const existing = readTrialEnd();
+  if (existing) return existing;
+  const end = Date.now() + TRIAL_MINUTES * 60 * 1000;
+  writeStore("localStorage", TRIAL_KEY, String(end));
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${TRIAL_KEY}=${end}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;
+  return end;
+}
+
+function formatLeft(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function BrowserStartPage() {
+  return (
+    <div className="retro-page">
+      <center>
+        <h1>Welcome to comcen online!</h1>
+        <p>
+          <i>You are now connected to the Information Superhighway at 14,400 bps.</i>
+        </p>
+      </center>
+      <hr />
+      <h2>Next stop: ProtoWeb</h2>
+      <p>
+        ProtoWeb is a volunteer project that restores websites from the early days of the web, from about 1996 to 2001,
+        by piecing them back together from archives. You browse it through a proxy server, so the old sites load as
+        they originally looked.
+      </p>
+      <h3>How to connect</h3>
+      <ol>
+        <li>
+          In your browser&rsquo;s proxy settings, set the HTTP proxy to <tt>wayback.protoweb.org</tt>, port <tt>7851</tt>.
+        </li>
+        <li>
+          Visit <tt>http://www.inode.com/</tt>, ProtoWeb&rsquo;s directory of restored sites.
+        </li>
+        <li>For the full dial-up feel, use port <tt>7856</tt> instead: it throttles pages to modem speed.</li>
+      </ol>
+      <p>
+        <a href="https://protoweb.org/" target="_blank" rel="noreferrer">
+          Visit protoweb.org
+        </a>{" "}
+        for their quick start guide and browser downloads.
+      </p>
+      <hr />
+      <p className="retro-small">
+        Best viewed at 800 &times; 600 &middot; comcen online &middot; &copy; {new Date().getFullYear()}
+      </p>
+    </div>
+  );
+}
+
+function NotFoundPage() {
+  return (
+    <div className="retro-page">
+      <h1>Not Found</h1>
+      <p>The requested URL /signup was not found on this server.</p>
+      <hr />
+      <address>Apache/1.3.6 Server at maxhayim.com Port 80</address>
+    </div>
+  );
+}
+
+function RetroBrowser({ online, onHangUp }) {
+  const [page, setPage] = useState("start"); // "start" | "signup"
+  // The browser remounts on every connect, so it always reads the current trial clock.
+  const [trialEnd] = useState(readTrialEnd);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!online) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [online]);
+
+  const expired = trialEnd !== null && now >= trialEnd;
+  const relay = PROTOWEB_RELAY_URL.replace(/\/$/, "");
+  const address = !online
+    ? ""
+    : page === "signup"
+      ? "http://maxhayim.com/signup"
+      : relay
+        ? "http://www.inode.com/"
+        : "http://maxhayim.com/start.html";
+
+  return (
+    <div className="retro-browser overflow-hidden rounded-2xl border border-zinc-800">
+      {/* Toolbar */}
+      <div className="retro-chrome flex flex-wrap items-center gap-2 border-b px-3 py-2 text-[12px]">
+        <span className="font-semibold">comcen navigator</span>
+        <div className="flex items-center gap-1" aria-hidden="true">
+          {["back", "forward", "reload", "home"].map((b) => (
+            <span key={b} className="retro-btn">
+              {b}
+            </span>
+          ))}
+        </div>
+        <label className="flex min-w-[180px] flex-1 items-center gap-2">
+          <span className="text-[11px] opacity-70">Location:</span>
+          <input readOnly value={address} className="retro-address w-full" aria-label="Address" />
+        </label>
+      </div>
+
+      {/* Page */}
+      <div className="relative h-[460px] overflow-auto bg-[#ffffff]">
+        {!online ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-[#444]">
+            <Globe className="h-8 w-8 opacity-50" strokeWidth={1.4} />
+            <div className="font-semibold">You are not connected.</div>
+            <div className="text-sm">Dial up above to go online.</div>
+          </div>
+        ) : page === "signup" ? (
+          <NotFoundPage />
+        ) : relay && !expired ? (
+          <iframe
+            title="ProtoWeb"
+            src={`${relay}/proxy?url=${encodeURIComponent("http://www.inode.com/")}`}
+            className="h-full w-full border-0"
+          />
+        ) : (
+          <BrowserStartPage />
+        )}
+
+        {online && expired && page !== "signup" && (
+          <div className="absolute inset-0 flex items-center justify-center bg-[rgba(0,0,0,0.3)] p-4">
+            <div role="alertdialog" aria-labelledby="trial-title" aria-describedby="trial-text" className="retro-dialog w-full max-w-[380px]">
+              <div className="retro-dialog-title" id="trial-title">
+                comcen online
+              </div>
+              <div className="p-4">
+                <p id="trial-text" className="text-sm leading-6">
+                  <b>Your free trial has ended.</b>
+                  <br />
+                  Thanks for trying comcen online! To keep surfing the Information Superhighway, sign up for a
+                  membership.
+                </p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" className="retro-btn retro-btn-default" onClick={() => setPage("signup")}>
+                    Sign Up
+                  </button>
+                  <button type="button" className="retro-btn" onClick={onHangUp}>
+                    Disconnect
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Status bar */}
+      <div className="retro-chrome flex items-center justify-between gap-3 border-t px-3 py-1.5 text-[11px]">
+        <span>{online ? (page === "signup" ? "404 Not Found" : "Document: Done") : "Offline"}</span>
+        <span className="tabular-nums">
+          {!online ? "" : expired ? "Free trial ended" : trialEnd ? `Free trial: ${formatLeft(trialEnd - now)} left` : ""}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function InternetPage() {
+  const [online, setOnline] = useState(false);
+  const [dialKey, setDialKey] = useState(0);
+
+  return (
+    <SharedShell currentPage="internet">
+      <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
+        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-emerald-300">
+          <Globe className="h-3.5 w-3.5" />
+          Internet
+        </div>
+        <h1 className="mt-2 text-[26px] font-semibold tracking-tight text-zinc-100 sm:text-3xl md:text-5xl">Internet</h1>
+        <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-300 md:text-base">
+          Dial up, listen to the handshake, and take the browser for a spin. New members get a {TRIAL_MINUTES}-minute free
+          trial.
+        </p>
+      </section>
+
+      <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
+        <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-cyan-300">
+          <Phone className="h-3.5 w-3.5" />
+          Dial-Up Connection
+        </div>
+        <InteractiveDialup key={dialKey} onConnected={() => {
+            startTrial(); // the trial clock starts the first time a visitor gets online, and never resets
+            setOnline(true);
+          }} onDisconnected={() => setOnline(false)} />
+      </section>
+
+      <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
+        <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-amber-300">
+          <Monitor className="h-3.5 w-3.5" />
+          Web Browser
+        </div>
+        <RetroBrowser
+          key={online ? "on" : "off"}
+          online={online}
+          onHangUp={() => {
+            setOnline(false);
+            setDialKey((k) => k + 1);
+          }}
+        />
+      </section>
     </SharedShell>
   );
 }
@@ -3092,7 +3386,6 @@ function AboutPage() {
           </div>
 
           <div className="space-y-4">
-            <InteractiveDialup />
 
             {journey.map((item) => {
               const Icon = item.icon;
@@ -4497,7 +4790,11 @@ export default function App() {
   }, []);
 
   const page =
-    route === "about" ? (
+    route === "gits" ? (
+      <GitsPage />
+    ) : route === "internet" ? (
+      <InternetPage />
+    ) : route === "about" ? (
       <AboutPage />
     ) : route === "contact" ? (
       <ContactPage />
