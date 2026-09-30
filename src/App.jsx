@@ -3695,6 +3695,8 @@ function BootLogo() {
 }
 
 function BootScreen({ onDone, mode }) {
+  // Full screen isn't available everywhere (iPhone Safari, some embeds); fall back to a maximize hint.
+  const canFullscreen = Boolean(document.fullscreenEnabled && document.documentElement.requestFullscreen);
   const [phase, setPhase] = useState(mode === "powered" ? "on" : mode);
   const powered = phase === "on";
   const [shutdownVisible, setShutdownVisible] = useState(false);
@@ -3749,6 +3751,14 @@ function BootScreen({ onDone, mode }) {
   useEffect(() => {
     const onKey = (e) => {
       if (e.repeat) return;
+      // F toggles full screen for the full experience (and powers on from the power button)
+      if ((e.key === "f" || e.key === "F") && canFullscreen && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+        else document.documentElement.requestFullscreen?.().catch(() => {});
+        if (!powered) setPhase("on");
+        return;
+      }
       handleInput();
     };
     window.addEventListener("keydown", onKey);
@@ -3862,7 +3872,13 @@ function BootScreen({ onDone, mode }) {
           </svg>
           <div>Press any key to power on</div>
           <div className="text-[18px] opacity-50 md:text-[22px]">
-            Sound on for the full experience
+            {canFullscreen ? (
+              <>
+                Press <span className="opacity-100">F</span> for full screen and turn your sound on for the full experience
+              </>
+            ) : (
+              "Maximize your window and turn your sound on for the full experience"
+            )}
           </div>
         </div>
       ) : screen === 3 ? (
@@ -3935,8 +3951,13 @@ function BootScreen({ onDone, mode }) {
           {post >= 1 && (
             <div className="mt-auto">
               <div>
-                Press <span className={bright}>DEL</span> to enter SETUP, any
-                other key to skip
+                Press <span className={bright}>DEL</span> to enter SETUP
+                {canFullscreen ? (
+                  <>
+                    , <span className={bright}>F</span> for full screen
+                  </>
+                ) : null}
+                , any other key to skip
               </div>
               <div>{bootDateCode()}</div>
             </div>
