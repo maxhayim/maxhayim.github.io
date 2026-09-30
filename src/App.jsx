@@ -3074,6 +3074,41 @@ function startTrial() {
   return end;
 }
 
+
+// CD key: a registered copy never runs out. Only a SHA-256 fingerprint of the key is kept here.
+const CD_KEY_HASH = "31eccaeda039fccd512b50642550c5386f34b47d3dfadb056ae8c19f5e378300";
+const LICENSE_KEY = "comcen_license";
+
+function isRegistered() {
+  return readStore("localStorage", LICENSE_KEY) === CD_KEY_HASH || document.cookie.includes(`${LICENSE_KEY}=${CD_KEY_HASH}`);
+}
+
+function removeLicense() {
+  try {
+    localStorage.removeItem(LICENSE_KEY);
+  } catch {
+    /* ignore */
+  }
+  document.cookie = `${LICENSE_KEY}=; Max-Age=0; Path=/; SameSite=Lax`;
+}
+
+function formatCdKey(raw) {
+  const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 25);
+  return clean.match(/.{1,5}/g)?.join("-") ?? "";
+}
+
+async function checkCdKey(key) {
+  const clean = key.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (clean.length !== 25 || !window.crypto?.subtle) return false;
+  const digest = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(clean));
+  const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  if (hex !== CD_KEY_HASH) return false;
+  writeStore("localStorage", LICENSE_KEY, CD_KEY_HASH);
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${LICENSE_KEY}=${CD_KEY_HASH}; Max-Age=315360000; Path=/; SameSite=Lax${secure}`;
+  return true;
+}
+
 function formatLeft(ms) {
   const total = Math.max(0, Math.ceil(ms / 1000));
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
@@ -3144,6 +3179,11 @@ function InternetWindow() {
   const [log, setLog] = useState([`ATDT ${DIALUP_NUMBER}`, "System ready. Awaiting connection command."]);
   const [page, setPage] = useState("start");
   const [trialEnd, setTrialEnd] = useState(null);
+  const [registered, setRegistered] = useState(isRegistered);
+  const [dialog, setDialog] = useState("ended"); // "ended" | "key"
+  const [cdKey, setCdKey] = useState("");
+  const [keyError, setKeyError] = useState("");
+  const [checking, setChecking] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const reduceMotion = prefersReducedMotion();
 
@@ -3175,6 +3215,9 @@ function InternetWindow() {
       setTrialEnd(startTrial());
       setNow(Date.now());
       setPage("start");
+      setDialog("ended");
+      setCdKey("");
+      setKeyError("");
       setStage("browser");
     });
   };
@@ -3189,7 +3232,17 @@ function InternetWindow() {
     setLog((l) => [...l.slice(-4), "ATH0", "NO CARRIER"]);
   };
 
-  const expired = trialEnd !== null && now >= trialEnd;
+  const expired = !registered && trialEnd !== null && now >= trialEnd;
+
+  const submitKey = async (e) => {
+    e.preventDefault();
+    setChecking(true);
+    setKeyError("");
+    const ok = await checkCdKey(cdKey);
+    setChecking(false);
+    if (ok) setRegistered(true);
+    else setKeyError("That CD key isn't valid. Check it and try again.");
+  };
   const address = page === "signup" ? "http://maxhayim.com/signup" : "http://maxhayim.com/start.html";
   const fade = { duration: reduceMotion ? 0 : 0.3, ease: [0.3, 0, 0.2, 1] };
 
@@ -3204,7 +3257,8 @@ function InternetWindow() {
           </span>
           <h2 className="mt-4 text-2xl font-semibold tracking-tight text-zinc-100">comcen online</h2>
           <p className="mt-1 text-sm text-zinc-400">
-            Dial {DIALUP_NUMBER} to sign on. New members get a {TRIAL_MINUTES}-minute free trial.
+            Dial {DIALUP_NUMBER} to sign on.{" "}
+            {registered ? "This copy is registered." : `New members get a ${TRIAL_MINUTES}-minute free trial.`}
           </p>
 
           <ol className="mt-6 flex items-center gap-2 text-[12px] sm:gap-3" aria-label="Sign-on progress">
@@ -3268,24 +3322,75 @@ function InternetWindow() {
 
             {expired && page !== "signup" && (
               <div className="absolute inset-0 flex items-center justify-center bg-[rgba(0,0,0,0.28)] p-4">
-                <div role="alertdialog" aria-labelledby="trial-title" aria-describedby="trial-text" className="os-popover w-full max-w-[380px] p-5">
-                  <div className="flex items-center gap-2">
-                    <span className="os-led" aria-hidden="true" />
-                    <h3 id="trial-title" className="font-semibold text-zinc-100">
-                      Your free trial has ended
-                    </h3>
-                  </div>
-                  <p id="trial-text" className="mt-2 text-sm leading-6 text-zinc-400">
-                    Thanks for trying comcen online! To keep surfing the Information Superhighway, sign up for a membership.
-                  </p>
-                  <div className="mt-4 flex justify-end gap-2">
-                    <button type="button" onClick={hangUp} className="net-secondary">
-                      Disconnect
-                    </button>
-                    <button type="button" onClick={() => setPage("signup")} className="net-primary">
-                      Sign Up
-                    </button>
-                  </div>
+                <div role="alertdialog" aria-labelledby="trial-title" aria-describedby="trial-text" className="os-popover w-full max-w-[400px] p-5">
+                  {dialog === "ended" ? (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <span className="os-led" aria-hidden="true" />
+                        <h3 id="trial-title" className="font-semibold text-zinc-100">
+                          Your free trial has ended
+                        </h3>
+                      </div>
+                      <p id="trial-text" className="mt-2 text-sm leading-6 text-zinc-400">
+                        Thanks for trying comcen online! To keep surfing the Information Superhighway, enter the CD key from
+                        your comcen online disc, or sign up for a membership.
+                      </p>
+                      <div className="mt-4 flex flex-wrap justify-end gap-2">
+                        <button type="button" onClick={hangUp} className="net-secondary">
+                          Close
+                        </button>
+                        <button type="button" onClick={() => setPage("signup")} className="net-secondary">
+                          Sign Up
+                        </button>
+                        <button type="button" onClick={() => setDialog("key")} className="net-primary">
+                          Enter CD Key
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <form onSubmit={submitKey}>
+                      <div className="flex items-center gap-2">
+                        <Disc className="h-4 w-4 text-[var(--os-accent)]" aria-hidden="true" />
+                        <h3 id="trial-title" className="font-semibold text-zinc-100">
+                          Enter your CD key
+                        </h3>
+                      </div>
+                      <p id="trial-text" className="mt-2 text-sm leading-6 text-zinc-400">
+                        You&rsquo;ll find the 25-character key on the back of your comcen online CD case.
+                      </p>
+                      <label htmlFor="cd-key" className="sr-only">
+                        CD key
+                      </label>
+                      <input
+                        id="cd-key"
+                        autoFocus
+                        autoComplete="off"
+                        spellCheck={false}
+                        value={cdKey}
+                        onChange={(e) => {
+                          setCdKey(formatCdKey(e.target.value));
+                          setKeyError("");
+                        }}
+                        placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX"
+                        aria-invalid={Boolean(keyError)}
+                        aria-describedby={keyError ? "cd-key-error" : undefined}
+                        className="net-address mt-3 w-full rounded-lg px-3 py-2 text-center font-mono text-[14px] tracking-[0.08em]"
+                      />
+                      {keyError && (
+                        <p id="cd-key-error" role="alert" className="mt-2 text-[13px] text-[var(--os-warn)]">
+                          {keyError}
+                        </p>
+                      )}
+                      <div className="mt-4 flex justify-end gap-2">
+                        <button type="button" onClick={() => setDialog("ended")} className="net-secondary">
+                          Back
+                        </button>
+                        <button type="submit" disabled={checking || cdKey.replace(/-/g, "").length !== 25} className="net-primary disabled:opacity-50">
+                          {checking ? "Checking…" : "Register"}
+                        </button>
+                      </div>
+                    </form>
+                  )}
                 </div>
               </div>
             )}
@@ -3297,7 +3402,32 @@ function InternetWindow() {
               <span className="os-led" aria-hidden="true" />
               {page === "signup" ? "404 Not Found" : "Connected at 14,400 bps"}
             </span>
-            <span className="tabular-nums">{expired ? "Free trial ended" : trialEnd ? `Free trial: ${formatLeft(trialEnd - now)} left` : ""}</span>
+            <span className="flex items-center gap-2 tabular-nums">
+              {registered ? (
+                <>
+                  Registered
+                  <button
+                    type="button"
+                    onClick={() => {
+                      removeLicense();
+                      setRegistered(false);
+                      setDialog("ended");
+                      setCdKey("");
+                    }}
+                    title="Remove the CD key from this browser"
+                    className="rounded-full border border-zinc-800 px-2 py-0.5 text-[11px] hover:bg-[var(--os-hover)] hover:text-zinc-100"
+                  >
+                    remove key
+                  </button>
+                </>
+              ) : expired ? (
+                "Free trial ended"
+              ) : trialEnd ? (
+                `Free trial: ${formatLeft(trialEnd - now)} left`
+              ) : (
+                ""
+              )}
+            </span>
           </div>
         </motion.div>
       )}
