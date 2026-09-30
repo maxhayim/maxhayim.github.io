@@ -2852,88 +2852,169 @@ function BootScreen({ onDone, mode }) {
 const buddyListData = [
   {
     name: "Dieter Rams",
+    quote: "Good design is as little design as possible.",
+    quoteSource: "his ten principles of good design",
+    timeZone: "Europe/Berlin",
     bio: "German functionalist industrial architect and legendary head of design at Braun. Pioneered the famous 'Less, but better' ideology and established the 10 Principles for Good Design.",
     products: ["Braun SK-4 phonograph", "Vitsoe 606 Universal Shelving System", "Braun ET66 calculator"],
   },
   {
     name: "Steve Jobs",
+    quote: "Design is not just what it looks like and feels like. Design is how it works.",
+    quoteSource: "The New York Times Magazine, 2003",
     signedOff: "1955–2011",
     bio: "Co-founder and CEO of Apple and NeXT. A visionary leader who profoundly transformed consumer technology, animation, and digital media by treating technology as functional art.",
     products: ["Macintosh", "iPod", "iPhone", "iPad", "Pixar's Toy Story"],
   },
   {
     name: "Jony Ive",
+    quote: "So much of what we try to do is get to a point where the solution seems inevitable.",
+    quoteSource: "Icon magazine, 2003",
+    timeZone: "America/Los_Angeles",
     bio: "British designer and former Chief Design Officer of Apple. Mastermind behind Apple's iconic minimalist aluminum and glass design language.",
     products: ["iMac G3", "iPod", "iPhone", "MacBook unibody design"],
   },
   {
     name: "Jon Rubinstein",
+    quote: "I know how to do this. I've got all the parts.",
+    quoteSource: "recalling the iPod pitch to Steve Jobs",
+    timeZone: "America/Los_Angeles",
     bio: "American electrical engineer and executive. Managed hardware teams at NeXT and Apple, heavily credited with shepherding the engineering behind early Apple revivals and consumer electronics.",
     products: ["Power Macintosh G3", "iMac G3", "First-generation iPod hard-drive engineering"],
   },
   {
     name: "Hartmut Esslinger",
+    quote: "Form follows emotion.",
+    quoteSource: "frog design's guiding principle",
+    timeZone: "America/Los_Angeles",
     bio: "German-American industrial designer and founder of frogdesign. Championed the philosophy of 'form follows emotion' and created a unified visual identity for major corporations.",
     products: ["Apple 'Snow White' design language (Apple IIc)", "Sony Trinitron TV frames", "Original Sony Walkman"],
   },
   {
     name: "Bill Moggridge",
+    quote: "Design is an excellent bridge between the sciences and the arts.",
+    quoteSource: "Smithsonian magazine",
     signedOff: "1943–2012",
     bio: "British designer, author, and co-founder of IDEO. Pioneered the discipline of interaction design and championed human-centered engineering.",
     products: ["GRID Compass (the world's first successful clamshell laptop)"],
   },
   {
     name: "David Kelley",
+    quote: "Fail faster to succeed sooner.",
+    quoteSource: "as quoted by IDEO",
+    timeZone: "America/Los_Angeles",
     bio: "American engineer, professor, and co-founder of IDEO and the Stanford d.school. Popularized the 'Design Thinking' methodology globally.",
     products: ["Apple's first commercial mouse", "Ergonomic medical instrumentation"],
   },
   {
     name: "Naoto Fukasawa",
+    quote: "People shouldn't really have to think about an object when they are using it.",
+    quoteSource: "Dwell, 2006",
+    timeZone: "Asia/Tokyo",
     bio: "Japanese industrial designer recognized for his clean, minimalist functional aesthetics and his profound collaboration with MUJI and Magis.",
     products: ["MUJI Wall-Mounted CD Player", "INFOBAR cellular phones"],
   },
   {
     name: "Jasper Morrison",
+    quote: "An object becomes Super Normal through use.",
+    quoteSource: "Super Normal dialogue, Axis Gallery Tokyo",
+    timeZone: "Europe/London",
     bio: "Renowned British product designer who defined the 'Super Normal' approach to aesthetics, favoring understated durability over loud styling.",
     products: ["Thinking Man's Chair", "Low Pad armchair", "Rowenta appliances"],
   },
   {
     name: "Marc Newson",
+    quote: "The best thing about design is that you can take it or leave it.",
+    quoteSource: "IDSA interview",
+    timeZone: "Europe/London",
     bio: "Australian industrial designer blending organic lines ('biomorphism') with aerospace-grade engineering. Co-founded LoveFrom with Jony Ive.",
     products: ["Lockheed Lounge chair", "Ikepod watches", "Qantas Skybed"],
   },
   {
     name: "Richard Sapper",
+    quote: "[Good design] has to transmit a message to whomever is looking at it.",
+    quoteSource: "Dezeen, 2013",
     signedOff: "1932–2015",
     bio: "German industrial designer who seamlessly blended technical innovation with elegant geometric forms.",
     products: ["IBM ThinkPad (the classic black brick)", "Tizio halogen desk lamp"],
   },
   {
     name: "Susan Kare",
+    quote: "I believe that good icons are more akin to road signs rather than illustrations.",
+    quoteSource: "interview, 2001",
+    timeZone: "America/Los_Angeles",
     bio: "Prolific artist and graphic designer who designed the original user interface elements, icons, and typefaces for the first Apple Macintosh.",
     products: ["'Happy Mac' icon", "Chicago typeface", "Cairo 'Clarus the Dogcow' icon"],
   },
   {
     name: "Jerry Manock",
+    quote: "Little details like that made the Mac a success.",
+    quoteSource: "Macworld",
+    timeZone: "America/New_York",
     bio: "Regarded as the father of Apple's Industrial Design Group. Brought structured manufacturing, housing acoustics, and color discipline to early microcomputers.",
     products: ["Original Apple II housing", "Apple III", "Macintosh 128K enclosure"],
   },
   {
     name: "Tony Fadell",
+    quote: "The first secret of design is… noticing.",
+    quoteSource: "TED, 2015",
+    timeZone: "Europe/Paris",
     bio: "American engineer, innovator, and former head of the iPod division at Apple. Later founded Nest Labs to redefine automated home accessories.",
     products: ["iPod hardware design architecture", "Nest Learning Thermostat"],
   },
   {
     name: "Ken Segall",
+    quote: "To Steve Jobs, simplicity wasn't just a design principle. It was a religion and a weapon.",
+    quoteSource: "Insanely Simple",
+    timeZone: "America/New_York",
     bio: "Legendary ad agency creative director who closely collaborated with Steve Jobs to engineer Apple's iconic public rebranding.",
     products: ["'Think Different' ad campaign", "Naming convention for the 'i' prefix (iMac, iPod)"],
   },
 ];
 
-// AIM's classic default auto-response
-const AWAY_MESSAGE = "I am away from my computer right now.";
+// Legends are online during their daytime (9am to 9pm in their home time zone) and away overnight.
+const ONLINE_FROM_HOUR = 9;
+const ONLINE_UNTIL_HOUR = 21;
+
+function localClock(timeZone, now) {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", hourCycle: "h23" }).format(now)
+  );
+  const time = new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit" }).format(now);
+  const zone =
+    new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "long" })
+      .formatToParts(now)
+      .find((p) => p.type === "timeZoneName")?.value || timeZone;
+  return { hour, time, zone };
+}
+
+function buddyPresence(buddy, now) {
+  if (buddy.signedOff) return { status: "offline" };
+  const clock = localClock(buddy.timeZone, now);
+  const online = clock.hour >= ONLINE_FROM_HOUR && clock.hour < ONLINE_UNTIL_HOUR;
+  return { status: online ? "online" : "away", ...clock };
+}
+
+function useMinuteClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
+
+function Quote({ buddy }) {
+  return (
+    <figure>
+      <blockquote className="text-sm leading-6 text-zinc-100 md:text-base">&ldquo;{buddy.quote}&rdquo;</blockquote>
+      <figcaption className="mt-1 text-xs text-zinc-500">&mdash; {buddy.quoteSource}</figcaption>
+    </figure>
+  );
+}
 
 function BuddyList() {
+  const now = useMinuteClock();
   const [selected, setSelected] = useState(0);
   const [openGroups, setOpenGroups] = useState({ legends: true, offline: true });
   const listRef = useRef(null);
@@ -2941,12 +3022,15 @@ function BuddyList() {
   const reduceMotion = prefersReducedMotion();
   const count = buddyListData.length;
 
+  const buddies = buddyListData.map((b, i) => ({ ...b, i, presence: buddyPresence(b, now) }));
+  const legends = buddies.filter((b) => !b.signedOff);
+  const onlineCount = legends.filter((b) => b.presence.status === "online").length;
+  const awayCount = legends.length - onlineCount;
+
   const groups = [
-    { id: "legends", label: "Design Legends", members: buddyListData.map((b, i) => ({ ...b, i })).filter((b) => !b.signedOff) },
-    { id: "offline", label: "Offline", members: buddyListData.map((b, i) => ({ ...b, i })).filter((b) => b.signedOff) },
+    { id: "legends", label: "Design Legends", members: legends, tally: `${onlineCount}/${legends.length}` },
+    { id: "offline", label: "Offline", members: buddies.filter((b) => b.signedOff), tally: `0/${count - legends.length}` },
   ];
-  const awayCount = groups[0].members.length;
-  // Keyboard order follows what's visible in the list
   const visible = groups.flatMap((g) => (openGroups[g.id] ? g.members.map((m) => m.i) : []));
 
   const select = (index, focus = false) => {
@@ -2954,12 +3038,10 @@ function BuddyList() {
     if (focus) listRef.current?.querySelector(`[data-buddy="${index}"]`)?.focus();
   };
   const step = (dir) => {
-    const order = visible.length ? visible : buddyListData.map((_, i) => i);
+    const order = visible.length ? visible : buddies.map((b) => b.i);
     const pos = order.indexOf(selected);
-    const next = order[(pos + dir + order.length) % order.length];
-    select(next, true);
+    select(order[(pos + dir + order.length) % order.length], true);
   };
-
   const onListKeyDown = (e) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -2978,11 +3060,8 @@ function BuddyList() {
     touchStartRef.current = null;
     const end = e.changedTouches[0]?.clientX;
     if (start == null || end == null || Math.abs(end - start) < 50) return;
-    const next = (selected + (end < start ? 1 : -1) + count) % count;
-    setSelected(next);
+    setSelected((selected + (end < start ? 1 : -1) + count) % count);
   };
-
-  const current = buddyListData[selected];
 
   return (
     <section className="grid gap-6 md:grid-cols-12">
@@ -2993,11 +3072,11 @@ function BuddyList() {
             <Users className="h-3.5 w-3.5" /> Buddy List
           </div>
           <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-            {awayCount} away &middot; {count - awayCount} offline
+            {onlineCount} online &middot; {awayCount} away
           </div>
         </div>
 
-        <div className="aim-me flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
+        <div className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
           <img src="/avatar.jpg" alt="" className="h-10 w-10 rounded-lg border border-zinc-800 object-cover" />
           <div className="min-w-0">
             <div className="truncate font-semibold text-zinc-100">maxhayim</div>
@@ -3013,7 +3092,7 @@ function BuddyList() {
           aria-label="Buddy list"
           aria-activedescendant={`buddy-${selected}`}
           onKeyDown={onListKeyDown}
-          className="aim-list mt-3 max-h-[440px] overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-950/70 p-1.5"
+          className="mt-3 max-h-[440px] overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-950/70 p-1.5"
         >
           {groups.map((group) => {
             const open = openGroups[group.id];
@@ -3027,14 +3106,13 @@ function BuddyList() {
                 >
                   <ChevronRight className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-90" : ""}`} />
                   <span className="font-semibold text-zinc-300">{group.label}</span>
-                  <span>
-                    ({group.id === "offline" ? 0 : group.members.length}/{group.members.length})
-                  </span>
+                  <span>({group.tally})</span>
                 </button>
 
                 {open &&
                   group.members.map((buddy) => {
                     const active = buddy.i === selected;
+                    const { status } = buddy.presence;
                     return (
                       <button
                         key={buddy.name}
@@ -3045,9 +3123,10 @@ function BuddyList() {
                         aria-selected={active}
                         tabIndex={active ? 0 : -1}
                         onClick={() => select(buddy.i)}
-                        className={`aim-buddy relative flex w-full items-center gap-2 rounded-lg py-1.5 pl-7 pr-2 text-left ${
-                          buddy.signedOff ? "aim-buddy-off" : "aim-buddy-away"
-                        } ${active ? "aim-buddy-active" : ""}`}
+                        title={buddy.presence.time ? `${buddy.presence.time} their time` : undefined}
+                        className={`aim-buddy aim-buddy-${status} relative flex w-full items-center gap-2 rounded-lg py-1.5 pl-7 pr-2 text-left ${
+                          active ? "aim-buddy-active" : ""
+                        }`}
                       >
                         {active && (
                           <motion.span
@@ -3057,9 +3136,7 @@ function BuddyList() {
                           />
                         )}
                         <span className="relative min-w-0 flex-1 truncate">{buddy.name}</span>
-                        {!buddy.signedOff && (
-                          <StickyNote className="aim-away-icon relative h-3.5 w-3.5 shrink-0" aria-label="Away" />
-                        )}
+                        {status === "away" && <StickyNote className="aim-away-icon relative h-3.5 w-3.5 shrink-0" aria-label="Away" />}
                       </button>
                     );
                   })}
@@ -3089,54 +3166,77 @@ function BuddyList() {
         </div>
 
         {/* Every card sits side by side on one track; changing buddies slides it with translateX */}
-        <div className="overflow-hidden" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} aria-live="polite">
+        <div className="overflow-hidden" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
           <div className="buddy-track flex" style={{ transform: `translateX(-${selected * 100}%)` }}>
-            {buddyListData.map((buddy, i) => (
-              <article
-                key={buddy.name}
-                aria-hidden={i !== selected}
-                inert={i !== selected ? "" : undefined}
-                className="w-full shrink-0 px-0.5"
-              >
-                <div className="flex flex-wrap items-center gap-3">
-                  <h3 className="text-2xl font-semibold tracking-tight text-zinc-100 md:text-3xl">{buddy.name}</h3>
-                  {buddy.signedOff ? (
-                    <span className="aim-status aim-status-off">
-                      <span className="aim-status-dot" aria-hidden="true" /> signed off
+            {buddies.map((buddy) => {
+              const { status, time, zone } = buddy.presence;
+              return (
+                <article
+                  key={buddy.name}
+                  aria-hidden={buddy.i !== selected}
+                  inert={buddy.i !== selected ? "" : undefined}
+                  className="w-full shrink-0 px-0.5"
+                >
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h3 className="text-2xl font-semibold tracking-tight text-zinc-100 md:text-3xl">{buddy.name}</h3>
+                    <span className={`aim-status aim-status-${status}`}>
+                      <span className="aim-status-dot" aria-hidden="true" />
+                      {status === "offline" ? "signed off" : status}
                     </span>
-                  ) : (
-                    <span className="aim-status aim-status-away">
-                      <span className="aim-status-dot" aria-hidden="true" /> away
-                    </span>
-                  )}
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                    {buddy.signedOff ? "Signed off" : "Away message"}
                   </div>
-                  <p className="mt-1.5 text-sm leading-6 text-zinc-200">
-                    {buddy.signedOff ? `${buddy.name} is no longer online. In memory, ${buddy.signedOff}.` : AWAY_MESSAGE}
-                  </p>
-                </div>
 
-                <div className="mt-5 text-[10px] uppercase tracking-[0.2em] text-zinc-500">Profile</div>
-                <p className="mt-1.5 max-w-3xl text-sm leading-7 text-zinc-300 md:text-base">{buddy.bio}</p>
-                <div className="mt-4 text-[10px] uppercase tracking-[0.2em] text-zinc-500">Known for</div>
-                <ul className="mt-2 flex flex-wrap gap-2">
-                  {buddy.products.map((product) => (
-                    <li key={product} className="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1.5 text-sm text-zinc-200">
-                      {product}
-                    </li>
-                  ))}
-                </ul>
-              </article>
-            ))}
+                  <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                    {status === "away" && (
+                      <>
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+                          <span>Away message</span>
+                          <span className="normal-case tracking-normal">
+                            {time} their time
+                          </span>
+                        </div>
+                        <Quote buddy={buddy} />
+                      </>
+                    )}
+                    {status === "online" && (
+                      <>
+                        <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Online now</div>
+                        <p className="mt-1.5 text-sm text-zinc-200">
+                          It&rsquo;s {time} for {buddy.name.split(" ")[0]} ({zone}).
+                        </p>
+                      </>
+                    )}
+                    {status === "offline" && (
+                      <>
+                        <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Signed off</div>
+                        <p className="mt-1.5 text-sm text-zinc-200">
+                          {buddy.name} is no longer online. In memory, {buddy.signedOff}.
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  {status !== "away" && (
+                    <div className="mt-5">
+                      <div className="mb-1.5 text-[10px] uppercase tracking-[0.2em] text-zinc-500">In their words</div>
+                      <Quote buddy={buddy} />
+                    </div>
+                  )}
+
+                  <div className="mt-5 text-[10px] uppercase tracking-[0.2em] text-zinc-500">Profile</div>
+                  <p className="mt-1.5 max-w-3xl text-sm leading-7 text-zinc-300 md:text-base">{buddy.bio}</p>
+                  <div className="mt-4 text-[10px] uppercase tracking-[0.2em] text-zinc-500">Known for</div>
+                  <ul className="mt-2 flex flex-wrap gap-2">
+                    {buddy.products.map((product) => (
+                      <li key={product} className="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1.5 text-sm text-zinc-200">
+                        {product}
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              );
+            })}
           </div>
         </div>
-        <span className="sr-only">
-          {current.name}, {current.signedOff ? "signed off" : "away"}
-        </span>
       </div>
     </section>
   );
