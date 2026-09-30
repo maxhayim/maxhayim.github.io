@@ -76,9 +76,29 @@
   --os-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 18px 50px -20px rgba(60, 50, 30, 0.35), 0 2px 6px rgba(60, 50, 30, 0.08);
 }
 
-/* Graphite edition */
+/* Graphite edition: picked in Theme, or following the computer when "match computer settings" is on */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --os-desk: #151514;
+  --os-wallpaper: linear-gradient(rgba(10, 10, 9, 0.5), rgba(10, 10, 9, 0.5)), var(--os-wallpaper-image);
+  --os-case: #201f1d;
+  --os-card: #292826;
+  --os-ink: #eeebe4;
+  --os-ink-2: #bdb8ae;
+  --os-ink-3: #8a867e;
+  --os-line: #383733;
+  --os-hover: rgba(238, 235, 228, 0.07);
+  --os-accent: #f06a2a;
+  --os-ok: #8cc174;
+  --os-cool: #9fbccb;
+  --os-warn: #f0674a;
+  --os-knob-top: #3a3936;
+  --os-knob-bot: #282725;
+  --os-dot-grid: rgba(238, 235, 228, 0.16);
+  --os-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 20px 60px -20px rgba(0, 0, 0, 0.8), 0 2px 6px rgba(0, 0, 0, 0.4);
+}
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
     --os-desk: #151514;
     --os-wallpaper: linear-gradient(rgba(10, 10, 9, 0.5), rgba(10, 10, 9, 0.5)), var(--os-wallpaper-image);
@@ -198,6 +218,30 @@
   to { opacity: 1; }
 }
 .prefs-option:hover { background: var(--os-hover); }
+.prefs-option[aria-disabled="true"] { cursor: default; }
+.prefs-option[aria-disabled="true"]:hover { background: transparent; }
+.os-check {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--os-card);
+  box-shadow: inset 0 0 0 1px var(--os-line);
+  cursor: pointer;
+}
+.os-check:checked { background: var(--os-accent); box-shadow: none; }
+.os-check:checked::after {
+  content: "";
+  width: 9px;
+  height: 5px;
+  margin-top: -2px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg);
+}
+.os-check:focus-visible { outline: 2px solid var(--os-accent); outline-offset: 2px; }
 .prefs-tool { color: var(--os-ink-2); }
 .prefs-tool:hover { background: var(--os-hover); color: var(--os-ink); }
 .prefs-tool-active { background: var(--os-hover); color: var(--os-ink); box-shadow: inset 0 0 0 1px var(--os-line); }
@@ -445,8 +489,9 @@
 .aim-status-online .aim-status-dot { background: var(--os-ok); }
 .aim-status-offline { color: var(--os-ink-3); }
 .aim-status-offline .aim-status-dot { background: var(--os-ink-3); opacity: 0.6; }
+:root[data-theme="dark"] .aim-status-away { color: #f0c46a; }
 @media (prefers-color-scheme: dark) {
-  .aim-status-away { color: #f0c46a; }
+  :root:not([data-theme="light"]) .aim-status-away { color: #f0c46a; }
 }
 
 .buddy-track {

@@ -808,7 +808,7 @@ const PREF_SECTIONS = [
   {
     title: "Desk",
     panes: [
-      { id: "theme", label: "Theme", Icon: Palette },
+      { id: "theme", label: "Theme", Icon: Palette, ready: true },
       { id: "wallpaper", label: "Wallpaper", Icon: ImageIcon, ready: true },
       { id: "screensaver", label: "Screen Saver", Icon: MonitorPlay, ready: true },
       { id: "dock", label: "Dock", Icon: PanelBottom },
@@ -854,6 +854,7 @@ const PREF_SECTIONS = [
 
 function SystemPreferences() {
   const [pane, setPane] = useState(null); // null = closed, "all", or a pane id
+  const drag = useDragControls();
   const [current, setCurrent] = useState(readWallpaperCookie);
   const panelRef = useRef(null);
   const returnFocusRef = useRef(null);
@@ -915,15 +916,27 @@ function SystemPreferences() {
 
   return (
     <div className="os-ui fixed inset-0 z-[70] flex items-center justify-center bg-black/20 p-3 sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && setPane(null)}>
-      <div
+      <motion.div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="prefs-title"
+        drag
+        dragControls={drag}
+        dragListener={false}
+        dragElastic={0.08}
+        dragSnapToOrigin
+        dragTransition={SNAP_BACK}
         className="os-window prefs-window flex max-h-[calc(100vh-24px)] w-full max-w-[760px] flex-col overflow-hidden"
       >
-        {/* Title bar */}
-        <div className="relative flex items-center gap-3 border-b border-[var(--os-line)] px-4 py-2.5">
+        {/* Title bar: drag to move; it springs back when you let go */}
+        <div
+          className="os-titlebar-grab relative flex items-center gap-3 border-b border-[var(--os-line)] px-4 py-2.5"
+          onPointerDown={(e) => {
+            if (e.pointerType === "touch" || e.target.closest("button")) return;
+            drag.start(e);
+          }}
+        >
           <button type="button" onClick={() => setPane(null)} aria-label="Close system preferences" title="Close" className="os-round-btn os-win-close">
             <X className="h-3.5 w-3.5" strokeWidth={2.2} />
           </button>
@@ -944,6 +957,15 @@ function SystemPreferences() {
             all settings
           </button>
           <span className="mx-1 h-9 w-px bg-[var(--os-line)]" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={() => setPane("theme")}
+            aria-pressed={pane === "theme"}
+            className={`prefs-tool flex flex-col items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] ${pane === "theme" ? "prefs-tool-active" : ""}`}
+          >
+            <Palette className="h-5 w-5" strokeWidth={1.6} />
+            theme
+          </button>
           <button
             type="button"
             onClick={() => setPane("wallpaper")}
@@ -994,6 +1016,7 @@ function SystemPreferences() {
           )}
 
           {pane === "screensaver" && <ScreenSaverPane />}
+          {pane === "theme" && <ThemePane />}
 
           {pane === "wallpaper" && (
             <div className="p-5">
@@ -1030,13 +1053,130 @@ function SystemPreferences() {
             </div>
           )}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
 
 
-/* ---------- Screen saver: "Mesh" ---------- */
+
+/* ---------- Theme: light, dark, or follow the computer ---------- */
+
+const THEME_COOKIE = "comcen_theme";
+
+function readTheme() {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${THEME_COOKIE}=([^;]*)`));
+  const value = match ? decodeURIComponent(match[1]) : "auto";
+  return ["auto", "light", "dark"].includes(value) ? value : "auto";
+}
+
+function applyTheme(pref) {
+  const root = document.documentElement;
+  if (pref === "light" || pref === "dark") root.dataset.theme = pref;
+  else delete root.dataset.theme;
+}
+
+function saveTheme(pref) {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${THEME_COOKIE}=${encodeURIComponent(pref)}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;
+  applyTheme(pref);
+  window.dispatchEvent(new CustomEvent("mh-theme-changed", { detail: pref }));
+}
+
+// Apply before the first paint so the chosen edition never flashes the other one
+if (typeof document !== "undefined") applyTheme(readTheme());
+
+function useSystemDark() {
+  const query = "(prefers-color-scheme: dark)";
+  const [dark, setDark] = useState(() => window.matchMedia?.(query).matches ?? false);
+  useEffect(() => {
+    const mq = window.matchMedia?.(query);
+    if (!mq) return;
+    const onChange = (e) => setDark(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return dark;
+}
+
+function ThemePane() {
+  const [pref, setPref] = useState(readTheme);
+  const systemDark = useSystemDark();
+  const auto = pref === "auto";
+  const showing = auto ? (systemDark ? "dark" : "light") : pref;
+
+  const choose = (next) => {
+    setPref(next);
+    saveTheme(next);
+  };
+
+  const editions = [
+    { id: "light", label: "light", desk: "#e7e3da", win: "#f3f1ec", ink: "#262624", line: "#dcd7cc" },
+    { id: "dark", label: "dark", desk: "#151514", win: "#201f1d", ink: "#eeebe4", line: "#383733" },
+  ];
+
+  return (
+    <div className="p-5">
+      <div className="mb-1 flex items-center gap-2 font-semibold">
+        <span className="h-[7px] w-[7px] rounded-full bg-[var(--os-accent)]" aria-hidden="true" />
+        theme
+      </div>
+      <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">Pick the white or graphite edition, or let comcen os follow your computer.</p>
+
+      <label className="mb-4 flex cursor-pointer items-center gap-2.5 text-[13px]">
+        <input
+          type="checkbox"
+          className="os-check"
+          checked={auto}
+          onChange={(e) => choose(e.target.checked ? "auto" : showing)}
+        />
+        <span>match computer settings</span>
+        {auto && <span className="text-[var(--os-ink-3)]">(your computer is set to {systemDark ? "dark" : "light"})</span>}
+      </label>
+
+      <div role="radiogroup" aria-label="Theme" className="grid grid-cols-2 gap-3 sm:max-w-[420px]">
+        {editions.map((ed) => {
+          const active = showing === ed.id;
+          return (
+            <button
+              key={ed.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => choose(ed.id)}
+              title={auto ? `Turn off matching and use ${ed.label}` : `Use ${ed.label}`}
+              className="prefs-option flex flex-col items-center gap-2 rounded-xl p-1.5 text-[13px]"
+            >
+              <span
+                className={`relative block aspect-video w-full overflow-hidden rounded-lg ${active ? "wallpaper-thumb-active" : "wallpaper-thumb"}`}
+                style={{ background: ed.desk }}
+                aria-hidden="true"
+              >
+                <span className="absolute inset-x-0 top-0 h-[10%]" style={{ background: ed.win, borderBottom: `1px solid ${ed.line}` }} />
+                <span
+                  className="absolute left-[14%] top-[22%] h-[62%] w-[72%] rounded-md"
+                  style={{ background: ed.win, boxShadow: `0 0 0 1px ${ed.line}` }}
+                >
+                  <span className="absolute left-[8%] top-[14%] h-[8%] w-[40%] rounded-full" style={{ background: ed.ink, opacity: 0.8 }} />
+                  <span className="absolute left-[8%] top-[34%] h-[6%] w-[70%] rounded-full" style={{ background: ed.ink, opacity: 0.25 }} />
+                  <span className="absolute left-[8%] top-[48%] h-[6%] w-[58%] rounded-full" style={{ background: ed.ink, opacity: 0.25 }} />
+                  <span className="absolute bottom-[12%] right-[8%] h-[16%] w-[10%] rounded-full" style={{ background: "#e8591a" }} />
+                </span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className={`os-dot ${active ? "os-dot-on" : ""}`} aria-hidden="true" />
+                {ed.label}
+                {auto && active && <span className="text-[var(--os-ink-3)]">· auto</span>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Screen savers: "Mesh" and "Starfield" ---------- */
 
 const SCREENSAVER_COOKIE = "comcen_screensaver";
 const SCREENSAVER_DELAYS = [
@@ -1046,19 +1186,27 @@ const SCREENSAVER_DELAYS = [
   { minutes: 10, label: "10 minutes" },
   { minutes: 15, label: "15 minutes" },
 ];
-const SCREENSAVER_DEFAULT = { on: true, minutes: 5 };
+const SCREENSAVERS = [
+  { id: "mesh", label: "Mesh" },
+  { id: "starfield", label: "Starfield" },
+];
+const SCREENSAVER_DEFAULT = { on: true, minutes: 5, saver: "mesh" };
 
 function readScreensaver() {
   const match = document.cookie.match(new RegExp(`(?:^|; )${SCREENSAVER_COOKIE}=([^;]*)`));
   if (!match) return SCREENSAVER_DEFAULT;
-  const [on, minutes] = decodeURIComponent(match[1]).split(":");
+  const [on, minutes, saver] = decodeURIComponent(match[1]).split(":");
   const m = Number(minutes);
-  return { on: on === "on", minutes: SCREENSAVER_DELAYS.some((d) => d.minutes === m) ? m : SCREENSAVER_DEFAULT.minutes };
+  return {
+    on: on === "on",
+    minutes: SCREENSAVER_DELAYS.some((d) => d.minutes === m) ? m : SCREENSAVER_DEFAULT.minutes,
+    saver: SCREENSAVERS.some((x) => x.id === saver) ? saver : SCREENSAVER_DEFAULT.saver,
+  };
 }
 
 function saveScreensaver(settings) {
   const secure = window.location.protocol === "https:" ? "; Secure" : "";
-  const value = `${settings.on ? "on" : "off"}:${settings.minutes}`;
+  const value = `${settings.on ? "on" : "off"}:${settings.minutes}:${settings.saver}`;
   document.cookie = `${SCREENSAVER_COOKIE}=${encodeURIComponent(value)}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;
   window.dispatchEvent(new CustomEvent("mh-screensaver-changed", { detail: settings }));
 }
@@ -1211,6 +1359,111 @@ function MeshCanvas({ compact = false }) {
   return <canvas ref={canvasRef} className="block h-full w-full" aria-hidden="true" />;
 }
 
+
+// A 90s flight through space, in the comcen palette: warm white stars, the odd orange one.
+function StarfieldCanvas({ compact = false }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const slow = prefersReducedMotion();
+    let width = 0;
+    let height = 0;
+    let stars = [];
+    let frame = 0;
+    let last = 0;
+
+    const spawn = (star, far = true) => {
+      star.x = (Math.random() * 2 - 1) * 1.2;
+      star.y = (Math.random() * 2 - 1) * 1.2;
+      star.z = far ? 1 : 0.2 + Math.random() * 0.8;
+      star.px = null;
+      star.py = null;
+      star.orange = Math.random() < 0.07;
+      return star;
+    };
+
+    const setup = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const rect = canvas.getBoundingClientRect();
+      width = rect.width;
+      height = rect.height;
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const count = compact ? 110 : Math.max(220, Math.min(520, Math.round((width * height) / 4200)));
+      stars = Array.from({ length: count }, () => spawn({}, false));
+      ctx.fillStyle = "#0b0b0a";
+      ctx.fillRect(0, 0, width, height);
+    };
+
+    const draw = (time) => {
+      const dt = last ? Math.min(0.05, (time - last) / 1000) : 0;
+      last = time;
+      const speed = (slow ? 0.12 : 0.34) * dt;
+      const cx = width / 2;
+      const cy = height / 2;
+      const scale = Math.max(width, height) * 0.5;
+
+      // Leave faint trails, like a CRT's afterglow
+      ctx.fillStyle = "rgba(11, 11, 10, 0.42)";
+      ctx.fillRect(0, 0, width, height);
+
+      for (const star of stars) {
+        star.z -= speed;
+        if (star.z <= 0.02) {
+          spawn(star);
+          continue;
+        }
+        const sx = cx + (star.x / star.z) * scale;
+        const sy = cy + (star.y / star.z) * scale;
+        if (sx < -10 || sx > width + 10 || sy < -10 || sy > height + 10) {
+          spawn(star);
+          continue;
+        }
+        const nearness = 1 - star.z;
+        const size = (compact ? 0.4 : 0.6) + nearness * (compact ? 1.6 : 2.8);
+        const color = star.orange ? `rgba(240, 106, 42, ${0.4 + nearness * 0.6})` : `rgba(238, 235, 228, ${0.25 + nearness * 0.75})`;
+        if (star.px !== null) {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = size;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(star.px, star.py);
+          ctx.lineTo(sx, sy);
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(sx, sy, size / 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        star.px = sx;
+        star.py = sy;
+      }
+
+      frame = requestAnimationFrame(draw);
+    };
+
+    setup();
+    frame = requestAnimationFrame(draw);
+    const ro = new ResizeObserver(setup);
+    ro.observe(canvas);
+    return () => {
+      cancelAnimationFrame(frame);
+      ro.disconnect();
+    };
+  }, [compact]);
+
+  return <canvas ref={canvasRef} className="block h-full w-full" aria-hidden="true" />;
+}
+
+function SaverCanvas({ saver, compact = false }) {
+  return saver === "starfield" ? <StarfieldCanvas compact={compact} /> : <MeshCanvas compact={compact} />;
+}
+
 // Starts the screen saver after the chosen idle time; any input ends it.
 function ScreenSaverHost({ disabled }) {
   const [settings, setSettings] = useState(readScreensaver);
@@ -1291,7 +1544,7 @@ function ScreenSaverHost({ disabled }) {
   if (!active) return null;
   return (
     <div className="screensaver fixed inset-0 z-[90] cursor-none bg-[#0b0b0a]" role="presentation" aria-hidden="true">
-      <MeshCanvas />
+      <SaverCanvas saver={settings.saver} />
       <div className="os-ui pointer-events-none absolute bottom-8 left-8" style={{ color: "#eeebe4" }}>
         <div className="text-5xl font-semibold tabular-nums tracking-tight opacity-80">
           {now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
@@ -1321,16 +1574,33 @@ function ScreenSaverPane() {
       <div className="grid gap-5 sm:grid-cols-[1.2fr_1fr]">
         <div>
           <div className="relative aspect-video overflow-hidden rounded-xl ring-1 ring-[var(--os-line)]">
-            <MeshCanvas compact />
+            <SaverCanvas key={settings.saver} saver={settings.saver} compact />
           </div>
-          <div className="mt-2 flex items-center justify-between text-[13px]">
-            <span className="flex items-center gap-1.5">
-              <span className="os-dot os-dot-on" aria-hidden="true" />
-              Mesh
-            </span>
+          <div role="radiogroup" aria-label="Screen saver" className="mt-3 grid grid-cols-2 gap-2">
+            {SCREENSAVERS.map((sv) => {
+              const active = settings.saver === sv.id;
+              return (
+                <button
+                  key={sv.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => update({ saver: sv.id })}
+                  className={`prefs-option flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] ring-1 ${
+                    active ? "bg-[var(--os-hover)] ring-[var(--os-accent)]" : "ring-[var(--os-line)]"
+                  }`}
+                >
+                  <span className={`os-dot ${active ? "os-dot-on" : ""}`} aria-hidden="true" />
+                  {sv.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-2 flex items-center justify-end text-[13px]">
             <button
               type="button"
               onClick={() => window.dispatchEvent(new Event("mh-screensaver-start"))}
+              title="Preview the screen saver full screen"
               className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]"
             >
               test
