@@ -3055,6 +3055,7 @@ function GitsPage() {
 // so the browser shows a start page with the settings instead of the restored sites themselves.
 const TRIAL_MINUTES = 3;
 const TRIAL_KEY = "comcen_trial_end";
+const TRIAL_RESET_HOURS = 24; // after the trial ends, a fresh one is available this many hours later
 
 function readTrialEnd() {
   const fromStore = Number(readStore("localStorage", TRIAL_KEY));
@@ -3064,9 +3065,13 @@ function readTrialEnd() {
   return values.length ? Math.min(...values) : null;
 }
 
+function trialResetAt(end) {
+  return end + TRIAL_RESET_HOURS * 60 * 60 * 1000;
+}
+
 function startTrial() {
   const existing = readTrialEnd();
-  if (existing) return existing;
+  if (existing && Date.now() < trialResetAt(existing)) return existing;
   const end = Date.now() + TRIAL_MINUTES * 60 * 1000;
   writeStore("localStorage", TRIAL_KEY, String(end));
   const secure = window.location.protocol === "https:" ? "; Secure" : "";
@@ -3107,6 +3112,13 @@ async function checkCdKey(key) {
   const secure = window.location.protocol === "https:" ? "; Secure" : "";
   document.cookie = `${LICENSE_KEY}=${CD_KEY_HASH}; Max-Age=315360000; Path=/; SameSite=Lax${secure}`;
   return true;
+}
+
+function formatResetIn(ms) {
+  const minutes = Math.max(1, Math.ceil(ms / 60000));
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h ? `${h} h ${m} min` : `${m} min`;
 }
 
 function formatLeft(ms) {
@@ -3180,6 +3192,11 @@ function InternetWindow() {
   const [page, setPage] = useState("start");
   const [trialEnd, setTrialEnd] = useState(null);
   const [registered, setRegistered] = useState(isRegistered);
+  // An earlier trial that has already run out (read on load, for the sign-on screen)
+  const [usedTrialEnd, setUsedTrialEnd] = useState(() => {
+    const end = readTrialEnd();
+    return end && Date.now() >= end ? end : null;
+  });
   const [dialog, setDialog] = useState("ended"); // "ended" | "key"
   const [cdKey, setCdKey] = useState("");
   const [keyError, setKeyError] = useState("");
@@ -3223,6 +3240,9 @@ function InternetWindow() {
   };
 
   const hangUp = () => {
+    const end = readTrialEnd();
+    setUsedTrialEnd(end && Date.now() >= end ? end : null);
+    setNow(Date.now());
     timersRef.current.forEach(clearTimeout);
     timersRef.current = [];
     audioRef.current?.pause();
@@ -3233,6 +3253,11 @@ function InternetWindow() {
   };
 
   const expired = !registered && trialEnd !== null && now >= trialEnd;
+  const resetIn = trialEnd !== null ? trialResetAt(trialEnd) - now : 0;
+
+  useEffect(() => {
+    if (expired) audioRef.current?.pause();
+  }, [expired]);
 
   const submitKey = async (e) => {
     e.preventDefault();
@@ -3258,7 +3283,11 @@ function InternetWindow() {
           <h2 className="mt-4 text-2xl font-semibold tracking-tight text-zinc-100">comcen online</h2>
           <p className="mt-1 text-sm text-zinc-400">
             Dial {DIALUP_NUMBER} to sign on.{" "}
-            {registered ? "This copy is registered." : `New members get a ${TRIAL_MINUTES}-minute free trial.`}
+            {registered
+              ? "This copy is registered."
+              : usedTrialEnd && now < trialResetAt(usedTrialEnd)
+                ? `Your free trial has ended. It resets in ${formatResetIn(trialResetAt(usedTrialEnd) - now)}.`
+                : `New members get a ${TRIAL_MINUTES}-minute free trial.`}
           </p>
 
           <ol className="mt-6 flex items-center gap-2 text-[12px] sm:gap-3" aria-label="Sign-on progress">
@@ -3321,7 +3350,7 @@ function InternetWindow() {
             {page === "signup" ? <NotFoundPage /> : <StartPage />}
 
             {expired && page !== "signup" && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[rgba(0,0,0,0.28)] p-4">
+              <div className="absolute inset-0 flex items-center justify-center bg-[rgba(0,0,0,0.22)] p-4 backdrop-blur-[5px]">
                 <div role="alertdialog" aria-labelledby="trial-title" aria-describedby="trial-text" className="os-popover w-full max-w-[400px] p-5">
                   {dialog === "ended" ? (
                     <>
@@ -3334,6 +3363,9 @@ function InternetWindow() {
                       <p id="trial-text" className="mt-2 text-sm leading-6 text-zinc-400">
                         Thanks for trying comcen online! To keep surfing the Information Superhighway, enter the CD key from
                         your comcen online disc, or sign up for a membership.
+                      </p>
+                      <p className="mt-2 text-[13px] text-zinc-500">
+                        Your free trial resets in <span className="tabular-nums text-zinc-300">{formatResetIn(resetIn)}</span>.
                       </p>
                       <div className="mt-4 flex flex-wrap justify-end gap-2">
                         <button type="button" onClick={hangUp} className="net-secondary">
