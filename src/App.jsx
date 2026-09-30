@@ -538,6 +538,17 @@ function SystemMenu() {
               <button role="menuitem" type="button" className={item} onClick={() => setShowAbout(true)}>
                 about this computer
               </button>
+              <button
+                role="menuitem"
+                type="button"
+                className={item}
+                onClick={() => {
+                  setOpen(false);
+                  window.dispatchEvent(new Event("mh-preferences-open"));
+                }}
+              >
+                system preferences…
+              </button>
               {fullscreen.supported && (
                 <button
                   role="menuitem"
@@ -668,6 +679,221 @@ function Dock({ currentPage, windowState, onMinimize, onRestore }) {
   );
 }
 
+
+/* ---------- Wallpapers: right-click the desktop to change; the choice is kept in a cookie ---------- */
+
+const WALLPAPERS = [
+  { id: "calm", label: "calm", src: "/wallpaper/system6-calm.jpg", thumb: "/wallpaper/system6-calm-thumb.jpg", position: "70% center" },
+  { id: "fish", label: "fish", src: "/wallpaper/system6-fish.jpg", thumb: "/wallpaper/system6-fish-thumb.jpg", position: "center" },
+  { id: "wetleaf", label: "wet leaf", src: "/wallpaper/system6-wetleaf.jpg", thumb: "/wallpaper/system6-wetleaf-thumb.jpg", position: "center" },
+];
+const WALLPAPER_COOKIE = "comcen_wallpaper";
+
+function readWallpaperCookie() {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${WALLPAPER_COOKIE}=([^;]*)`));
+  const id = match ? decodeURIComponent(match[1]) : "calm";
+  return WALLPAPERS.some((w) => w.id === id) ? id : "calm";
+}
+
+function applyWallpaper(id) {
+  const wallpaper = WALLPAPERS.find((w) => w.id === id) || WALLPAPERS[0];
+  const root = document.documentElement;
+  root.style.setProperty("--os-wallpaper-image", `url("${wallpaper.src}")`);
+  root.style.setProperty("--os-wallpaper-position", wallpaper.position);
+  root.dataset.wallpaper = wallpaper.id;
+}
+
+function saveWallpaper(id) {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${WALLPAPER_COOKIE}=${encodeURIComponent(id)}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;
+  applyWallpaper(id);
+  window.dispatchEvent(new CustomEvent("mh-wallpaper-changed", { detail: id }));
+}
+
+// Apply the saved wallpaper as early as possible so the desktop never flashes the default.
+if (typeof document !== "undefined") applyWallpaper(readWallpaperCookie());
+
+function WallpaperMenu() {
+  const [menu, setMenu] = useState(null); // { x, y } or null
+  const [current, setCurrent] = useState(readWallpaperCookie);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const onChanged = (e) => setCurrent(e.detail);
+    const onOpen = (e) => setMenu(e.detail);
+    window.addEventListener("mh-wallpaper-changed", onChanged);
+    window.addEventListener("mh-wallpaper-menu", onOpen);
+    return () => {
+      window.removeEventListener("mh-wallpaper-changed", onChanged);
+      window.removeEventListener("mh-wallpaper-menu", onOpen);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setMenu(null);
+    };
+    const onKey = (e) => e.key === "Escape" && setMenu(null);
+    const onScroll = () => setMenu(null);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("touchstart", close);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("touchstart", close);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, [menu]);
+
+  if (!menu) return null;
+  const width = 272;
+  const height = 256;
+  const left = Math.max(8, Math.min(menu.x, window.innerWidth - width - 8));
+  const top = Math.max(52, Math.min(menu.y, window.innerHeight - height - 8));
+
+  return (
+    <div ref={ref} role="menu" aria-label="Change wallpaper" className="os-ui os-popover fixed z-[60] p-2" style={{ left, top, width }}>
+      <div className="px-2 pb-2 pt-1 text-[12px] text-[var(--os-ink-3)]">change wallpaper</div>
+      <div className="flex flex-col gap-1">
+        {WALLPAPERS.map((w) => {
+          const active = w.id === current;
+          return (
+            <button
+              key={w.id}
+              role="menuitemradio"
+              aria-checked={active}
+              type="button"
+              onClick={() => {
+                saveWallpaper(w.id);
+                setMenu(null);
+              }}
+              className={`flex items-center gap-3 rounded-lg p-1.5 text-left hover:bg-[var(--os-hover)] ${active ? "bg-[var(--os-hover)]" : ""}`}
+            >
+              <img src={w.thumb} alt="" className={`h-11 w-[78px] shrink-0 rounded-md object-cover ${active ? "wallpaper-thumb-active" : "wallpaper-thumb"}`} />
+              <span className="flex-1">{w.label}</span>
+              {active && <span className="os-dot os-dot-on mr-2" aria-hidden="true" />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
+/* System Preferences: one pane, one setting (wallpaper) */
+function SystemPreferences() {
+  const [open, setOpen] = useState(false);
+  const [current, setCurrent] = useState(readWallpaperCookie);
+  const panelRef = useRef(null);
+  const returnFocusRef = useRef(null);
+
+  useEffect(() => {
+    const onOpen = () => {
+      returnFocusRef.current = document.activeElement;
+      setCurrent(readWallpaperCookie());
+      setOpen(true);
+    };
+    const onChanged = (e) => setCurrent(e.detail);
+    window.addEventListener("mh-preferences-open", onOpen);
+    window.addEventListener("mh-wallpaper-changed", onChanged);
+    return () => {
+      window.removeEventListener("mh-preferences-open", onOpen);
+      window.removeEventListener("mh-wallpaper-changed", onChanged);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    panel?.querySelector("[aria-checked='true']")?.focus();
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        return;
+      }
+      if (e.key !== "Tab" || !panel) return;
+      // Keep keyboard focus inside the window while it's open
+      const items = [...panel.querySelectorAll("button")];
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      returnFocusRef.current?.focus?.();
+    };
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="os-ui fixed inset-0 z-[70] flex items-center justify-center bg-black/20 p-4" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="prefs-title"
+        className="os-window prefs-window w-full max-w-[560px] overflow-hidden"
+      >
+        <div className="flex items-center gap-3 border-b border-[var(--os-line)] px-4 py-3">
+          <button type="button" onClick={() => setOpen(false)} aria-label="Close system preferences" title="Close" className="os-round-btn os-win-close">
+            <X className="h-3.5 w-3.5" strokeWidth={2.2} />
+          </button>
+          <span className="os-led" aria-hidden="true" />
+          <h2 id="prefs-title" className="font-semibold tracking-tight">
+            system preferences
+          </h2>
+        </div>
+
+        <div className="p-5">
+          <div className="mb-1 flex items-center gap-2 font-semibold">
+            <span className="h-[7px] w-[7px] rounded-full bg-[var(--os-accent)]" aria-hidden="true" />
+            wallpaper
+          </div>
+          <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">Choose the picture on your desktop. It&rsquo;s remembered on this browser.</p>
+
+          <div role="radiogroup" aria-label="Wallpaper" className="grid grid-cols-3 gap-3">
+            {WALLPAPERS.map((w) => {
+              const active = w.id === current;
+              return (
+                <button
+                  key={w.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => saveWallpaper(w.id)}
+                  className="prefs-option flex flex-col items-center gap-2 rounded-xl p-1.5 text-[13px]"
+                >
+                  <img
+                    src={w.thumb}
+                    alt=""
+                    className={`aspect-video w-full rounded-lg object-cover ${active ? "wallpaper-thumb-active" : "wallpaper-thumb"}`}
+                  />
+                  <span className="flex items-center gap-1.5">
+                    <span className={`os-dot ${active ? "os-dot-on" : ""}`} aria-hidden="true" />
+                    {w.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SharedShell({ currentPage, children }) {
   const currentYear = new Date().getFullYear();
   const now = useClock();
@@ -732,6 +958,11 @@ function SharedShell({ currentPage, children }) {
       </header>
 
       <div
+        onContextMenu={(e) => {
+          if (e.target.closest(".os-window, .os-dock, header, [role='menu']")) return;
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent("mh-wallpaper-menu", { detail: { x: e.clientX, y: e.clientY } }));
+        }}
         className={`mh-screen os-desk os-ui relative min-h-screen overflow-hidden pb-28 ${
           maximized ? "pt-11" : "px-3 pt-16 sm:px-5 md:px-8"
         }`}
@@ -815,6 +1046,8 @@ function SharedShell({ currentPage, children }) {
       </div>
 
       <Dock currentPage={currentPage} windowState={windowState} onMinimize={minimize} onRestore={restore} />
+      <WallpaperMenu />
+      <SystemPreferences />
     </>
   );
 }
