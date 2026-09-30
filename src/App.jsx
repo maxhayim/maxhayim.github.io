@@ -2262,127 +2262,6 @@ function PongGame() {
   );
 }
 
-function InteractiveDialup({ onConnected, onDisconnected }) {
-  const audioRef = useRef(null);
-  const timersRef = useRef([]);
-  const [status, setStatus] = useState("idle");
-
-  useEffect(() => () => timersRef.current.forEach(clearTimeout), []);
-
-  const hangUp = () => {
-    timersRef.current.forEach(clearTimeout);
-    timersRef.current = [];
-    audioRef.current?.pause();
-    setStatus("idle");
-    setLines((prev) => [...prev, "ATH0", "NO CARRIER"]);
-    onDisconnected?.();
-  };
-  const [lines, setLines] = useState([
-    `ATDT ${DIALUP_NUMBER}`,
-    "System ready. Awaiting connection command.",
-  ]);
-
-  const startDialup = () => {
-    if (status !== "idle") return;
-
-    setStatus("connecting");
-    setLines([
-      `ATDT ${DIALUP_NUMBER}`,
-      "Initializing modem...",
-      `Dialing ${DIALUP_NUMBER}...`,
-    ]);
-
-    if (audioRef.current) playSound(audioRef.current).catch(() => {});
-
-    timersRef.current.push(
-      setTimeout(() => {
-        setLines((prev) => [...prev, "Negotiating carrier... 2400 / 9600 / 14400"]);
-      }, 1600),
-      setTimeout(() => {
-        setLines((prev) => [...prev, "CONNECT 14400", "Logging on to the network..."]);
-        setStatus("connected");
-        onConnected?.();
-      }, 4200),
-    );
-  };
-
-  return (
-    <div className="rounded-2xl border border-cyan-500/20 bg-zinc-950/70 p-4">
-      <audio ref={audioRef} src="/audio/dialup-connect.mp3" preload="auto" />
-
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-300">
-            2001 • Dial-Up Initialization
-          </div>
-          <div className="mt-2 text-lg font-semibold text-zinc-100">
-            PRODIGY ISP
-          </div>
-          <div className="mt-1 text-xs uppercase tracking-[0.18em] text-zinc-500">
-            Local access numbers varied by city
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <motion.div
-            initial={false}
-            animate={{
-              opacity:
-                status === "connected" ? [0.55, 1, 0.55] : [0.35, 0.8, 0.35],
-            }}
-            transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-            className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.2em] ${
-              status === "connected"
-                ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
-                : "border-cyan-500/20 bg-cyan-500/10 text-cyan-300"
-            }`}
-          >
-            {status === "connected" ? "CONNECTED" : status === "connecting" ? "DIALING" : "READY"}
-          </motion.div>
-
-          {status === "idle" ? (
-            <button
-              type="button"
-              onClick={startDialup}
-              className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs uppercase tracking-[0.2em] text-emerald-300 transition hover:bg-emerald-500/20"
-            >
-              Connect
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={hangUp}
-              className="rounded-xl border border-zinc-700 bg-zinc-950/70 px-4 py-2 text-xs uppercase tracking-[0.2em] text-zinc-300 transition hover:bg-zinc-900"
-            >
-              Disconnect
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-4 rounded-2xl border border-zinc-800 bg-black/40 p-4 font-mono text-xs text-zinc-300">
-        {lines.map((line, index) => (
-          <div
-            key={`${line}-${index}`}
-            className={`mt-1 ${
-              line.includes("CONNECT")
-                ? "text-emerald-300"
-                : line.includes("ATDT")
-                  ? "text-cyan-300"
-                  : "text-zinc-300"
-            }`}
-          >
-            {line}
-          </div>
-        ))}
-        <div className="mt-3 text-zinc-500">
-          Prodigy used local POP dial-up access rather than one universal
-          nationwide member number.
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function HomePage() {
   return (
@@ -3172,10 +3051,8 @@ function GitsPage() {
 
 /* ---------- Internet: dial up, then browse. A short free trial keeps it from being abused. ---------- */
 
-// ProtoWeb is an HTTP proxy (wayback.protoweb.org:7851), which a static page can't route through.
-// If you host a relay such as github.com/jlyttle/protoweb-proxy, put its address here and the
-// browser will show the real restored sites. Left empty, it shows the built-in start page.
-const PROTOWEB_RELAY_URL = "";
+// ProtoWeb is an HTTP proxy (wayback.protoweb.org:7851), which a static page can't route through,
+// so the browser shows a start page with the settings instead of the restored sites themselves.
 const TRIAL_MINUTES = 3;
 const TRIAL_KEY = "comcen_trial_end";
 
@@ -3202,205 +3079,242 @@ function formatLeft(ms) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
-function BrowserStartPage() {
+const DIAL_STEPS = ["Dialing", "Connecting", "Signing on"];
+
+function StartPage() {
   return (
-    <div className="retro-page">
-      <center>
-        <h1>Welcome to comcen online!</h1>
-        <p>
-          <i>You are now connected to the Information Superhighway at 14,400 bps.</i>
-        </p>
-      </center>
-      <hr />
-      <h2>Next stop: ProtoWeb</h2>
-      <p>
-        ProtoWeb is a volunteer project that restores websites from the early days of the web, from about 1996 to 2001,
-        by piecing them back together from archives. You browse it through a proxy server, so the old sites load as
-        they originally looked.
+    <article className="mx-auto max-w-2xl px-5 py-8 sm:px-8">
+      <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">comcen online</div>
+      <h2 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">Welcome to the Information Superhighway</h2>
+      <p className="mt-2 text-sm text-zinc-400">You&rsquo;re connected at 14,400 bps.</p>
+
+      <h3 className="mt-8 flex items-center gap-2 font-semibold text-zinc-100">
+        <span className="h-[7px] w-[7px] rounded-full bg-[var(--os-accent)]" aria-hidden="true" />
+        Next stop: ProtoWeb
+      </h3>
+      <p className="mt-2 text-sm leading-7 text-zinc-300">
+        ProtoWeb is a volunteer project that restores websites from the early days of the web, roughly 1996 to 2001, by
+        piecing them back together from archives. You browse it through a proxy server, so the old sites load as they
+        originally looked.
       </p>
-      <h3>How to connect</h3>
-      <ol>
+
+      <h3 className="mt-6 font-semibold text-zinc-100">How to connect</h3>
+      <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm leading-6 text-zinc-300">
         <li>
-          In your browser&rsquo;s proxy settings, set the HTTP proxy to <tt>wayback.protoweb.org</tt>, port <tt>7851</tt>.
+          In your browser&rsquo;s proxy settings, set the HTTP proxy to <code className="net-code">wayback.protoweb.org</code>,
+          port <code className="net-code">7851</code>.
         </li>
         <li>
-          Visit <tt>http://www.inode.com/</tt>, ProtoWeb&rsquo;s directory of restored sites.
+          Visit <code className="net-code">http://www.inode.com/</code>, ProtoWeb&rsquo;s directory of restored sites.
         </li>
-        <li>For the full dial-up feel, use port <tt>7856</tt> instead: it throttles pages to modem speed.</li>
+        <li>
+          For the full dial-up feel, use port <code className="net-code">7856</code>: it slows pages to modem speed.
+        </li>
       </ol>
-      <p>
-        <a href="https://protoweb.org/" target="_blank" rel="noreferrer">
-          Visit protoweb.org
-        </a>{" "}
-        for their quick start guide and browser downloads.
-      </p>
-      <hr />
-      <p className="retro-small">
-        Best viewed at 800 &times; 600 &middot; comcen online &middot; &copy; {new Date().getFullYear()}
-      </p>
-    </div>
+      <p className="mt-3 text-sm text-zinc-400">These settings are also listed under System Preferences &rarr; Modem.</p>
+
+      <a
+        href="https://protoweb.org/"
+        target="_blank"
+        rel="noreferrer"
+        className="mt-6 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
+      >
+        Visit protoweb.org <ExternalLink className="h-3.5 w-3.5" />
+      </a>
+    </article>
   );
 }
 
 function NotFoundPage() {
   return (
-    <div className="retro-page">
-      <h1>Not Found</h1>
-      <p>The requested URL /signup was not found on this server.</p>
-      <hr />
-      <address>Apache/1.3.6 Server at maxhayim.com Port 80</address>
-    </div>
+    <article className="mx-auto max-w-2xl px-5 py-12 text-center sm:px-8">
+      <div className="text-6xl font-semibold tracking-tight text-zinc-100">404</div>
+      <h2 className="mt-3 text-xl font-semibold text-zinc-100">Page not found</h2>
+      <p className="mt-2 text-sm text-zinc-400">The requested URL /signup was not found on this server.</p>
+    </article>
   );
 }
 
-function RetroBrowser({ online, onHangUp }) {
-  const [page, setPage] = useState("start"); // "start" | "signup"
-  // The browser remounts on every connect, so it always reads the current trial clock.
-  const [trialEnd] = useState(readTrialEnd);
+function InternetWindow() {
+  const audioRef = useRef(null);
+  const timersRef = useRef([]);
+  const [stage, setStage] = useState("dialup"); // "dialup" | "browser"
+  const [dial, setDial] = useState("idle"); // "idle" | "dialing"
+  const [step, setStep] = useState(-1);
+  const [log, setLog] = useState([`ATDT ${DIALUP_NUMBER}`, "System ready. Awaiting connection command."]);
+  const [page, setPage] = useState("start");
+  const [trialEnd, setTrialEnd] = useState(null);
   const [now, setNow] = useState(() => Date.now());
+  const reduceMotion = prefersReducedMotion();
+
+  useEffect(() => () => timersRef.current.forEach(clearTimeout), []);
 
   useEffect(() => {
-    if (!online) return;
+    if (stage !== "browser") return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [online]);
+  }, [stage]);
+
+  const connect = () => {
+    if (dial !== "idle") return;
+    setDial("dialing");
+    setStep(0);
+    setLog([`ATDT ${DIALUP_NUMBER}`, "Initializing modem...", `Dialing ${DIALUP_NUMBER}...`]);
+    playSound(audioRef.current).catch(() => {});
+    const later = (ms, fn) => timersRef.current.push(setTimeout(fn, ms));
+    later(1600, () => {
+      setStep(1);
+      setLog((l) => [...l, "Negotiating carrier... 2400 / 9600 / 14400"]);
+    });
+    later(3400, () => {
+      setStep(2);
+      setLog((l) => [...l, "CONNECT 14400", "Logging on to the network..."]);
+    });
+    later(4600, () => {
+      // The trial clock starts the first time a visitor gets online, and never resets
+      setTrialEnd(startTrial());
+      setNow(Date.now());
+      setPage("start");
+      setStage("browser");
+    });
+  };
+
+  const hangUp = () => {
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+    audioRef.current?.pause();
+    setDial("idle");
+    setStep(-1);
+    setStage("dialup");
+    setLog((l) => [...l.slice(-4), "ATH0", "NO CARRIER"]);
+  };
 
   const expired = trialEnd !== null && now >= trialEnd;
-  const relay = PROTOWEB_RELAY_URL.replace(/\/$/, "");
-  const address = !online
-    ? ""
-    : page === "signup"
-      ? "http://maxhayim.com/signup"
-      : relay
-        ? "http://www.inode.com/"
-        : "http://maxhayim.com/start.html";
+  const address = page === "signup" ? "http://maxhayim.com/signup" : "http://maxhayim.com/start.html";
+  const fade = { duration: reduceMotion ? 0 : 0.3, ease: [0.3, 0, 0.2, 1] };
 
   return (
-    <div className="retro-browser overflow-hidden rounded-2xl border border-zinc-800">
-      {/* Toolbar */}
-      <div className="retro-chrome flex flex-wrap items-center gap-2 border-b px-3 py-2 text-[12px]">
-        <span className="font-semibold">comcen navigator</span>
-        <div className="flex items-center gap-1" aria-hidden="true">
-          {["back", "forward", "reload", "home"].map((b) => (
-            <span key={b} className="retro-btn">
-              {b}
-            </span>
-          ))}
-        </div>
-        <label className="flex min-w-[180px] flex-1 items-center gap-2">
-          <span className="text-[11px] opacity-70">Location:</span>
-          <input readOnly value={address} className="retro-address w-full" aria-label="Address" />
-        </label>
-      </div>
+    <div className="net-window overflow-hidden rounded-2xl border border-zinc-800">
+      <audio ref={audioRef} src="/audio/dialup-connect.mp3" preload="auto" />
 
-      {/* Page */}
-      <div className="relative h-[460px] overflow-auto bg-[#ffffff]">
-        {!online ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-[#444]">
-            <Globe className="h-8 w-8 opacity-50" strokeWidth={1.4} />
-            <div className="font-semibold">You are not connected.</div>
-            <div className="text-sm">Dial up above to go online.</div>
-          </div>
-        ) : page === "signup" ? (
-          <NotFoundPage />
-        ) : relay && !expired ? (
-          <iframe
-            title="ProtoWeb"
-            src={`${relay}/proxy?url=${encodeURIComponent("http://www.inode.com/")}`}
-            className="h-full w-full border-0"
-          />
-        ) : (
-          <BrowserStartPage />
-        )}
+      {stage === "dialup" ? (
+        <motion.div key="dialup" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={fade} className="flex flex-col items-center px-5 py-10 text-center sm:py-14">
+          <span className="os-knob h-14 w-14">
+            <Phone className="h-6 w-6" strokeWidth={1.6} />
+          </span>
+          <h2 className="mt-4 text-2xl font-semibold tracking-tight text-zinc-100">comcen online</h2>
+          <p className="mt-1 text-sm text-zinc-400">
+            Dial {DIALUP_NUMBER} to sign on. New members get a {TRIAL_MINUTES}-minute free trial.
+          </p>
 
-        {online && expired && page !== "signup" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[rgba(0,0,0,0.3)] p-4">
-            <div role="alertdialog" aria-labelledby="trial-title" aria-describedby="trial-text" className="retro-dialog w-full max-w-[380px]">
-              <div className="retro-dialog-title" id="trial-title">
-                comcen online
+          <ol className="mt-6 flex items-center gap-2 text-[12px] sm:gap-3" aria-label="Sign-on progress">
+            {DIAL_STEPS.map((label, i) => (
+              <li key={label} className="flex items-center gap-2 sm:gap-3">
+                <span className={`flex items-center gap-1.5 ${i <= step ? "text-zinc-100" : "text-zinc-500"}`}>
+                  <span className={`os-dot ${i <= step ? "os-dot-on" : ""}`} aria-hidden="true" />
+                  {label}
+                </span>
+                {i < DIAL_STEPS.length - 1 && <span className="h-px w-5 bg-[var(--os-line)] sm:w-8" aria-hidden="true" />}
+              </li>
+            ))}
+          </ol>
+
+          <div className="mt-6 w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-950/70 p-3 text-left font-mono text-[12px] leading-5 text-zinc-300" aria-live="polite">
+            {log.map((line, i) => (
+              <div key={`${line}-${i}`} className={line.startsWith("CONNECT") ? "text-emerald-300" : line.startsWith("ATDT") ? "text-cyan-300" : ""}>
+                {line}
               </div>
-              <div className="p-4">
-                <p id="trial-text" className="text-sm leading-6">
-                  <b>Your free trial has ended.</b>
-                  <br />
-                  Thanks for trying comcen online! To keep surfing the Information Superhighway, sign up for a
-                  membership.
-                </p>
-                <div className="mt-4 flex justify-end gap-2">
-                  <button type="button" className="retro-btn retro-btn-default" onClick={() => setPage("signup")}>
-                    Sign Up
-                  </button>
-                  <button type="button" className="retro-btn" onClick={onHangUp}>
-                    Disconnect
-                  </button>
+            ))}
+          </div>
+
+          <div className="mt-6">
+            {dial === "idle" ? (
+              <button type="button" onClick={connect} className="net-primary">
+                Connect
+              </button>
+            ) : (
+              <button type="button" onClick={hangUp} className="net-secondary">
+                Cancel
+              </button>
+            )}
+          </div>
+        </motion.div>
+      ) : (
+        <motion.div key="browser" initial={{ opacity: 0, scale: 0.985 }} animate={{ opacity: 1, scale: 1 }} transition={fade}>
+          {/* Browser toolbar */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 px-3 py-2.5">
+            <div className="flex items-center gap-1.5" aria-hidden="true">
+              {["‹", "›", "↻"].map((g) => (
+                <span key={g} className="os-round-btn opacity-50">
+                  {g}
+                </span>
+              ))}
+            </div>
+            <button type="button" onClick={() => setPage("start")} className="os-round-btn" title="Home" aria-label="Home">
+              <House className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
+            <label className="flex min-w-[160px] flex-1 items-center">
+              <span className="sr-only">Address</span>
+              <input readOnly value={address} className="net-address w-full rounded-full px-3.5 py-1.5 text-[13px]" />
+            </label>
+            <button type="button" onClick={hangUp} className="net-secondary">
+              Disconnect
+            </button>
+          </div>
+
+          {/* Page */}
+          <div className="relative h-[460px] overflow-auto bg-zinc-950/70">
+            {page === "signup" ? <NotFoundPage /> : <StartPage />}
+
+            {expired && page !== "signup" && (
+              <div className="absolute inset-0 flex items-center justify-center bg-[rgba(0,0,0,0.28)] p-4">
+                <div role="alertdialog" aria-labelledby="trial-title" aria-describedby="trial-text" className="os-popover w-full max-w-[380px] p-5">
+                  <div className="flex items-center gap-2">
+                    <span className="os-led" aria-hidden="true" />
+                    <h3 id="trial-title" className="font-semibold text-zinc-100">
+                      Your free trial has ended
+                    </h3>
+                  </div>
+                  <p id="trial-text" className="mt-2 text-sm leading-6 text-zinc-400">
+                    Thanks for trying comcen online! To keep surfing the Information Superhighway, sign up for a membership.
+                  </p>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button type="button" onClick={hangUp} className="net-secondary">
+                      Disconnect
+                    </button>
+                    <button type="button" onClick={() => setPage("signup")} className="net-primary">
+                      Sign Up
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
-        )}
-      </div>
 
-      {/* Status bar */}
-      <div className="retro-chrome flex items-center justify-between gap-3 border-t px-3 py-1.5 text-[11px]">
-        <span>{online ? (page === "signup" ? "404 Not Found" : "Document: Done") : "Offline"}</span>
-        <span className="tabular-nums">
-          {!online ? "" : expired ? "Free trial ended" : trialEnd ? `Free trial: ${formatLeft(trialEnd - now)} left` : ""}
-        </span>
-      </div>
+          {/* Status bar */}
+          <div className="flex items-center justify-between gap-3 border-t border-zinc-800 px-4 py-2 text-[12px] text-zinc-500">
+            <span className="flex items-center gap-1.5">
+              <span className="os-led" aria-hidden="true" />
+              {page === "signup" ? "404 Not Found" : "Connected at 14,400 bps"}
+            </span>
+            <span className="tabular-nums">{expired ? "Free trial ended" : trialEnd ? `Free trial: ${formatLeft(trialEnd - now)} left` : ""}</span>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }
 
 function InternetPage() {
-  const [online, setOnline] = useState(false);
-  const [dialKey, setDialKey] = useState(0);
-
   return (
     <SharedShell currentPage="internet">
       <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
-        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-emerald-300">
+        <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-emerald-300">
           <Globe className="h-3.5 w-3.5" />
           Internet
         </div>
-        <h1 className="mt-2 text-[26px] font-semibold tracking-tight text-zinc-100 sm:text-3xl md:text-5xl">Internet</h1>
-        <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-300 md:text-base">
-          Dial up, listen to the handshake, and once you&rsquo;re online the browser opens. New members get a{" "}
-          {TRIAL_MINUTES}-minute free trial.
-        </p>
+        <InternetWindow />
       </section>
-
-      <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
-        <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-cyan-300">
-          <Phone className="h-3.5 w-3.5" />
-          Dial-Up Connection
-        </div>
-        <InteractiveDialup key={dialKey} onConnected={() => {
-            startTrial(); // the trial clock starts the first time a visitor gets online, and never resets
-            setOnline(true);
-          }} onDisconnected={() => setOnline(false)} />
-      </section>
-
-      {/* Like signing on to AOL: the browser only opens once the modem connects */}
-      {online && (
-        <motion.section
-          initial={{ opacity: 0, y: 16, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: prefersReducedMotion() ? 0 : 0.35, ease: [0.3, 0, 0.2, 1] }}
-          className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl"
-        >
-          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-amber-300">
-            <Monitor className="h-3.5 w-3.5" />
-            Web Browser
-          </div>
-          <RetroBrowser
-            online
-            onHangUp={() => {
-              setOnline(false);
-              setDialKey((k) => k + 1);
-            }}
-          />
-        </motion.section>
-      )}
     </SharedShell>
   );
 }
