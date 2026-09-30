@@ -1036,7 +1036,7 @@ function SystemPreferences() {
                 <span className="h-[7px] w-[7px] rounded-full bg-[var(--os-accent)]" aria-hidden="true" />
                 wallpaper
               </div>
-              <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">Choose the picture on your desktop. It&rsquo;s remembered on this browser.</p>
+              <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">Choose the picture on your desktop.</p>
               <div role="radiogroup" aria-label="Wallpaper" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {WALLPAPERS.map((w) => {
                   const active = w.id === current;
@@ -1065,6 +1065,10 @@ function SystemPreferences() {
             </div>
           )}
         </div>
+
+        <p className="prefs-footer border-t border-[var(--os-line)] px-5 py-2.5 text-[12px] text-[var(--os-ink-3)]">
+          {pane === "all" ? "Your preferences are remembered on this browser." : "Your preference is remembered on this browser."}
+        </p>
       </motion.div>
     </div>
   );
@@ -1206,8 +1210,7 @@ function SoundPane() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-[var(--os-ink-3)]">Your choice is remembered on this browser.</span>
+        <div className="flex items-center justify-end gap-3">
           <button
             type="button"
             disabled={!sound.on}
@@ -1800,7 +1803,6 @@ function ScreenSaverPane() {
             </select>
           </label>
 
-          <p className="text-[var(--os-ink-3)]">Your choice is remembered on this browser.</p>
         </div>
       </div>
     </div>
