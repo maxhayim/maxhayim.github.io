@@ -30,6 +30,10 @@ import {
   HardDrive,
   Accessibility,
   LayoutGrid,
+  MonitorPlay,
+  Mouse,
+  ShieldCheck,
+  BatteryCharging,
   ChevronRight,
   ExternalLink,
   Github,
@@ -801,45 +805,47 @@ function DesktopMenu() {
 /* System Preferences: the full grid of panes; only Desktop & Wallpaper works for now */
 const PREF_SECTIONS = [
   {
-    title: "Personal",
+    title: "Desk",
     panes: [
-      { id: "appearance", label: "Appearance", Icon: Palette },
-      { id: "wallpaper", label: "Desktop & Wallpaper", Icon: ImageIcon, ready: true },
+      { id: "theme", label: "Theme", Icon: Palette },
+      { id: "wallpaper", label: "Wallpaper", Icon: ImageIcon, ready: true },
+      { id: "screensaver", label: "Screen Saver", Icon: MonitorPlay, ready: true },
       { id: "dock", label: "Dock", Icon: PanelBottom },
       { id: "windows", label: "Windows", Icon: AppWindow },
-      { id: "language", label: "Language & Region", Icon: Globe },
-      { id: "security", label: "Security", Icon: Lock },
+      { id: "language", label: "Language", Icon: Globe },
+      { id: "privacy", label: "Privacy", Icon: ShieldCheck },
     ],
   },
   {
-    title: "Hardware",
+    title: "Devices",
     panes: [
       { id: "bluetooth", label: "Bluetooth", Icon: Bluetooth },
-      { id: "cds", label: "CDs & DVDs", Icon: Disc },
+      { id: "discs", label: "Discs", Icon: Disc },
       { id: "displays", label: "Displays", Icon: Monitor },
-      { id: "energy", label: "Energy Saver", Icon: Lightbulb },
-      { id: "keyboard", label: "Keyboard & Mouse", Icon: Keyboard },
-      { id: "printers", label: "Printers", Icon: Printer },
+      { id: "power", label: "Power", Icon: BatteryCharging },
+      { id: "keyboard", label: "Keyboard", Icon: Keyboard },
+      { id: "pointer", label: "Pointer", Icon: Mouse },
+      { id: "printing", label: "Printing", Icon: Printer },
       { id: "sound", label: "Sound", Icon: Volume2 },
     ],
   },
   {
-    title: "Internet & Network",
+    title: "Connections",
     panes: [
       { id: "network", label: "Network", Icon: Network },
       { id: "modem", label: "Modem", Icon: Phone },
       { id: "mesh", label: "Mesh Radio", Icon: Radio },
-      { id: "sharing", label: "Sharing", Icon: Share2 },
+      { id: "sharing", label: "File Sharing", Icon: Share2 },
     ],
   },
   {
     title: "System",
     panes: [
-      { id: "accounts", label: "Accounts", Icon: Users },
-      { id: "datetime", label: "Date & Time", Icon: Clock3 },
-      { id: "update", label: "Software Update", Icon: RefreshCw },
-      { id: "speech", label: "Speech", Icon: Mic },
-      { id: "startup", label: "Startup Disk", Icon: HardDrive },
+      { id: "users", label: "Users", Icon: Users },
+      { id: "clock", label: "Clock", Icon: Clock3 },
+      { id: "updates", label: "Updates", Icon: RefreshCw },
+      { id: "voice", label: "Voice", Icon: Mic },
+      { id: "boot", label: "Boot Drive", Icon: HardDrive },
       { id: "access", label: "Accessibility", Icon: Accessibility },
     ],
   },
@@ -913,7 +919,7 @@ function SystemPreferences() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="prefs-title"
-        className="os-window prefs-window flex max-h-[calc(100vh-24px)] w-full max-w-[680px] flex-col overflow-hidden"
+        className="os-window prefs-window flex max-h-[calc(100vh-24px)] w-full max-w-[760px] flex-col overflow-hidden"
       >
         {/* Title bar */}
         <div className="relative flex items-center gap-3 border-b border-[var(--os-line)] px-4 py-2.5">
@@ -934,7 +940,7 @@ function SystemPreferences() {
             className={`prefs-tool flex flex-col items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] ${pane === "all" ? "prefs-tool-active" : ""}`}
           >
             <LayoutGrid className="h-5 w-5" strokeWidth={1.6} />
-            show all
+            all settings
           </button>
           <span className="mx-1 h-9 w-px bg-[var(--os-line)]" aria-hidden="true" />
           <button
@@ -946,6 +952,15 @@ function SystemPreferences() {
             <ImageIcon className="h-5 w-5" strokeWidth={1.6} />
             wallpaper
           </button>
+          <button
+            type="button"
+            onClick={() => setPane("screensaver")}
+            aria-pressed={pane === "screensaver"}
+            className={`prefs-tool flex flex-col items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] ${pane === "screensaver" ? "prefs-tool-active" : ""}`}
+          >
+            <MonitorPlay className="h-5 w-5" strokeWidth={1.6} />
+            screen saver
+          </button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -954,7 +969,7 @@ function SystemPreferences() {
               {PREF_SECTIONS.map((section, si) => (
                 <section key={section.title} className={`px-4 pb-4 pt-3 ${si % 2 ? "bg-[var(--os-desk)]/35" : ""}`}>
                   <h3 className="mb-2 text-[13px] font-semibold">{section.title}</h3>
-                  <div className="grid grid-cols-3 gap-y-3 sm:grid-cols-5 md:grid-cols-7">
+                  <div className="grid grid-cols-3 gap-y-3 sm:grid-cols-5 md:grid-cols-8">
                     {section.panes.map(({ id, label, Icon, ready }) => (
                       <button
                         key={id}
@@ -976,6 +991,8 @@ function SystemPreferences() {
               ))}
             </div>
           )}
+
+          {pane === "screensaver" && <ScreenSaverPane />}
 
           {pane === "wallpaper" && (
             <div className="p-5">
@@ -1011,6 +1028,346 @@ function SystemPreferences() {
               </div>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/* ---------- Screen saver: "Mesh" ---------- */
+
+const SCREENSAVER_COOKIE = "comcen_screensaver";
+const SCREENSAVER_DELAYS = [
+  { minutes: 1, label: "1 minute" },
+  { minutes: 2, label: "2 minutes" },
+  { minutes: 5, label: "5 minutes" },
+  { minutes: 10, label: "10 minutes" },
+  { minutes: 15, label: "15 minutes" },
+];
+const SCREENSAVER_DEFAULT = { on: true, minutes: 5 };
+
+function readScreensaver() {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${SCREENSAVER_COOKIE}=([^;]*)`));
+  if (!match) return SCREENSAVER_DEFAULT;
+  const [on, minutes] = decodeURIComponent(match[1]).split(":");
+  const m = Number(minutes);
+  return { on: on === "on", minutes: SCREENSAVER_DELAYS.some((d) => d.minutes === m) ? m : SCREENSAVER_DEFAULT.minutes };
+}
+
+function saveScreensaver(settings) {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  const value = `${settings.on ? "on" : "off"}:${settings.minutes}`;
+  document.cookie = `${SCREENSAVER_COOKIE}=${encodeURIComponent(value)}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;
+  window.dispatchEvent(new CustomEvent("mh-screensaver-changed", { detail: settings }));
+}
+
+// Drifting radio nodes that link up when close; orange packets hop node to node.
+function MeshCanvas({ compact = false }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const slow = prefersReducedMotion();
+    let width = 0;
+    let height = 0;
+    let nodes = [];
+    let packets = [];
+    let frame = 0;
+    let last = 0;
+    let lastSpawn = 0;
+
+    const setup = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const rect = canvas.getBoundingClientRect();
+      width = rect.width;
+      height = rect.height;
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const count = Math.max(14, Math.min(90, Math.round((width * height) / (compact ? 2600 : 16000))));
+      const speed = (compact ? 9 : 16) * (slow ? 0.35 : 1);
+      nodes = Array.from({ length: count }, () => {
+        const angle = Math.random() * Math.PI * 2;
+        const v = speed * (0.4 + Math.random() * 0.6);
+        return { x: Math.random() * width, y: Math.random() * height, vx: Math.cos(angle) * v, vy: Math.sin(angle) * v, r: compact ? 1.4 : 2 + Math.random() * 1.2 };
+      });
+      packets = [];
+    };
+
+    const linkDistance = () => (compact ? 46 : 150);
+
+    const neighbors = (i) => {
+      const reach = linkDistance();
+      const out = [];
+      for (let j = 0; j < nodes.length; j++) {
+        if (j === i) continue;
+        const dx = nodes[j].x - nodes[i].x;
+        const dy = nodes[j].y - nodes[i].y;
+        if (dx * dx + dy * dy < reach * reach) out.push(j);
+      }
+      return out;
+    };
+
+    const draw = (time) => {
+      const dt = last ? Math.min(0.05, (time - last) / 1000) : 0;
+      last = time;
+
+      for (const n of nodes) {
+        n.x += n.vx * dt;
+        n.y += n.vy * dt;
+        if (n.x < -20) n.x = width + 20;
+        if (n.x > width + 20) n.x = -20;
+        if (n.y < -20) n.y = height + 20;
+        if (n.y > height + 20) n.y = -20;
+      }
+
+      ctx.fillStyle = "#0b0b0a";
+      ctx.fillRect(0, 0, width, height);
+
+      const reach = linkDistance();
+      ctx.lineWidth = compact ? 0.6 : 1;
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const dx = nodes[j].x - nodes[i].x;
+          const dy = nodes[j].y - nodes[i].y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > reach * reach) continue;
+          const alpha = (1 - Math.sqrt(d2) / reach) * 0.35;
+          ctx.strokeStyle = `rgba(238, 235, 228, ${alpha})`;
+          ctx.beginPath();
+          ctx.moveTo(nodes[i].x, nodes[i].y);
+          ctx.lineTo(nodes[j].x, nodes[j].y);
+          ctx.stroke();
+        }
+      }
+
+      ctx.fillStyle = "rgba(238, 235, 228, 0.75)";
+      for (const n of nodes) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Send a new packet every so often from a random node
+      if (time - lastSpawn > (slow ? 2400 : 900) && packets.length < 6) {
+        lastSpawn = time;
+        const from = Math.floor(Math.random() * nodes.length);
+        const next = neighbors(from);
+        if (next.length) packets.push({ from, to: next[Math.floor(Math.random() * next.length)], t: 0, hops: 0 });
+      }
+
+      packets = packets.filter((p) => {
+        p.t += dt * (slow ? 0.6 : 1.6);
+        if (p.t >= 1) {
+          p.hops += 1;
+          const next = neighbors(p.to).filter((j) => j !== p.from);
+          if (!next.length || p.hops > 7) {
+            // arrival flash
+            const n = nodes[p.to];
+            ctx.strokeStyle = "rgba(240, 106, 42, 0.6)";
+            ctx.beginPath();
+            ctx.arc(n.x, n.y, compact ? 5 : 12, 0, Math.PI * 2);
+            ctx.stroke();
+            return false;
+          }
+          p.from = p.to;
+          p.to = next[Math.floor(Math.random() * next.length)];
+          p.t = 0;
+        }
+        const a = nodes[p.from];
+        const b = nodes[p.to];
+        const x = a.x + (b.x - a.x) * p.t;
+        const y = a.y + (b.y - a.y) * p.t;
+        ctx.strokeStyle = "rgba(240, 106, 42, 0.55)";
+        ctx.lineWidth = compact ? 1 : 1.6;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.fillStyle = "#f06a2a";
+        ctx.beginPath();
+        ctx.arc(x, y, compact ? 2 : 3.4, 0, Math.PI * 2);
+        ctx.fill();
+        return true;
+      });
+
+      frame = requestAnimationFrame(draw);
+    };
+
+    setup();
+    frame = requestAnimationFrame(draw);
+    const ro = new ResizeObserver(setup);
+    ro.observe(canvas);
+    return () => {
+      cancelAnimationFrame(frame);
+      ro.disconnect();
+    };
+  }, [compact]);
+
+  return <canvas ref={canvasRef} className="block h-full w-full" aria-hidden="true" />;
+}
+
+// Starts the screen saver after the chosen idle time; any input ends it.
+function ScreenSaverHost({ disabled }) {
+  const [settings, setSettings] = useState(readScreensaver);
+  const [active, setActive] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+  const startedAtRef = useRef(0);
+  const pointerRef = useRef(null);
+
+  useEffect(() => {
+    const onChanged = (e) => setSettings(e.detail);
+    const onStart = () => {
+      startedAtRef.current = performance.now();
+      pointerRef.current = null;
+      setActive(true);
+    };
+    window.addEventListener("mh-screensaver-changed", onChanged);
+    window.addEventListener("mh-screensaver-start", onStart);
+    return () => {
+      window.removeEventListener("mh-screensaver-changed", onChanged);
+      window.removeEventListener("mh-screensaver-start", onStart);
+    };
+  }, []);
+
+  // Idle timer
+  useEffect(() => {
+    if (disabled || active || !settings.on) return;
+    let timer = null;
+    const arm = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (document.hidden) return arm();
+        startedAtRef.current = performance.now();
+        pointerRef.current = null;
+        setActive(true);
+      }, settings.minutes * 60 * 1000);
+    };
+    const events = ["mousemove", "mousedown", "keydown", "wheel", "touchstart", "scroll"];
+    events.forEach((e) => window.addEventListener(e, arm, { passive: true }));
+    arm();
+    return () => {
+      clearTimeout(timer);
+      events.forEach((e) => window.removeEventListener(e, arm));
+    };
+  }, [disabled, active, settings]);
+
+  // Wake up on any real input (ignore the tiny jitter right after it starts)
+  useEffect(() => {
+    if (!active) return;
+    const wake = () => setActive(false);
+    const onMove = (e) => {
+      if (performance.now() - startedAtRef.current < 400) return;
+      if (!pointerRef.current) {
+        pointerRef.current = { x: e.clientX, y: e.clientY };
+        return;
+      }
+      if (Math.abs(e.clientX - pointerRef.current.x) + Math.abs(e.clientY - pointerRef.current.y) > 8) wake();
+    };
+    const onKey = (e) => {
+      e.preventDefault();
+      wake();
+    };
+    const tick = setInterval(() => setNow(new Date()), 1000);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", wake);
+    window.addEventListener("touchstart", wake, { passive: true });
+    window.addEventListener("wheel", wake, { passive: true });
+    return () => {
+      clearInterval(tick);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", wake);
+      window.removeEventListener("touchstart", wake);
+      window.removeEventListener("wheel", wake);
+    };
+  }, [active]);
+
+  if (!active) return null;
+  return (
+    <div className="screensaver fixed inset-0 z-[90] cursor-none bg-[#0b0b0a]" role="presentation" aria-hidden="true">
+      <MeshCanvas />
+      <div className="os-ui pointer-events-none absolute bottom-8 left-8" style={{ color: "#eeebe4" }}>
+        <div className="text-5xl font-semibold tabular-nums tracking-tight opacity-80">
+          {now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+        </div>
+        <div className="mt-1 text-sm opacity-50">comcen os</div>
+      </div>
+    </div>
+  );
+}
+
+function ScreenSaverPane() {
+  const [settings, setSettings] = useState(readScreensaver);
+  const update = (next) => {
+    const merged = { ...settings, ...next };
+    setSettings(merged);
+    saveScreensaver(merged);
+  };
+
+  return (
+    <div className="p-5">
+      <div className="mb-1 flex items-center gap-2 font-semibold">
+        <span className="h-[7px] w-[7px] rounded-full bg-[var(--os-accent)]" aria-hidden="true" />
+        screen saver
+      </div>
+      <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">Shown when the desk has been idle. Move the mouse or press a key to return.</p>
+
+      <div className="grid gap-5 sm:grid-cols-[1.2fr_1fr]">
+        <div>
+          <div className="relative aspect-video overflow-hidden rounded-xl ring-1 ring-[var(--os-line)]">
+            <MeshCanvas compact />
+          </div>
+          <div className="mt-2 flex items-center justify-between text-[13px]">
+            <span className="flex items-center gap-1.5">
+              <span className="os-dot os-dot-on" aria-hidden="true" />
+              Mesh
+            </span>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event("mh-screensaver-start"))}
+              className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]"
+            >
+              test
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-4 text-[13px]">
+          <label className="flex items-center justify-between gap-3">
+            <span>use screen saver</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.on}
+              onClick={() => update({ on: !settings.on })}
+              className={`os-switch ${settings.on ? "os-switch-on" : ""} shrink-0 cursor-pointer`}
+            >
+              <span className="sr-only">use screen saver</span>
+            </button>
+          </label>
+
+          <label className={`flex flex-col gap-1.5 ${settings.on ? "" : "opacity-50"}`}>
+            <span>start after</span>
+            <select
+              value={settings.minutes}
+              disabled={!settings.on}
+              onChange={(e) => update({ minutes: Number(e.target.value) })}
+              className="rounded-lg bg-[var(--os-card)] px-2.5 py-1.5 ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]"
+            >
+              {SCREENSAVER_DELAYS.map((d) => (
+                <option key={d.minutes} value={d.minutes}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <p className="text-[var(--os-ink-3)]">Your choice is remembered on this browser.</p>
         </div>
       </div>
     </div>
@@ -3694,6 +4051,7 @@ export default function App() {
   return (
     <>
       {page}
+      <ScreenSaverHost disabled={booting} />
       {booting && (
         <BootScreen
           key={bootMode}
