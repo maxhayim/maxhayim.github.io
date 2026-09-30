@@ -168,6 +168,27 @@
 .wallpaper-thumb { box-shadow: 0 0 0 1px var(--os-line); }
 .prefs-window { animation: prefs-in 0.18s ease-out; }
 .prefs-option:hover { background: var(--os-hover); }
+.prefs-tool { color: var(--os-ink-2); }
+.prefs-tool:hover { background: var(--os-hover); color: var(--os-ink); }
+.prefs-tool-active { background: var(--os-hover); color: var(--os-ink); box-shadow: inset 0 0 0 1px var(--os-line); }
+.prefs-tool:focus-visible,
+.prefs-pane:focus-visible { outline: 2px solid var(--os-accent); outline-offset: 1px; }
+.prefs-icon {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: var(--os-ink);
+  background: linear-gradient(var(--os-knob-top), var(--os-knob-bot));
+  box-shadow: 0 0 0 1px var(--os-line), 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+.prefs-pane-ready { color: var(--os-ink); }
+.prefs-pane-ready:hover { background: var(--os-hover); }
+.prefs-pane-ready .prefs-icon { color: var(--os-accent); }
+.prefs-pane-off { color: var(--os-ink-3); cursor: default; }
+.prefs-pane-off .prefs-icon { opacity: 0.55; }
 .prefs-option:focus-visible { outline: 2px solid var(--os-accent); outline-offset: 1px; }
 @keyframes prefs-in {
   from { opacity: 0; transform: scale(0.97); }

@@ -13,6 +13,23 @@ import {
   Globe,
   MapPin,
   StickyNote,
+  Palette,
+  Image as ImageIcon,
+  PanelBottom,
+  Lock,
+  Bluetooth,
+  Disc,
+  Lightbulb,
+  Keyboard,
+  Printer,
+  Volume2,
+  Network,
+  Share2,
+  RefreshCw,
+  Mic,
+  HardDrive,
+  Accessibility,
+  LayoutGrid,
   ChevronRight,
   ExternalLink,
   Github,
@@ -544,7 +561,7 @@ function SystemMenu() {
                 className={item}
                 onClick={() => {
                   setOpen(false);
-                  window.dispatchEvent(new Event("mh-preferences-open"));
+                  openPreferences("all");
                 }}
               >
                 system preferences…
@@ -713,20 +730,17 @@ function saveWallpaper(id) {
 // Apply the saved wallpaper as early as possible so the desktop never flashes the default.
 if (typeof document !== "undefined") applyWallpaper(readWallpaperCookie());
 
-function WallpaperMenu() {
+const openPreferences = (pane = "all") => window.dispatchEvent(new CustomEvent("mh-preferences-open", { detail: { pane } }));
+
+// Right-click on the desktop: same look as the system menu
+function DesktopMenu() {
   const [menu, setMenu] = useState(null); // { x, y } or null
-  const [current, setCurrent] = useState(readWallpaperCookie);
   const ref = useRef(null);
 
   useEffect(() => {
-    const onChanged = (e) => setCurrent(e.detail);
     const onOpen = (e) => setMenu(e.detail);
-    window.addEventListener("mh-wallpaper-changed", onChanged);
-    window.addEventListener("mh-wallpaper-menu", onOpen);
-    return () => {
-      window.removeEventListener("mh-wallpaper-changed", onChanged);
-      window.removeEventListener("mh-wallpaper-menu", onOpen);
-    };
+    window.addEventListener("mh-desktop-menu", onOpen);
+    return () => window.removeEventListener("mh-desktop-menu", onOpen);
   }, []);
 
   useEffect(() => {
@@ -749,53 +763,100 @@ function WallpaperMenu() {
   }, [menu]);
 
   if (!menu) return null;
-  const width = 272;
-  const height = 256;
+  const width = 230;
+  const height = 250;
   const left = Math.max(8, Math.min(menu.x, window.innerWidth - width - 8));
   const top = Math.max(52, Math.min(menu.y, window.innerHeight - height - 8));
+  const item = "flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left";
+  const off = `${item} cursor-default text-[var(--os-ink-3)] opacity-60`;
+  const on = `${item} hover:bg-[var(--os-hover)]`;
+  const divider = <div className="my-1 h-px bg-[var(--os-line)]" />;
 
   return (
-    <div ref={ref} role="menu" aria-label="Change wallpaper" className="os-ui os-popover fixed z-[60] p-2" style={{ left, top, width }}>
-      <div className="px-2 pb-2 pt-1 text-[12px] text-[var(--os-ink-3)]">change wallpaper</div>
-      <div className="flex flex-col gap-1">
-        {WALLPAPERS.map((w) => {
-          const active = w.id === current;
-          return (
-            <button
-              key={w.id}
-              role="menuitemradio"
-              aria-checked={active}
-              type="button"
-              onClick={() => {
-                saveWallpaper(w.id);
-                setMenu(null);
-              }}
-              className={`flex items-center gap-3 rounded-lg p-1.5 text-left hover:bg-[var(--os-hover)] ${active ? "bg-[var(--os-hover)]" : ""}`}
-            >
-              <img src={w.thumb} alt="" className={`h-11 w-[78px] shrink-0 rounded-md object-cover ${active ? "wallpaper-thumb-active" : "wallpaper-thumb"}`} />
-              <span className="flex-1">{w.label}</span>
-              {active && <span className="os-dot os-dot-on mr-2" aria-hidden="true" />}
-            </button>
-          );
-        })}
-      </div>
+    <div ref={ref} role="menu" aria-label="Desktop" className="os-ui os-popover fixed z-[60] p-1.5" style={{ left, top, width }}>
+      <button role="menuitem" type="button" aria-disabled="true" className={off}>new folder</button>
+      <button role="menuitem" type="button" aria-disabled="true" className={off}>paste item</button>
+      {divider}
+      <button role="menuitem" type="button" aria-disabled="true" className={off}>get info</button>
+      <button
+        role="menuitem"
+        type="button"
+        className={on}
+        onClick={() => {
+          setMenu(null);
+          openPreferences("wallpaper");
+        }}
+      >
+        change wallpaper…
+      </button>
+      {divider}
+      <button role="menuitem" type="button" aria-disabled="true" className={off}>
+        sort by <span aria-hidden="true">&rsaquo;</span>
+      </button>
+      <button role="menuitem" type="button" aria-disabled="true" className={off}>show view options</button>
     </div>
   );
 }
 
+/* System Preferences: the full grid of panes; only Desktop & Wallpaper works for now */
+const PREF_SECTIONS = [
+  {
+    title: "Personal",
+    panes: [
+      { id: "appearance", label: "Appearance", Icon: Palette },
+      { id: "wallpaper", label: "Desktop & Wallpaper", Icon: ImageIcon, ready: true },
+      { id: "dock", label: "Dock", Icon: PanelBottom },
+      { id: "windows", label: "Windows", Icon: AppWindow },
+      { id: "language", label: "Language & Region", Icon: Globe },
+      { id: "security", label: "Security", Icon: Lock },
+    ],
+  },
+  {
+    title: "Hardware",
+    panes: [
+      { id: "bluetooth", label: "Bluetooth", Icon: Bluetooth },
+      { id: "cds", label: "CDs & DVDs", Icon: Disc },
+      { id: "displays", label: "Displays", Icon: Monitor },
+      { id: "energy", label: "Energy Saver", Icon: Lightbulb },
+      { id: "keyboard", label: "Keyboard & Mouse", Icon: Keyboard },
+      { id: "printers", label: "Printers", Icon: Printer },
+      { id: "sound", label: "Sound", Icon: Volume2 },
+    ],
+  },
+  {
+    title: "Internet & Network",
+    panes: [
+      { id: "network", label: "Network", Icon: Network },
+      { id: "modem", label: "Modem", Icon: Phone },
+      { id: "mesh", label: "Mesh Radio", Icon: Radio },
+      { id: "sharing", label: "Sharing", Icon: Share2 },
+    ],
+  },
+  {
+    title: "System",
+    panes: [
+      { id: "accounts", label: "Accounts", Icon: Users },
+      { id: "datetime", label: "Date & Time", Icon: Clock3 },
+      { id: "update", label: "Software Update", Icon: RefreshCw },
+      { id: "speech", label: "Speech", Icon: Mic },
+      { id: "startup", label: "Startup Disk", Icon: HardDrive },
+      { id: "access", label: "Accessibility", Icon: Accessibility },
+    ],
+  },
+];
 
-/* System Preferences: one pane, one setting (wallpaper) */
 function SystemPreferences() {
-  const [open, setOpen] = useState(false);
+  const [pane, setPane] = useState(null); // null = closed, "all", or a pane id
   const [current, setCurrent] = useState(readWallpaperCookie);
   const panelRef = useRef(null);
   const returnFocusRef = useRef(null);
+  const open = pane !== null;
 
   useEffect(() => {
-    const onOpen = () => {
-      returnFocusRef.current = document.activeElement;
+    const onOpen = (e) => {
+      if (!document.querySelector("[aria-labelledby='prefs-title']")) returnFocusRef.current = document.activeElement;
       setCurrent(readWallpaperCookie());
-      setOpen(true);
+      setPane(e.detail?.pane || "all");
     };
     const onChanged = (e) => setCurrent(e.detail);
     window.addEventListener("mh-preferences-open", onOpen);
@@ -809,15 +870,14 @@ function SystemPreferences() {
   useEffect(() => {
     if (!open) return;
     const panel = panelRef.current;
-    panel?.querySelector("[aria-checked='true']")?.focus();
     const onKey = (e) => {
       if (e.key === "Escape") {
-        setOpen(false);
+        setPane(null);
         return;
       }
       if (e.key !== "Tab" || !panel) return;
       // Keep keyboard focus inside the window while it's open
-      const items = [...panel.querySelectorAll("button")];
+      const items = [...panel.querySelectorAll("button:not([aria-disabled='true'])")];
       const first = items[0];
       const last = items[items.length - 1];
       if (e.shiftKey && document.activeElement === first) {
@@ -829,65 +889,128 @@ function SystemPreferences() {
       }
     };
     document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      returnFocusRef.current?.focus?.();
-    };
+    return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
+  // Move focus into the window whenever the pane changes; give it back when it closes
+  useEffect(() => {
+    if (pane === null) {
+      returnFocusRef.current?.focus?.();
+      return;
+    }
+    const panel = panelRef.current;
+    const target = pane === "wallpaper" ? panel?.querySelector("[aria-checked='true']") : panel?.querySelector("[data-pane='wallpaper']");
+    target?.focus();
+  }, [pane]);
+
   if (!open) return null;
+  const paneInfo = PREF_SECTIONS.flatMap((sct) => sct.panes).find((p) => p.id === pane);
 
   return (
-    <div className="os-ui fixed inset-0 z-[70] flex items-center justify-center bg-black/20 p-4" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
+    <div className="os-ui fixed inset-0 z-[70] flex items-center justify-center bg-black/20 p-3 sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && setPane(null)}>
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="prefs-title"
-        className="os-window prefs-window w-full max-w-[560px] overflow-hidden"
+        className="os-window prefs-window flex max-h-[calc(100vh-24px)] w-full max-w-[680px] flex-col overflow-hidden"
       >
-        <div className="flex items-center gap-3 border-b border-[var(--os-line)] px-4 py-3">
-          <button type="button" onClick={() => setOpen(false)} aria-label="Close system preferences" title="Close" className="os-round-btn os-win-close">
+        {/* Title bar */}
+        <div className="relative flex items-center gap-3 border-b border-[var(--os-line)] px-4 py-2.5">
+          <button type="button" onClick={() => setPane(null)} aria-label="Close system preferences" title="Close" className="os-round-btn os-win-close">
             <X className="h-3.5 w-3.5" strokeWidth={2.2} />
           </button>
-          <span className="os-led" aria-hidden="true" />
-          <h2 id="prefs-title" className="font-semibold tracking-tight">
-            system preferences
+          <h2 id="prefs-title" className="pointer-events-none absolute inset-x-0 text-center font-semibold tracking-tight">
+            {pane === "all" ? "system preferences" : paneInfo?.label.toLowerCase()}
           </h2>
         </div>
 
-        <div className="p-5">
-          <div className="mb-1 flex items-center gap-2 font-semibold">
-            <span className="h-[7px] w-[7px] rounded-full bg-[var(--os-accent)]" aria-hidden="true" />
+        {/* Toolbar */}
+        <div className="flex items-center gap-2 border-b border-[var(--os-line)] bg-[var(--os-desk)]/40 px-3 py-2">
+          <button
+            type="button"
+            onClick={() => setPane("all")}
+            aria-pressed={pane === "all"}
+            className={`prefs-tool flex flex-col items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] ${pane === "all" ? "prefs-tool-active" : ""}`}
+          >
+            <LayoutGrid className="h-5 w-5" strokeWidth={1.6} />
+            show all
+          </button>
+          <span className="mx-1 h-9 w-px bg-[var(--os-line)]" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={() => setPane("wallpaper")}
+            aria-pressed={pane === "wallpaper"}
+            className={`prefs-tool flex flex-col items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] ${pane === "wallpaper" ? "prefs-tool-active" : ""}`}
+          >
+            <ImageIcon className="h-5 w-5" strokeWidth={1.6} />
             wallpaper
-          </div>
-          <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">Choose the picture on your desktop. It&rsquo;s remembered on this browser.</p>
+          </button>
+        </div>
 
-          <div role="radiogroup" aria-label="Wallpaper" className="grid grid-cols-3 gap-3">
-            {WALLPAPERS.map((w) => {
-              const active = w.id === current;
-              return (
-                <button
-                  key={w.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => saveWallpaper(w.id)}
-                  className="prefs-option flex flex-col items-center gap-2 rounded-xl p-1.5 text-[13px]"
-                >
-                  <img
-                    src={w.thumb}
-                    alt=""
-                    className={`aspect-video w-full rounded-lg object-cover ${active ? "wallpaper-thumb-active" : "wallpaper-thumb"}`}
-                  />
-                  <span className="flex items-center gap-1.5">
-                    <span className={`os-dot ${active ? "os-dot-on" : ""}`} aria-hidden="true" />
-                    {w.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {pane === "all" && (
+            <div>
+              {PREF_SECTIONS.map((section, si) => (
+                <section key={section.title} className={`px-4 pb-4 pt-3 ${si % 2 ? "bg-[var(--os-desk)]/35" : ""}`}>
+                  <h3 className="mb-2 text-[13px] font-semibold">{section.title}</h3>
+                  <div className="grid grid-cols-3 gap-y-3 sm:grid-cols-5 md:grid-cols-7">
+                    {section.panes.map(({ id, label, Icon, ready }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        data-pane={id}
+                        aria-disabled={ready ? undefined : "true"}
+                        title={ready ? label : `${label} is coming soon`}
+                        onClick={() => ready && setPane(id)}
+                        className={`prefs-pane flex flex-col items-center gap-1.5 rounded-xl px-1 py-2 text-center text-[12px] leading-tight ${ready ? "prefs-pane-ready" : "prefs-pane-off"}`}
+                      >
+                        <span className="prefs-icon">
+                          <Icon className="h-5 w-5" strokeWidth={1.6} />
+                        </span>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+
+          {pane === "wallpaper" && (
+            <div className="p-5">
+              <div className="mb-1 flex items-center gap-2 font-semibold">
+                <span className="h-[7px] w-[7px] rounded-full bg-[var(--os-accent)]" aria-hidden="true" />
+                wallpaper
+              </div>
+              <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">Choose the picture on your desktop. It&rsquo;s remembered on this browser.</p>
+              <div role="radiogroup" aria-label="Wallpaper" className="grid grid-cols-3 gap-3">
+                {WALLPAPERS.map((w) => {
+                  const active = w.id === current;
+                  return (
+                    <button
+                      key={w.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => saveWallpaper(w.id)}
+                      className="prefs-option flex flex-col items-center gap-2 rounded-xl p-1.5 text-[13px]"
+                    >
+                      <img
+                        src={w.thumb}
+                        alt=""
+                        className={`aspect-video w-full rounded-lg object-cover ${active ? "wallpaper-thumb-active" : "wallpaper-thumb"}`}
+                      />
+                      <span className="flex items-center gap-1.5">
+                        <span className={`os-dot ${active ? "os-dot-on" : ""}`} aria-hidden="true" />
+                        {w.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -961,7 +1084,7 @@ function SharedShell({ currentPage, children }) {
         onContextMenu={(e) => {
           if (e.target.closest(".os-window, .os-dock, header, [role='menu']")) return;
           e.preventDefault();
-          window.dispatchEvent(new CustomEvent("mh-wallpaper-menu", { detail: { x: e.clientX, y: e.clientY } }));
+          window.dispatchEvent(new CustomEvent("mh-desktop-menu", { detail: { x: e.clientX, y: e.clientY } }));
         }}
         className={`mh-screen os-desk os-ui relative min-h-screen overflow-hidden pb-28 ${
           maximized ? "pt-11" : "px-3 pt-16 sm:px-5 md:px-8"
@@ -1046,7 +1169,7 @@ function SharedShell({ currentPage, children }) {
       </div>
 
       <Dock currentPage={currentPage} windowState={windowState} onMinimize={minimize} onRestore={restore} />
-      <WallpaperMenu />
+      <DesktopMenu />
       <SystemPreferences />
     </>
   );
