@@ -217,9 +217,18 @@ function useHashRoute() {
   return route;
 }
 
-function usePageMeta() {
+const SITE_URL = "https://maxhayim.com";
+const SITE_DESCRIPTION =
+  "Max Hayim's personal website, built as comcen os: a late-1990s-style operating system with live GitHub projects, telemetry, and interactive experiments.";
+const PAGE_TITLES = {
+  home: "comcen os — maxhayim.com",
+  about: "About — comcen os",
+  contact: "Contact — comcen os",
+};
+
+function usePageMeta(page = "home") {
   useEffect(() => {
-    document.title = "maxhayim.com — Public Command Center Homepage";
+    document.title = PAGE_TITLES[page] || PAGE_TITLES.home;
 
     let favicon = document.querySelector("link[rel='icon']");
     if (!favicon) {
@@ -244,11 +253,16 @@ function usePageMeta() {
       metaDescription.setAttribute("name", "description");
       document.head.appendChild(metaDescription);
     }
-    metaDescription.setAttribute(
-      "content",
-      "Public command center homepage for maxhayim with live repo radar, telemetry, traffic, about timeline, and contact console.",
-    );
-  }, []);
+    metaDescription.setAttribute("content", SITE_DESCRIPTION);
+
+    let canonical = document.querySelector("link[rel='canonical']");
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.setAttribute("rel", "canonical");
+      document.head.appendChild(canonical);
+    }
+    canonical.setAttribute("href", SITE_URL);
+  }, [page]);
 }
 
 function formatDate(value) {
@@ -664,7 +678,7 @@ function SharedShell({ currentPage, children }) {
   const [maximized, setMaximized] = useState(false);
   const reduceMotion = prefersReducedMotion();
   const windowDrag = useDragControls();
-  usePageMeta();
+  usePageMeta(currentPage);
 
   const page = OS_PAGES.find((p) => p.page === currentPage) || OS_PAGES[0];
   const time = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
