@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { motion, animate, useDragControls, useMotionValue } from "framer-motion";
+import { motion, useDragControls } from "framer-motion";
 import {
   Radar,
   Star,
@@ -22,7 +22,6 @@ import {
   Plane,
   Phone,
   Users,
-  MessageSquare,
   House,
   FileText,
   AppWindow,
@@ -266,7 +265,7 @@ function buildFlightCode(repo) {
   return `${letters}${stars}`;
 }
 
-/* ---------- MaXHyM System 6: Braun-timeline desktop ---------- */
+/* ---------- comcen os: Braun-timeline desktop ---------- */
 
 const OS_PAGES = [
   { page: "home", label: "home", href: "#/", Icon: House },
@@ -275,15 +274,23 @@ const OS_PAGES = [
 ];
 
 // Same machine the BIOS detects on boot.
+const THIS_COMPUTER_NAME = "COMCEN Model 2000";
+const THIS_COMPUTER_KIND = "professional graphics workstation, 1999";
 const THIS_COMPUTER = [
-  ["computer", "MaXHyM Model 26"],
-  ["system", "MaXHyM System 6"],
-  ["processor", "MaXHyM-486DX2, 66 MHz"],
-  ["memory", "64 MB (65536K)"],
-  ["storage", "MESHNODE-HDD, 540 MB"],
-  ["drives", "1.44M floppy, CD-ROM 4X"],
-  ["modem", "14400 bps on COM1"],
-  ["firmware", "BIOS v2.01"],
+  ["system", "COMCEN OS I"],
+  ["processor", "2× MIPS R12000, 300 MHz"],
+  ["memory", "1 GB ECC SDRAM"],
+  ["graphics", "SGI InfiniteReality2 Graphics"],
+  ["frame buffer", "64 MB"],
+  ["storage", "Seagate Cheetah 18.2 GB Ultra2 SCSI (10,000 RPM)"],
+  ["drives", "3.5\" 1.44 MB floppy, Toshiba DVD-ROM, Plextor PlexWriter CD-RW"],
+  ["audio", "SGI Professional Digital Audio (16-bit, 48 kHz)"],
+  ["network", "3Com Fast EtherLink XL (10/100 Ethernet)"],
+  ["modem", "U.S. Robotics Courier V.Everything (56K V.90)"],
+  ["display", "Sony GDM-F500 (21\" Trinitron CRT, 2048 × 1536 maximum)"],
+  ["graphics API", "OpenGL (Pixar RenderMan compatible)"],
+  ["interfaces", "Ultra2 SCSI, 10/100 Ethernet, USB, RS-232, parallel, S-VHS video I/O"],
+  ["firmware", "COMCEN PROM by MaXHyM v6.5"],
 ];
 
 function useClock() {
@@ -295,21 +302,126 @@ function useClock() {
   return now;
 }
 
-function useCrtMode() {
-  const [mode, setMode] = useState(() => document.documentElement.dataset.crt || "off");
+
+/* Menu bar status: date, battery, and network signal from the browser */
+function useBattery() {
+  const [battery, setBattery] = useState(null);
   useEffect(() => {
-    const cycle = () => {
-      const current = document.documentElement.dataset.crt || "off";
-      const index = CRT_MODES.findIndex((m) => m.id === current);
-      const next = CRT_MODES[(index + 1) % CRT_MODES.length].id;
-      applyCrt(next);
-      writeStore("localStorage", "mh-crt", next);
-      setMode(next);
+    if (!navigator.getBattery) return;
+    let bat = null;
+    let cancelled = false;
+    const update = () => {
+      if (!cancelled && bat) setBattery({ level: Math.round(bat.level * 100), charging: bat.charging });
     };
-    window.addEventListener("mh-crt-cycle", cycle);
-    return () => window.removeEventListener("mh-crt-cycle", cycle);
+    navigator
+      .getBattery()
+      .then((b) => {
+        bat = b;
+        update();
+        b.addEventListener("levelchange", update);
+        b.addEventListener("chargingchange", update);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (bat) {
+        bat.removeEventListener("levelchange", update);
+        bat.removeEventListener("chargingchange", update);
+      }
+    };
   }, []);
-  return mode;
+  return battery; // null where the browser doesn't expose it (Safari, Firefox)
+}
+
+function useSignal() {
+  const read = () => {
+    if (!navigator.onLine) return { bars: 0, label: "offline" };
+    const c = navigator.connection;
+    if (!c || !c.effectiveType) return { bars: 4, label: "online" };
+    const bars = { "slow-2g": 1, "2g": 2, "3g": 3, "4g": 4 }[c.effectiveType] || 4;
+    const speed = c.downlink ? `, ~${c.downlink} Mbps` : "";
+    return { bars, label: `${c.effectiveType}${speed}` };
+  };
+  const [signal, setSignal] = useState(read);
+  useEffect(() => {
+    const update = () => setSignal(read());
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    navigator.connection?.addEventListener?.("change", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+      navigator.connection?.removeEventListener?.("change", update);
+    };
+  }, []);
+  return signal;
+}
+
+function BatteryIndicator({ battery }) {
+  if (!battery) return null;
+  const fill = Math.max(2, Math.round((battery.level / 100) * 16));
+  const low = battery.level <= 20 && !battery.charging;
+  return (
+    <span className="flex h-8 items-center gap-1.5 px-1 tabular-nums sm:px-2" title={`Battery ${battery.level}%${battery.charging ? ", charging" : ""}`}>
+      <svg viewBox="0 0 24 12" className="h-3 w-6" aria-hidden="true">
+        <rect x="0.5" y="0.5" width="20" height="11" rx="2.5" fill="none" stroke="currentColor" opacity="0.55" />
+        <rect x="21.5" y="4" width="2" height="4" rx="1" fill="currentColor" opacity="0.55" />
+        <rect x="2.5" y="2.5" width={fill} height="7" rx="1.2" fill={low ? "var(--os-warn)" : battery.charging ? "var(--os-ok)" : "currentColor"} />
+        {battery.charging && <path d="M11.5 1.5 L7.5 6.5 H10.5 L9.5 10.5 L13.5 5.5 H10.5 Z" fill="var(--os-case)" />}
+      </svg>
+      <span className="hidden sm:inline">{battery.level}%</span>
+    </span>
+  );
+}
+
+function SignalIndicator({ signal }) {
+  return (
+    <span className="flex h-8 items-center px-1 sm:px-2" title={`Network: ${signal.label}`} aria-label={`Network signal ${signal.bars} of 4, ${signal.label}`} role="img">
+      <svg viewBox="0 0 18 12" className="h-3 w-[18px]" aria-hidden="true">
+        {[0, 1, 2, 3].map((i) => (
+          <rect
+            key={i}
+            x={i * 4.6}
+            y={9 - i * 3}
+            width="3.2"
+            height={3 + i * 3}
+            rx="0.8"
+            fill={i < signal.bars ? "currentColor" : "var(--os-line)"}
+          />
+        ))}
+      </svg>
+    </span>
+  );
+}
+
+function formatMenuDate(d) {
+  const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
+  const month = d.toLocaleDateString("en-US", { month: "short" });
+  return `${weekday} ${month} ${d.getDate()}`;
+}
+
+/* Full screen via the browser's Fullscreen API */
+function useFullscreen() {
+  const [active, setActive] = useState(() => Boolean(document.fullscreenElement));
+  const supported = Boolean(document.fullscreenEnabled && document.documentElement.requestFullscreen);
+  useEffect(() => {
+    const onChange = () => setActive(Boolean(document.fullscreenElement));
+    // Browsers already exit on Esc; this also covers any that pass the key through to the page.
+    const onKey = (e) => {
+      if (e.key === "Escape" && document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("fullscreenchange", onChange);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, []);
+  const toggle = () => {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    else document.documentElement.requestFullscreen?.().catch(() => {});
+  };
+  return { supported, active, toggle };
 }
 
 function usePopover() {
@@ -354,6 +466,7 @@ function AnalogClock({ now }) {
 
 function SystemMenu() {
   const { open, setOpen, ref } = usePopover();
+  const fullscreen = useFullscreen();
   const [showAbout, setShowAbout] = useState(false);
   const item = "block w-full rounded-lg px-3 py-1.5 text-left hover:bg-[var(--os-hover)]";
 
@@ -367,20 +480,34 @@ function SystemMenu() {
         }}
         aria-haspopup="menu"
         aria-expanded={open}
-        className={`flex h-8 items-center gap-2 rounded-full px-2.5 hover:bg-[var(--os-hover)] ${open ? "bg-[var(--os-hover)]" : ""}`}
+        className={`flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full px-2 hover:bg-[var(--os-hover)] sm:gap-2 sm:px-2.5 ${open ? "bg-[var(--os-hover)]" : ""}`}
       >
         <img src="/logo_fullclear.png" alt="" className="os-logo h-4 w-auto" />
-        <span className="font-semibold tracking-tight">maxhayim</span>
+        <span className="font-semibold tracking-tight">comcen os</span>
         <span className="text-[var(--os-ink-3)]">system</span>
       </button>
 
       {open && (
-        <div role="menu" className="os-popover absolute left-0 top-10 z-50 w-[320px] max-w-[calc(100vw-16px)] p-1.5">
+        <div role="menu" className="os-popover absolute left-0 top-10 z-50 max-h-[calc(100vh-64px)] w-[380px] max-w-[calc(100vw-16px)] overflow-y-auto p-1.5">
           {!showAbout ? (
             <>
               <button role="menuitem" type="button" className={item} onClick={() => setShowAbout(true)}>
                 about this computer
               </button>
+              {fullscreen.supported && (
+                <button
+                  role="menuitem"
+                  type="button"
+                  className={`${item} flex items-center justify-between`}
+                  onClick={() => {
+                    setOpen(false);
+                    fullscreen.toggle();
+                  }}
+                >
+                  {fullscreen.active ? "Exit Full Screen" : "Full Screen"}
+                  <span className="text-[var(--os-ink-3)]">{fullscreen.active ? "esc" : ""}</span>
+                </button>
+              )}
               <div className="my-1 h-px bg-[var(--os-line)]" />
               <button
                 role="menuitem"
@@ -408,10 +535,10 @@ function SystemMenu() {
           ) : (
             <div className="p-3">
               <div className="os-grille mb-3 h-10 w-full rounded-md" aria-hidden="true" />
-              <div className="text-[15px] font-semibold tracking-tight">MaXHyM Model 26</div>
-              <div className="text-[var(--os-ink-3)]">home computer, 1995</div>
-              <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-                {THIS_COMPUTER.slice(1).map(([k, v]) => (
+              <div className="text-[15px] font-semibold tracking-tight">{THIS_COMPUTER_NAME}</div>
+              <div className="text-[var(--os-ink-3)]">{THIS_COMPUTER_KIND}</div>
+              <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px] leading-snug">
+                {THIS_COMPUTER.map(([k, v]) => (
                   <React.Fragment key={k}>
                     <dt className="text-[var(--os-ink-3)]">{k}</dt>
                     <dd className="tabular-nums">{v}</dd>
@@ -426,88 +553,37 @@ function SystemMenu() {
   );
 }
 
-function CrtSwitch({ mode }) {
-  const label = CRT_MODES.find((m) => m.id === mode)?.label.toLowerCase() || "off";
-  const on = mode !== "off";
-  return (
-    <button
-      type="button"
-      onClick={() => window.dispatchEvent(new Event("mh-crt-cycle"))}
-      title="Cycle CRT mode"
-      className="flex h-8 items-center gap-2 rounded-full px-2.5 hover:bg-[var(--os-hover)]"
-    >
-      <span className={`os-switch ${on ? "os-switch-on" : ""}`} aria-hidden="true" />
-      <span>crt</span>
-      <span className="w-[3.2em] text-[var(--os-ink-3)]">{label}</span>
-    </button>
-  );
-}
 
 
-/* Dock: a hi-fi front panel you can pick up by its speaker grille and move anywhere */
-function readDockPosition() {
-  try {
-    const saved = JSON.parse(readStore("localStorage", "mh-dock-pos") || "null");
-    return saved && Number.isFinite(saved.x) && Number.isFinite(saved.y) ? saved : { x: 0, y: 0 };
-  } catch {
-    return { x: 0, y: 0 };
-  }
-}
+/* Dock: a hi-fi front panel you can pick up by its speaker grille; let go and it springs back home */
+const SNAP_BACK = { bounceStiffness: 420, bounceDamping: 28 };
 
 function Dock({ currentPage, windowState, onMinimize, onRestore }) {
   const minimized = windowState !== "open";
   const controls = useDragControls();
   const boundsRef = useRef(null);
-  const dockRef = useRef(null);
-  const [start] = useState(readDockPosition);
-  const x = useMotionValue(start.x);
-  const y = useMotionValue(start.y);
-
-  const save = () => writeStore("localStorage", "mh-dock-pos", JSON.stringify({ x: x.get(), y: y.get() }));
-  const reset = () => {
-    animate(x, 0, { duration: 0.25 });
-    animate(y, 0, { duration: 0.25 });
-    writeStore("localStorage", "mh-dock-pos", JSON.stringify({ x: 0, y: 0 }));
-  };
-
-  // If the window shrinks and the dock ends up off screen, bring it home.
-  useEffect(() => {
-    const fit = () => {
-      const el = dockRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      if (r.left < 0 || r.right > window.innerWidth || r.top < 44 || r.bottom > window.innerHeight) {
-        x.set(0);
-        y.set(0);
-        writeStore("localStorage", "mh-dock-pos", JSON.stringify({ x: 0, y: 0 }));
-      }
-    };
-    fit();
-    window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
-  }, [x, y]);
 
   return (
     <>
       <div ref={boundsRef} className="pointer-events-none fixed inset-x-1 bottom-1 top-12" aria-hidden="true" />
       <nav aria-label="Dock" className="mh-fixed os-ui pointer-events-none fixed inset-x-0 bottom-3 z-40 flex justify-center px-2">
         <motion.div
-          ref={dockRef}
           drag
           dragControls={controls}
           dragListener={false}
-          dragMomentum={false}
-          dragElastic={0}
+          dragElastic={0.08}
           dragConstraints={boundsRef}
-          onDragEnd={save}
-          style={{ x, y }}
+          dragSnapToOrigin
+          dragTransition={SNAP_BACK}
           className="os-dock pointer-events-auto flex items-end gap-2.5 px-2.5 py-2 sm:gap-5 sm:px-4"
         >
           <div
             className="os-grille os-dock-grip h-11 w-8 rounded-md sm:w-16"
-            onPointerDown={(e) => controls.start(e)}
-            onDoubleClick={reset}
-            title="Drag to move the dock. Double-click to put it back."
+            onPointerDown={(e) => {
+              e.preventDefault();
+              controls.start(e);
+            }}
+            title="Drag the dock; it springs back when you let go."
             aria-hidden="true"
           />
           {OS_PAGES.map(({ page, label, href, Icon }) => {
@@ -551,11 +627,13 @@ function Dock({ currentPage, windowState, onMinimize, onRestore }) {
 function SharedShell({ currentPage, children }) {
   const currentYear = new Date().getFullYear();
   const now = useClock();
-  const crtMode = useCrtMode();
+  const battery = useBattery();
+  const signal = useSignal();
   // "open", "minimized" (tucked into the dock), or "closed"
   const [windowState, setWindowState] = useState("open");
   const [maximized, setMaximized] = useState(false);
   const reduceMotion = prefersReducedMotion();
+  const windowDrag = useDragControls();
   usePageMeta();
 
   const page = OS_PAGES.find((p) => p.page === currentPage) || OS_PAGES[0];
@@ -587,12 +665,16 @@ function SharedShell({ currentPage, children }) {
       {/* Menu bar */}
       <header className="mh-fixed os-ui os-menubar fixed inset-x-0 top-0 z-40 flex h-11 items-center justify-between pl-2 pr-1.5 sm:pl-3 sm:pr-2">
         <SystemMenu />
-        <div className="flex items-center gap-1">
-          <CrtSwitch mode={crtMode} />
-          <div className="flex h-8 items-center gap-2 px-2.5 tabular-nums">
-            <AnalogClock now={now} />
-            <span className="hidden sm:inline">{time}</span>
+        <div className="flex items-center gap-0.5">
+          <div className="flex h-8 items-center gap-2 px-1 tabular-nums sm:px-2">
+            <span className="hidden sm:inline-flex">
+              <AnalogClock now={now} />
+            </span>
+            <span className="whitespace-nowrap">{formatMenuDate(now)}</span>
+            <span className="hidden md:inline">{time}</span>
           </div>
+          <BatteryIndicator battery={battery} />
+          <SignalIndicator signal={signal} />
           <button
             type="button"
             onClick={() => window.dispatchEvent(new Event("mh-power-off"))}
@@ -613,23 +695,34 @@ function SharedShell({ currentPage, children }) {
         <motion.div
           className={`os-window relative z-10 mx-auto origin-bottom ${maximized ? "os-window-max max-w-none" : "max-w-7xl"}`}
           initial={false}
+          drag={!maximized}
+          dragControls={windowDrag}
+          dragListener={false}
+          dragElastic={0.08}
+          dragSnapToOrigin
+          dragTransition={SNAP_BACK}
           animate={isOpen ? { display: "block", opacity: 1, scale: 1, y: 0 } : hiddenPose}
           transition={{ duration: reduceMotion ? 0 : windowState === "closed" ? 0.14 : 0.22, ease: [0.3, 0, 0.2, 1] }}
           aria-hidden={!isOpen}
         >
           {/* Window header: controls on the left, double-click to maximize */}
           <div
-            className="flex flex-wrap items-center gap-3 border-b border-[var(--os-line)] px-4 py-3 sm:px-5"
+            className={`flex flex-wrap items-center gap-3 border-b border-[var(--os-line)] px-4 py-3 sm:px-5 ${maximized ? "" : "os-titlebar-grab"}`}
+            onPointerDown={(e) => {
+              if (maximized || e.pointerType === "touch" || e.target.closest("a, button")) return;
+              e.preventDefault(); // no text selection while dragging
+              windowDrag.start(e);
+            }}
             onDoubleClick={(e) => {
               if (e.target.closest("a, button")) return;
               toggleMaximize();
             }}
           >
             <div className="flex items-center gap-1.5">
-              <button type="button" onClick={close} title="Close" aria-label="Close window" className="os-round-btn os-round-btn-close">
+              <button type="button" onClick={close} title="Close" aria-label="Close window" className="os-round-btn os-win-close">
                 <X className="h-3.5 w-3.5" strokeWidth={2.2} />
               </button>
-              <button type="button" onClick={minimize} title="Minimize" aria-label="Minimize window" className="os-round-btn">
+              <button type="button" onClick={minimize} title="Minimize" aria-label="Minimize window" className="os-round-btn os-win-min">
                 <Minus className="h-3.5 w-3.5" strokeWidth={2.2} />
               </button>
               <button
@@ -638,7 +731,7 @@ function SharedShell({ currentPage, children }) {
                 title={maximized ? "Restore size" : "Maximize"}
                 aria-label={maximized ? "Restore window size" : "Maximize window"}
                 aria-pressed={maximized}
-                className="os-round-btn"
+                className="os-round-btn os-win-max"
               >
                 {maximized ? <Minimize2 className="h-3.5 w-3.5" strokeWidth={2.2} /> : <Maximize2 className="h-3.5 w-3.5" strokeWidth={2.2} />}
               </button>
@@ -671,7 +764,7 @@ function SharedShell({ currentPage, children }) {
                 <img src="/logo_fullclear.png" alt="maxhayim logo" className="os-logo h-4 w-auto" />
                 <span>&copy; 2009 - {currentYear} MAXYIM.COM. All Rights Reserved.</span>
               </div>
-              <span>MaXHyM System 6 on the Model 26</span>
+              <span>comcen os I on the COMCEN Model 2000</span>
             </footer>
           </div>
         </motion.div>
@@ -848,7 +941,6 @@ function PongGame() {
           playing ? "cursor-none touch-none" : ""
         }`}
       >
-        <div className="pointer-events-none absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(74,222,128,0.12)_1px,transparent_1px)] [background-size:100%_6px]" />
         <div className="absolute inset-y-4 left-1/2 w-px -translate-x-1/2 bg-emerald-500/30" />
 
         <div
@@ -1165,7 +1257,7 @@ function HomePage() {
       <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
         <div className="grid gap-6 md:grid-cols-12">
           <div className="md:col-span-8 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-            <div className="flex items-start justify-between gap-4">
+            <div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-emerald-300">
                   <User className="h-3.5 w-3.5" />
@@ -1174,14 +1266,6 @@ function HomePage() {
                 <h1 className="mt-2 break-words text-[26px] font-semibold tracking-tight text-zinc-100 sm:text-3xl md:text-5xl">
                   maxhayim.com
                 </h1>
-              </div>
-
-              <div className="shrink-0 rounded-2xl border border-emerald-500/20 bg-black/40 p-2 shadow-[0_0_24px_rgba(16,185,129,0.12)]">
-                <img
-                  src="/avatar.jpg"
-                  alt="Max Hayim avatar"
-                  className="h-16 w-16 rounded-xl border border-zinc-800 object-cover sm:h-20 sm:w-20 md:h-24 md:w-24"
-                />
               </div>
             </div>
 
@@ -1201,30 +1285,14 @@ function HomePage() {
             </div>
 
             <p className="mt-5 max-w-4xl text-sm leading-7 text-zinc-300 md:text-base">
-              Public repos, telemetry, activity logs, and engineering identity
-              presented through a radar-inspired interface centered on live
-              GitHub work.
+              comcen os is a communications center operating system imagined
+              through a late-1990s vision of the future, combining public
+              repositories, telemetry, activity logs, and engineering identity
+              within a radar-inspired interface centered on live GitHub
+              activity. The site also includes live, interactive elements that
+              explore how a communications-focused operating system could look,
+              feel, and function.
             </p>
-
-            <div className="mt-5 flex flex-wrap items-center gap-3">
-              <div className="rounded-2xl border border-emerald-500/20 bg-black/40 px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <img
-                    src="/logo_fullclear.png"
-                    alt="maxhayim site logo"
-                    className="h-9 w-9"
-                  />
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-300">
-                      Site Emblem
-                    </div>
-                    <div className="text-sm text-zinc-200">
-                      MAXHAYIM Command Mark
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
 
           <div className="md:col-span-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
@@ -1664,8 +1732,6 @@ function HomePage() {
         </div>
       </section>
 
-      <BuddyList repos={repos} loading={loadingRepos} />
-
       <section className="grid gap-6 md:grid-cols-12">
         <div className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl md:col-span-12">
           <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-cyan-300">
@@ -1771,6 +1837,8 @@ function HomePage() {
           </div>
         </div>
       </section>
+
+      <BuddyList />
     </SharedShell>
   );
 }
@@ -1802,8 +1870,10 @@ function AboutPage() {
             </div>
             <p className="mt-5 max-w-4xl text-sm leading-7 text-zinc-300 md:text-base">
               This page is a command-center style profile of the systems,
-              interfaces, software eras, and creative path that brought coding
-              back into focus.
+              interfaces, software eras, creative influences, and technologies
+              behind comcen os, tracing the journey that brought coding back
+              into focus through the design language of a futuristic late-1990s
+              operating system.
             </p>
           </div>
 
@@ -2238,57 +2308,43 @@ function prefersReducedMotion() {
   );
 }
 
-/* ---------- CRT mode ---------- */
-
-const CRT_MODES = [
-  { id: "off", label: "Off" },
-  { id: "color", label: "Color" },
-  { id: "green", label: "Green" },
-  { id: "amber", label: "Amber" },
-];
-
-function applyCrt(mode) {
-  document.documentElement.dataset.crt = mode;
-}
-
-/* ---------- Boot sequence (Award-style POST -> System Configurations -> DOS) ---------- */
-
-const MEMORY_TARGET = 65536;
+const MEMORY_TARGET = 1048576; // 1 GB ECC SDRAM
 
 const IDE_DETECT = [
-  { label: "Primary Master  ", result: "MESHNODE-HDD 540MB" },
-  { label: "Primary Slave   ", result: "None" },
-  { label: "Secondary Master", result: "ATAPI CD-ROM 4X" },
-  { label: "Secondary Slave ", result: "None" },
+  { label: "SCSI ID 0      ", result: "SEAGATE CHEETAH 18.2GB ULTRA2" },
+  { label: "SCSI ID 4      ", result: "TOSHIBA DVD-ROM" },
+  { label: "SCSI ID 5      ", result: "PLEXTOR PLEXWRITER CD-RW" },
+  { label: "Floppy A:      ", result: "1.44MB 3.5in" },
 ];
 
 const SYS_CONFIG = [
   [
-    ["CPU Type", "MaXHyM-486DX2", "Base Memory", "640K"],
-    ["Co-Processor", "Installed", "Extended Memory", "64896K"],
-    ["CPU Clock", "66MHz", "Cache Memory", "256K"],
+    ["CPU Type", "2x MIPS R12000", "Memory", "1048576K"],
+    ["Co-Processor", "Installed", "Memory Type", "ECC SDRAM"],
+    ["CPU Clock", "300MHz", "Frame Buffer", "64MB"],
   ],
   [
-    ["Diskette Drive  A", "1.44M, 3.5 in.", "Display Type", "EGA/VGA"],
-    ["Diskette Drive  B", "None", "Serial Port(s)", "3F8 2F8"],
-    ["Pri. Master  Disk", "LBA ,Mode 4, 540MB", "Parallel Port(s)", "378"],
-    ["Pri. Slave   Disk", "None", "EDO DRAM at Row(s)", "0 1"],
-    ["Sec. Master  Disk", "CDROM,Mode 4", "SDRAM at Row(s)", "None"],
-    ["Sec. Slave   Disk", "None", "L2 Cache Type", "None"],
+    ["Diskette Drive  A", "1.44M, 3.5 in.", "Graphics", "InfiniteReality2"],
+    ["Diskette Drive  B", "None", "Display", "2048x1536 CRT"],
+    ["SCSI ID 0", "Cheetah 18.2GB U2", "Serial Port(s)", "RS-232"],
+    ["SCSI ID 4", "DVD-ROM", "Parallel Port(s)", "378"],
+    ["SCSI ID 5", "CD-RW", "USB", "Enabled"],
+    ["Controller", "Ultra2 SCSI", "Video I/O", "S-VHS"],
   ],
 ];
 
 const PCI_DEVICES = [
-  ["0", "7", "1", "8086", "1230", "IDE Controller", "14"],
-  ["0", "11", "0", "10EC", "8029", "Network Controller", "10"],
-  ["0", "17", "0", "1274", "1371", "Multimedia Device", "11"],
+  ["0", "1", "0", "1000", "000C", "Ultra2 SCSI Controller", "14"],
+  ["0", "2", "0", "10B7", "9055", "Ethernet Controller", "10"],
+  ["0", "3", "0", "10A9", "0009", "Graphics Controller", "11"],
+  ["0", "4", "0", "10A9", "0005", "Audio Controller", "5"],
 ];
 
 const DOS_LINES = [
-  "Starting MaXHyM System 6...",
+  "Starting comcen os I...",
   "",
   "C:\\> cd \\MaXHyM",
-  "C:\\MaXHyM> system.exe",
+  "C:\\MaXHyM> comcen.exe",
 ];
 
 /*
@@ -2424,7 +2480,7 @@ function createBootAudio() {
 function bootDateCode() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${String(d.getFullYear()).slice(2)}-i486DX2,MXH-MESH-0823-00`;
+  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${String(d.getFullYear()).slice(2)}-R12000x2,CCN-M2000-0823-00`;
 }
 
 const SHUTDOWN_ORANGE = "#dc7a3c";
@@ -2601,7 +2657,7 @@ function BootScreen({ onDone, mode }) {
                   className="mt-[0.1em] h-[2.5em] w-auto shrink-0"
                 />
                 <div>
-                  <div>MaXHyM Model 26 BIOS v2.01, An Energy Star Ally</div>
+                  <div>COMCEN PROM by MaXHyM v6.5, An Energy Star Ally</div>
                   <div>
                     Copyright (C) 2009-{String(year).slice(2)}, maxhayim.com
                   </div>
@@ -2611,14 +2667,14 @@ function BootScreen({ onDone, mode }) {
           )}
           {post >= 2 && (
             <div className="mt-[1.35em]">
-              (MXH0823E) MaXHyM i486 MeshSet(TM)
+              (CCN2000) COMCEN Model 2000 Workstation
             </div>
           )}
           {post >= 3 && (
             <div className="mt-[1.35em]">
-              <div>MaXHyM-486DX2 CPU at 66MHz</div>
+              <div>2x MIPS R12000 CPU at 300MHz</div>
               <div className="whitespace-pre">
-                Memory Test : {String(memory).padStart(5, " ")}K
+                Memory Test : {String(memory).padStart(7, " ")}K
                 {memory >= MEMORY_TARGET ? " OK" : ""}
               </div>
             </div>
@@ -2626,7 +2682,7 @@ function BootScreen({ onDone, mode }) {
           {post >= 4 && (
             <div className="mt-[1.35em]">
               <div className="whitespace-pre-wrap">
-                MaXHyM Plug and Play BIOS Extension v1.0A
+                COMCEN Ultra2 SCSI BIOS v1.0A
               </div>
               <div>Copyright (C) {year}, maxhayim.com</div>
               {IDE_DETECT.map((drive, i) => {
@@ -2634,7 +2690,7 @@ function BootScreen({ onDone, mode }) {
                 if (step < 1) return null;
                 return (
                   <div key={drive.label} className="whitespace-pre-wrap">
-                    {"  Detecting IDE "}
+                    {"  Detecting "}
                     {drive.label}
                     {" ... "}
                     {step === 1 ? (
@@ -2761,292 +2817,218 @@ function BootScreen({ onDone, mode }) {
   );
 }
 
-/* ---------- Buddy List ---------- */
+/* ---------- Buddy List: design legends ---------- */
 
-const AWAY_CACHE_KEY = "mh-buddy-away-v1";
-const AWAY_CACHE_MS = 30 * 60 * 1000;
-
-function daysSince(value) {
-  if (!value) return Infinity;
-  return (Date.now() - new Date(value).getTime()) / 86400000;
-}
-
-function buddyStatus(repo) {
-  const days = daysSince(repo.pushed_at || repo.updated_at);
-  if (days <= 7) return "online";
-  if (days <= 30) return "away";
-  return "offline";
-}
-
-function timeAgo(value) {
-  const days = daysSince(value);
-  if (!Number.isFinite(days)) return "never";
-  const minutes = days * 1440;
-  if (minutes < 60) return `${Math.max(1, Math.round(minutes))}m`;
-  if (days < 1) return `${Math.round(minutes / 60)}h`;
-  if (days < 60) return `${Math.round(days)}d`;
-  if (days < 365) return `${Math.round(days / 30)}mo`;
-  return `${Math.round(days / 365)}y`;
-}
-
-const STATUS_STYLE = {
-  online: {
-    dot: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]",
-    text: "text-emerald-300",
-    label: "Online",
+const buddyListData = [
+  {
+    name: "Dieter Rams",
+    bio: "German functionalist industrial architect and legendary head of design at Braun. Pioneered the famous 'Less, but better' ideology and established the 10 Principles for Good Design.",
+    products: ["Braun SK-4 phonograph", "Vitsoe 606 Universal Shelving System", "Braun ET66 calculator"],
   },
-  away: { dot: "bg-amber-400", text: "text-amber-300", label: "Away" },
-  offline: { dot: "bg-zinc-600", text: "text-zinc-500", label: "Offline" },
-};
+  {
+    name: "Steve Jobs",
+    bio: "Co-founder and CEO of Apple and NeXT. A visionary leader who profoundly transformed consumer technology, animation, and digital media by treating technology as functional art.",
+    products: ["Macintosh", "iPod", "iPhone", "iPad", "Pixar's Toy Story"],
+  },
+  {
+    name: "Jony Ive",
+    bio: "British designer and former Chief Design Officer of Apple. Mastermind behind Apple's iconic minimalist aluminum and glass design language.",
+    products: ["iMac G3", "iPod", "iPhone", "MacBook unibody design"],
+  },
+  {
+    name: "Jon Rubinstein",
+    bio: "American electrical engineer and executive. Managed hardware teams at NeXT and Apple, heavily credited with shepherding the engineering behind early Apple revivals and consumer electronics.",
+    products: ["Power Macintosh G3", "iMac G3", "First-generation iPod hard-drive engineering"],
+  },
+  {
+    name: "Hartmut Esslinger",
+    bio: "German-American industrial designer and founder of frogdesign. Championed the philosophy of 'form follows emotion' and created a unified visual identity for major corporations.",
+    products: ["Apple 'Snow White' design language (Apple IIc)", "Sony Trinitron TV frames", "Original Sony Walkman"],
+  },
+  {
+    name: "Bill Moggridge",
+    bio: "British designer, author, and co-founder of IDEO. Pioneered the discipline of interaction design and championed human-centered engineering.",
+    products: ["GRID Compass (the world's first successful clamshell laptop)"],
+  },
+  {
+    name: "David Kelley",
+    bio: "American engineer, professor, and co-founder of IDEO and the Stanford d.school. Popularized the 'Design Thinking' methodology globally.",
+    products: ["Apple's first commercial mouse", "Ergonomic medical instrumentation"],
+  },
+  {
+    name: "Naoto Fukasawa",
+    bio: "Japanese industrial designer recognized for his clean, minimalist functional aesthetics and his profound collaboration with MUJI and Magis.",
+    products: ["MUJI Wall-Mounted CD Player", "INFOBAR cellular phones"],
+  },
+  {
+    name: "Jasper Morrison",
+    bio: "Renowned British product designer who defined the 'Super Normal' approach to aesthetics, favoring understated durability over loud styling.",
+    products: ["Thinking Man's Chair", "Low Pad armchair", "Rowenta appliances"],
+  },
+  {
+    name: "Marc Newson",
+    bio: "Australian industrial designer blending organic lines ('biomorphism') with aerospace-grade engineering. Co-founded LoveFrom with Jony Ive.",
+    products: ["Lockheed Lounge chair", "Ikepod watches", "Qantas Skybed"],
+  },
+  {
+    name: "Richard Sapper",
+    bio: "German industrial designer who seamlessly blended technical innovation with elegant geometric forms.",
+    products: ["IBM ThinkPad (the classic black brick)", "Tizio halogen desk lamp"],
+  },
+  {
+    name: "Susan Kare",
+    bio: "Prolific artist and graphic designer who designed the original user interface elements, icons, and typefaces for the first Apple Macintosh.",
+    products: ["'Happy Mac' icon", "Chicago typeface", "Cairo 'Clarus the Dogcow' icon"],
+  },
+  {
+    name: "Jerry Manock",
+    bio: "Regarded as the father of Apple's Industrial Design Group. Brought structured manufacturing, housing acoustics, and color discipline to early microcomputers.",
+    products: ["Original Apple II housing", "Apple III", "Macintosh 128K enclosure"],
+  },
+  {
+    name: "Tony Fadell",
+    bio: "American engineer, innovator, and former head of the iPod division at Apple. Later founded Nest Labs to redefine automated home accessories.",
+    products: ["iPod hardware design architecture", "Nest Learning Thermostat"],
+  },
+  {
+    name: "Ken Segall",
+    bio: "Legendary ad agency creative director who closely collaborated with Steve Jobs to engineer Apple's iconic public rebranding.",
+    products: ["'Think Different' ad campaign", "Naming convention for the 'i' prefix (iMac, iPod)"],
+  },
+];
 
-function BuddyList({ repos, loading }) {
-  const [awayMessages, setAwayMessages] = useState(() => {
-    try {
-      const cached = JSON.parse(
-        readStore("sessionStorage", AWAY_CACHE_KEY) || "null",
-      );
-      if (cached && Date.now() - cached.ts < AWAY_CACHE_MS) return cached.map;
-    } catch {
-      /* ignore */
+const buddySlug = (name) => name.toLowerCase().replace(/[^a-z]+/g, "-");
+
+function BuddyList() {
+  const [selected, setSelected] = useState(0);
+  const listRef = useRef(null);
+  const touchStartRef = useRef(null);
+  const count = buddyListData.length;
+
+  const select = (index, focus = false) => {
+    const next = (index + count) % count;
+    setSelected(next);
+    if (focus) listRef.current?.querySelectorAll('[role="tab"]')[next]?.focus();
+  };
+
+  const onListKeyDown = (e) => {
+    const keys = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 };
+    if (e.key in keys) {
+      e.preventDefault();
+      select(selected + keys[e.key], true);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      select(0, true);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      select(count - 1, true);
     }
-    return {};
-  });
-  const [collapsed, setCollapsed] = useState({});
-  const [selectedName, setSelectedName] = useState(null);
+  };
 
-  const buddies = useMemo(
-    () =>
-      [...repos]
-        .map((repo) => ({ ...repo, status: buddyStatus(repo) }))
-        .sort(
-          (a, b) =>
-            new Date(b.pushed_at || b.updated_at || 0).getTime() -
-            new Date(a.pushed_at || a.updated_at || 0).getTime(),
-        ),
-    [repos],
-  );
-
-  const groups = ["online", "away", "offline"].map((status) => ({
-    status,
-    members: buddies.filter((b) => b.status === status),
-  }));
-  // Offline starts collapsed, unless nobody else is signed on.
-  const hasActive = groups[0].members.length + groups[1].members.length > 0;
-  const isCollapsed = (status) =>
-    collapsed[status] ?? (status === "offline" && hasActive);
-
-  // Latest commit message becomes the away message, for the buddies that were active recently.
-  useEffect(() => {
-    if (loading) return;
-    const targets = buddies
-      .filter((b) => b.status !== "offline" && !(b.name in awayMessages))
-      .slice(0, 10);
-    if (!targets.length) return;
-    let cancelled = false;
-
-    Promise.all(
-      targets.map(async (buddy) => {
-        try {
-          const res = await fetch(
-            `https://api.github.com/repos/maxhayim/${buddy.name}/commits?per_page=1`,
-          );
-          if (!res.ok) return [buddy.name, null];
-          const [latest] = await res.json();
-          return [buddy.name, latest?.commit?.message?.split("\n")[0] || null];
-        } catch {
-          return [buddy.name, null];
-        }
-      }),
-    ).then((entries) => {
-      if (cancelled) return;
-      setAwayMessages((prev) => {
-        const map = { ...prev, ...Object.fromEntries(entries) };
-        writeStore(
-          "sessionStorage",
-          AWAY_CACHE_KEY,
-          JSON.stringify({ ts: Date.now(), map }),
-        );
-        return map;
-      });
-    });
-
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buddies, loading]);
-
-  const selected = buddies.find((b) => b.name === selectedName) || buddies[0];
-  const onlineCount = groups[0].members.length;
-  const selectedStyle = selected ? STATUS_STYLE[selected.status] : null;
-  const selectedAway = selected
-    ? awayMessages[selected.name] || selected.description
-    : null;
+  // Swipe the info pane on touch screens
+  const onTouchStart = (e) => {
+    touchStartRef.current = e.touches[0]?.clientX ?? null;
+  };
+  const onTouchEnd = (e) => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    const end = e.changedTouches[0]?.clientX;
+    if (start == null || end == null || Math.abs(end - start) < 50) return;
+    select(selected + (end < start ? 1 : -1));
+  };
 
   return (
     <section className="grid gap-6 md:grid-cols-12">
-      <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-5 md:p-5">
+      <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-4 md:p-5">
         <div className="mb-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-amber-300">
             <Users className="h-3.5 w-3.5" /> Buddy List
           </div>
-          <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-            {loading ? "Signing on…" : `${onlineCount} online`}
-          </div>
+          <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">{count} design legends</div>
         </div>
 
-        <div className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
-          <img
-            src="/avatar.jpg"
-            alt=""
-            className="h-10 w-10 rounded-lg border border-zinc-800 object-cover"
-          />
-          <div className="min-w-0">
-            <div className="truncate font-mono text-sm text-zinc-100">
-              maxhayim
-            </div>
-            <div className="text-xs text-emerald-300">Available</div>
-          </div>
-        </div>
-
-        <div className="mt-3 max-h-[360px] overflow-y-auto rounded-2xl border border-zinc-800 bg-black/40 p-2 font-mono text-sm">
-          {groups.map(({ status, members }) => (
-            <div key={status} className="mb-1">
+        <div
+          ref={listRef}
+          role="tablist"
+          aria-orientation="vertical"
+          aria-label="Design legends"
+          onKeyDown={onListKeyDown}
+          className="buddy-pills flex max-h-[420px] flex-col gap-1 overflow-y-auto pr-1"
+        >
+          {buddyListData.map((buddy, i) => {
+            const active = i === selected;
+            return (
               <button
+                key={buddy.name}
                 type="button"
-                onClick={() =>
-                  setCollapsed((c) => ({
-                    ...c,
-                    [status]: !isCollapsed(status),
-                  }))
-                }
-                aria-expanded={!isCollapsed(status)}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-zinc-400 hover:bg-zinc-900"
+                role="tab"
+                id={`buddy-tab-${buddySlug(buddy.name)}`}
+                aria-selected={active}
+                aria-controls={`buddy-panel-${buddySlug(buddy.name)}`}
+                tabIndex={active ? 0 : -1}
+                onClick={() => select(i)}
+                className={`buddy-pill relative flex w-full items-center gap-2.5 rounded-full px-4 py-2 text-left ${active ? "buddy-pill-active" : ""}`}
               >
-                <span
-                  className={`inline-block transition-transform ${isCollapsed(status) ? "" : "rotate-90"}`}
-                >
-                  ▸
-                </span>
-                <span className="font-semibold text-zinc-300">
-                  {STATUS_STYLE[status].label}
-                </span>
-                <span>
-                  ({members.length}/{buddies.length})
-                </span>
+                {active && (
+                  <motion.span
+                    layoutId="buddy-pill-highlight"
+                    className="buddy-pill-highlight absolute inset-0 rounded-full"
+                    transition={{ duration: prefersReducedMotion() ? 0 : 0.35, ease: [0.4, 0, 0.2, 1] }}
+                  />
+                )}
+                <span className={`relative h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-amber-300" : "bg-zinc-700"}`} aria-hidden="true" />
+                <span className="relative truncate">{buddy.name}</span>
               </button>
-
-              {!isCollapsed(status) &&
-                members.map((buddy) => {
-                  const isSelected = selected?.name === buddy.name;
-                  return (
-                    <button
-                      key={buddy.name}
-                      type="button"
-                      onClick={() => setSelectedName(buddy.name)}
-                      className={`flex w-full items-center gap-2 rounded-lg py-1.5 pl-7 pr-2 text-left transition ${
-                        isSelected
-                          ? "bg-amber-500/10 text-amber-100"
-                          : "text-zinc-300 hover:bg-zinc-900"
-                      } ${buddy.status === "offline" ? "opacity-60" : ""}`}
-                    >
-                      <span
-                        className={`h-2 w-2 shrink-0 rounded-full ${STATUS_STYLE[buddy.status].dot}`}
-                      />
-                      <span className="min-w-0 flex-1 truncate">
-                        {buddy.name}
-                      </span>
-                      {buddy.status === "away" && awayMessages[buddy.name] && (
-                        <MessageSquare
-                          className="h-3 w-3 shrink-0 text-amber-300"
-                          aria-label="Has away message"
-                        />
-                      )}
-                      <span className="shrink-0 text-[10px] text-zinc-500">
-                        {timeAgo(buddy.pushed_at || buddy.updated_at)}
-                      </span>
-                    </button>
-                  );
-                })}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
-      <div className="flex flex-col rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-7 md:p-5">
-        <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-amber-300">
-          <User className="h-3.5 w-3.5" /> Buddy Info
+      <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-8 md:p-5">
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-amber-300">
+            <User className="h-3.5 w-3.5" /> Buddy Info
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] tabular-nums text-zinc-500">
+              {selected + 1} / {count}
+            </span>
+            <button type="button" onClick={() => select(selected - 1)} className="os-round-btn" aria-label="Previous legend">
+              <span aria-hidden="true">&lsaquo;</span>
+            </button>
+            <button type="button" onClick={() => select(selected + 1)} className="os-round-btn" aria-label="Next legend">
+              <span aria-hidden="true">&rsaquo;</span>
+            </button>
+          </div>
         </div>
 
-        {selected ? (
-          <div className="flex flex-1 flex-col gap-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <h3 className="font-mono text-xl text-zinc-100">
-                {selected.name}
-              </h3>
-              <span
-                className={`flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950/70 px-2.5 py-1 text-[10px] uppercase tracking-[0.2em] ${selectedStyle.text}`}
+        {/* The track holds every card side by side; changing the selection slides it with translateX */}
+        <div className="buddy-viewport overflow-hidden" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+          <div className="buddy-track flex" style={{ transform: `translateX(-${selected * 100}%)` }}>
+            {buddyListData.map((buddy, i) => (
+              <article
+                key={buddy.name}
+                id={`buddy-panel-${buddySlug(buddy.name)}`}
+                role="tabpanel"
+                aria-labelledby={`buddy-tab-${buddySlug(buddy.name)}`}
+                aria-hidden={i !== selected}
+                inert={i !== selected ? "" : undefined}
+                className="w-full shrink-0 px-0.5"
               >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${selectedStyle.dot}`}
-                />
-                {selectedStyle.label}
-              </span>
-            </div>
-
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-                {awayMessages[selected.name]
-                  ? "Away message · latest commit"
-                  : "Profile"}
-              </div>
-              <p className="mt-2 font-mono text-sm italic leading-6 text-zinc-200">
-                {selectedAway}
-              </p>
-            </div>
-
-            <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[
-                [
-                  "Last push",
-                  formatDate(selected.pushed_at || selected.updated_at),
-                ],
-                ["Language", selected.language || "—"],
-                ["Stars", selected.stargazers_count ?? 0],
-                ["Forks", selected.forks_count ?? 0],
-              ].map(([label, value]) => (
-                <div
-                  key={label}
-                  className="rounded-xl border border-zinc-800 bg-black/30 px-3 py-2"
-                >
-                  <dt className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
-                    {label}
-                  </dt>
-                  <dd className="mt-1 truncate text-sm text-zinc-100">
-                    {value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-
-            {awayMessages[selected.name] && selected.description && (
-              <p className="text-sm leading-6 text-zinc-400">
-                {selected.description}
-              </p>
-            )}
-
-            <a
-              href={selected.html_url}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-auto inline-flex w-fit items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs uppercase tracking-[0.18em] text-amber-200 transition hover:bg-amber-500/20"
-            >
-              <ExternalLink className="h-3.5 w-3.5" /> Open repository
-            </a>
+                <h3 className="text-2xl font-semibold tracking-tight text-zinc-100 md:text-3xl">{buddy.name}</h3>
+                <p className="mt-3 max-w-3xl text-sm leading-7 text-zinc-300 md:text-base">{buddy.bio}</p>
+                <div className="mt-5 text-[10px] uppercase tracking-[0.2em] text-zinc-500">Known for</div>
+                <ul className="mt-2 flex flex-wrap gap-2">
+                  {buddy.products.map((product) => (
+                    <li key={product} className="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1.5 text-sm text-zinc-200">
+                      {product}
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))}
           </div>
-        ) : (
-          <p className="text-sm text-zinc-500">No buddies signed on yet.</p>
-        )}
+        </div>
       </div>
     </section>
   );
@@ -3064,7 +3046,13 @@ export default function App() {
   const [bootMode, setBootMode] = useState("gate");
 
   useEffect(() => {
-    applyCrt(readStore("localStorage", "mh-crt") || "off");
+    // CRT mode is retired: clear anything a previous visit left behind.
+    delete document.documentElement.dataset.crt;
+    try {
+      localStorage.removeItem("mh-crt");
+    } catch {
+      /* ignore */
+    }
     const reboot = () => {
       window.scrollTo(0, 0);
       setBootMode("powered");

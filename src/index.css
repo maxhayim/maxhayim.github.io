@@ -219,12 +219,17 @@
   background: linear-gradient(var(--os-knob-top), var(--os-knob-bot));
   box-shadow: 0 0 0 1px var(--os-line), 0 1px 2px rgba(0, 0, 0, 0.12);
 }
+.os-round-btn { transition: all 0.2s ease; }
 .os-round-btn:hover { color: var(--os-ink); }
+/* Window controls light up like the mail-console.sh dots */
+.os-win-close:hover { background: #f2857a; color: #5a1a13; box-shadow: 0 0 0 1px #d9695e; }
+.os-win-min:hover { background: #f5c56a; color: #5c3d06; box-shadow: 0 0 0 1px #d9a544; }
+.os-win-max:hover { background: #8fcf86; color: #1d4a17; box-shadow: 0 0 0 1px #6bb161; }
 .os-round-btn:active { transform: translateY(1px); box-shadow: 0 0 0 1px var(--os-line); }
-.os-round-btn-close:hover { color: var(--os-accent); }
 
 .os-menubar-power {
   display: inline-flex;
+  flex-shrink: 0;
   width: 28px;
   height: 28px;
   margin-left: 4px;
@@ -246,27 +251,6 @@
   min-height: calc(100vh - 44px);
 }
 
-/* CRT slide switch */
-.os-switch {
-  position: relative;
-  width: 26px;
-  height: 14px;
-  border-radius: 999px;
-  background: var(--os-desk);
-  box-shadow: inset 0 0 0 1px var(--os-line), inset 0 1px 2px rgba(0, 0, 0, 0.15);
-}
-.os-switch::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  background: var(--os-ink-3);
-  transition: transform 0.15s, background-color 0.15s;
-}
-.os-switch-on::after { transform: translateX(12px); background: var(--os-accent); }
 
 /* Knobs: round, slightly domed controls */
 .os-knob {
@@ -300,6 +284,10 @@
   touch-action: none;
 }
 .os-dock-grip:active { cursor: grabbing; }
+@media (pointer: fine) {
+  .os-titlebar-grab { cursor: grab; }
+  .os-titlebar-grab:active { cursor: grabbing; }
+}
 .os-dock-item {
   display: flex;
   flex-direction: column;
@@ -322,6 +310,30 @@
   background: var(--os-line);
 }
 .os-dot-on { background: var(--os-accent); }
+
+/* ---------- Buddy List ---------- */
+
+.buddy-pill {
+  color: var(--os-ink-2);
+  transition: color 0.2s ease;
+}
+.buddy-pill:hover { color: var(--os-ink); }
+.buddy-pill-active { color: var(--os-ink); font-weight: 600; }
+.buddy-pill:focus-visible { outline: 2px solid var(--os-accent); outline-offset: 1px; }
+.os .buddy-pill-highlight {
+  background: var(--os-case);
+  box-shadow: 0 0 0 1px var(--os-line), 0 1px 3px rgba(0, 0, 0, 0.12) !important;
+}
+.buddy-pills { scrollbar-width: thin; }
+
+.buddy-track {
+  transform: translateX(0);
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .buddy-track { transition: none; }
+}
 
 /* ---------- Content inside the window ---------- */
 
@@ -381,46 +393,3 @@
 }
 
 .os ::selection { background: color-mix(in oklab, var(--os-accent) 30%, transparent); }
-
-/* ---------- CRT mode (toggled via <html data-crt="...">) ---------- */
-
-html[data-crt="color"] body::after,
-html[data-crt="green"] body::after,
-html[data-crt="amber"] body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  pointer-events: none;
-  background:
-    repeating-linear-gradient(to bottom, transparent 0, transparent 2px, rgba(0, 0, 0, 0.28) 3px),
-    radial-gradient(ellipse at center, transparent 58%, rgba(0, 0, 0, 0.6) 100%);
-  animation: crt-flicker 5s infinite;
-}
-
-html[data-crt="color"] .mh-screen,
-html[data-crt="green"] .mh-screen,
-html[data-crt="amber"] .mh-screen {
-  text-shadow: 0 0 3px rgba(255, 255, 255, 0.28);
-}
-
-html[data-crt="green"] .mh-screen,
-html[data-crt="green"] .mh-fixed {
-  filter: grayscale(1) sepia(1) hue-rotate(65deg) saturate(3.5) brightness(1.05);
-}
-
-html[data-crt="amber"] .mh-screen,
-html[data-crt="amber"] .mh-fixed {
-  filter: grayscale(1) sepia(1) hue-rotate(-12deg) saturate(4) brightness(1.05);
-}
-
-@keyframes crt-flicker {
-  0%, 100% { opacity: 1; }
-  48% { opacity: 0.93; }
-  50% { opacity: 1; }
-  52% { opacity: 0.96; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html[data-crt] body::after { animation: none; }
-}
