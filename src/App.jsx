@@ -2516,6 +2516,19 @@ function bootDateCode() {
 const SHUTDOWN_ORANGE = "#dc7a3c";
 
 // mode: "gate" (first visit, waits for a key), "powered" (reboot, starts immediately), "off" (shut down screen)
+const BOOT_LOGO_MS = 1700;
+
+function BootLogo() {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-10 px-8">
+      <img src="/bios/comcen-os-logo.png" alt="comcen os" className="boot-logo w-[min(78vw,560px)]" />
+      <div className="boot-bar" role="progressbar" aria-label="Loading comcen os">
+        <div className="boot-bar-fill" />
+      </div>
+    </div>
+  );
+}
+
 function BootScreen({ onDone, mode }) {
   const [phase, setPhase] = useState(mode === "powered" ? "on" : mode);
   const powered = phase === "on";
@@ -2530,19 +2543,36 @@ function BootScreen({ onDone, mode }) {
   const [leaving, setLeaving] = useState(false);
   const doneRef = useRef(false);
   const audioRef = useRef(null);
+  const timersRef = useRef([]);
 
+  // Leaving the boot logo for the desktop: the two-note chime plays as the OS fades in.
   const finish = () => {
     if (doneRef.current) return;
     doneRef.current = true;
+    timersRef.current.forEach(clearTimeout);
     audioRef.current?.stop();
+    const chime = new Audio("/audio/comcen-boot.mp3");
+    chime.volume = 0.8;
+    chime.play().catch(() => {});
     setLeaving(true);
-    setTimeout(onDone, 350);
+    setTimeout(onDone, 600);
+  };
+
+  // After the BIOS: the comcen os logo with a quick loading bar, then the desktop.
+  const showLogo = () => {
+    if (doneRef.current) return;
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+    audioRef.current?.stop();
+    setScreen(3);
+    timersRef.current.push(setTimeout(finish, BOOT_LOGO_MS));
   };
 
   // Shut down or power-on screen: any key or click powers on. While booting: any key or click skips.
   const handleInput = () => {
     if (phase === "off" && !shutdownVisible) return;
     if (!powered) setPhase("on");
+    else if (screen < 3) showLogo();
     else finish();
   };
 
@@ -2568,7 +2598,7 @@ function BootScreen({ onDone, mode }) {
     audioRef.current = audio;
     audio.start();
 
-    const timers = [];
+    const timers = timersRef.current;
     let t = 0;
     const at = (ms, fn) => timers.push(setTimeout(fn, ms));
     const after = (ms, fn) => {
@@ -2613,10 +2643,11 @@ function BootScreen({ onDone, mode }) {
         else if (line) audio.play("seek");
       }),
     );
-    after(1100, finish);
+    after(700, showLogo);
 
     return () => {
-      timers.forEach(clearTimeout);
+      timersRef.current.forEach(clearTimeout);
+      timersRef.current = [];
       audio.stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2630,7 +2661,7 @@ function BootScreen({ onDone, mode }) {
       role="dialog"
       aria-label="Boot sequence"
       onClick={handleInput}
-      className={`bios-font fixed inset-0 z-[100] cursor-pointer overflow-hidden bg-black text-[14px] leading-[1.35] text-[#aaaaaa] transition-opacity duration-300 sm:text-[20px] md:text-[24px] ${
+      className={`bios-font fixed inset-0 z-[100] cursor-pointer overflow-hidden bg-black text-[14px] leading-[1.35] text-[#aaaaaa] transition-opacity duration-500 sm:text-[20px] md:text-[24px] ${
         leaving ? "opacity-0" : "opacity-100"
       }`}
     >
@@ -2671,6 +2702,8 @@ function BootScreen({ onDone, mode }) {
             Sound on for the full experience
           </div>
         </div>
+      ) : screen === 3 ? (
+        <BootLogo />
       ) : screen === 1 ? (
         <div className="relative mx-auto flex h-full max-w-6xl flex-col px-5 py-6 md:px-12 md:py-10">
           {post >= 1 && (
