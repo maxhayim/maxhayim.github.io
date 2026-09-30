@@ -12,6 +12,8 @@ import {
   User,
   Globe,
   MapPin,
+  StickyNote,
+  ChevronRight,
   ExternalLink,
   Github,
   Monitor,
@@ -2855,6 +2857,7 @@ const buddyListData = [
   },
   {
     name: "Steve Jobs",
+    signedOff: "1955–2011",
     bio: "Co-founder and CEO of Apple and NeXT. A visionary leader who profoundly transformed consumer technology, animation, and digital media by treating technology as functional art.",
     products: ["Macintosh", "iPod", "iPhone", "iPad", "Pixar's Toy Story"],
   },
@@ -2875,6 +2878,7 @@ const buddyListData = [
   },
   {
     name: "Bill Moggridge",
+    signedOff: "1943–2012",
     bio: "British designer, author, and co-founder of IDEO. Pioneered the discipline of interaction design and championed human-centered engineering.",
     products: ["GRID Compass (the world's first successful clamshell laptop)"],
   },
@@ -2900,6 +2904,7 @@ const buddyListData = [
   },
   {
     name: "Richard Sapper",
+    signedOff: "1932–2015",
     bio: "German industrial designer who seamlessly blended technical innovation with elegant geometric forms.",
     products: ["IBM ThinkPad (the classic black brick)", "Tizio halogen desk lamp"],
   },
@@ -2925,41 +2930,43 @@ const buddyListData = [
   },
 ];
 
-const buddySlug = (name) => name.toLowerCase().replace(/[^a-z]+/g, "-");
+// AIM's classic default auto-response
+const AWAY_MESSAGE = "I am away from my computer right now.";
 
 function BuddyList() {
   const [selected, setSelected] = useState(0);
-  const barRef = useRef(null);
+  const [openGroups, setOpenGroups] = useState({ legends: true, offline: true });
+  const listRef = useRef(null);
   const touchStartRef = useRef(null);
-  const count = buddyListData.length;
   const reduceMotion = prefersReducedMotion();
+  const count = buddyListData.length;
+
+  const groups = [
+    { id: "legends", label: "Design Legends", members: buddyListData.map((b, i) => ({ ...b, i })).filter((b) => !b.signedOff) },
+    { id: "offline", label: "Offline", members: buddyListData.map((b, i) => ({ ...b, i })).filter((b) => b.signedOff) },
+  ];
+  const awayCount = groups[0].members.length;
+  // Keyboard order follows what's visible in the list
+  const visible = groups.flatMap((g) => (openGroups[g.id] ? g.members.map((m) => m.i) : []));
 
   const select = (index, focus = false) => {
-    const next = (index + count) % count;
-    setSelected(next);
-    if (focus) barRef.current?.querySelectorAll('[role="tab"]')[next]?.focus({ preventScroll: true });
+    setSelected(index);
+    if (focus) listRef.current?.querySelector(`[data-buddy="${index}"]`)?.focus();
+  };
+  const step = (dir) => {
+    const order = visible.length ? visible : buddyListData.map((_, i) => i);
+    const pos = order.indexOf(selected);
+    const next = order[(pos + dir + order.length) % order.length];
+    select(next, true);
   };
 
-  // Keep the active pill in view inside the bar without scrolling the page
-  useEffect(() => {
-    const bar = barRef.current;
-    const pill = bar?.querySelectorAll('[role="tab"]')[selected];
-    if (!bar || !pill) return;
-    const target = pill.offsetLeft - bar.clientWidth / 2 + pill.offsetWidth / 2;
-    bar.scrollTo({ left: Math.max(0, target), behavior: reduceMotion ? "auto" : "smooth" });
-  }, [selected, reduceMotion]);
-
-  const onBarKeyDown = (e) => {
-    const keys = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
-    if (e.key in keys) {
+  const onListKeyDown = (e) => {
+    if (e.key === "ArrowDown") {
       e.preventDefault();
-      select(selected + keys[e.key], true);
-    } else if (e.key === "Home") {
+      step(1);
+    } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      select(0, true);
-    } else if (e.key === "End") {
-      e.preventDefault();
-      select(count - 1, true);
+      step(-1);
     }
   };
 
@@ -2971,56 +2978,99 @@ function BuddyList() {
     touchStartRef.current = null;
     const end = e.changedTouches[0]?.clientX;
     if (start == null || end == null || Math.abs(end - start) < 50) return;
-    select(selected + (end < start ? 1 : -1));
+    const next = (selected + (end < start ? 1 : -1) + count) % count;
+    setSelected(next);
   };
 
+  const current = buddyListData[selected];
+
   return (
-    <section className="flex flex-col gap-6">
-      <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:p-5">
+    <section className="grid gap-6 md:grid-cols-12">
+      {/* Buddy List window */}
+      <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-4 md:p-5">
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-amber-300">
             <Users className="h-3.5 w-3.5" /> Buddy List
           </div>
-          <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">{count} design legends</div>
+          <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+            {awayCount} away &middot; {count - awayCount} offline
+          </div>
+        </div>
+
+        <div className="aim-me flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
+          <img src="/avatar.jpg" alt="" className="h-10 w-10 rounded-lg border border-zinc-800 object-cover" />
+          <div className="min-w-0">
+            <div className="truncate font-semibold text-zinc-100">maxhayim</div>
+            <div className="flex items-center gap-1.5 text-xs text-emerald-300">
+              <span className="h-2 w-2 rounded-full bg-emerald-300" aria-hidden="true" /> Available
+            </div>
+          </div>
         </div>
 
         <div
-          ref={barRef}
-          role="tablist"
-          aria-orientation="horizontal"
-          aria-label="Design legends"
-          onKeyDown={onBarKeyDown}
-          className="buddy-bar flex gap-1 overflow-x-auto p-1"
+          ref={listRef}
+          role="listbox"
+          aria-label="Buddy list"
+          aria-activedescendant={`buddy-${selected}`}
+          onKeyDown={onListKeyDown}
+          className="aim-list mt-3 max-h-[440px] overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-950/70 p-1.5"
         >
-          {buddyListData.map((buddy, i) => {
-            const active = i === selected;
+          {groups.map((group) => {
+            const open = openGroups[group.id];
             return (
-              <button
-                key={buddy.name}
-                type="button"
-                role="tab"
-                id={`buddy-tab-${buddySlug(buddy.name)}`}
-                aria-selected={active}
-                aria-controls={`buddy-panel-${buddySlug(buddy.name)}`}
-                tabIndex={active ? 0 : -1}
-                onClick={() => select(i)}
-                className={`buddy-pill relative shrink-0 whitespace-nowrap rounded-full px-4 py-1.5 ${active ? "buddy-pill-active" : ""}`}
-              >
-                {active && (
-                  <motion.span
-                    layoutId="buddy-pill-highlight"
-                    className="buddy-pill-highlight absolute inset-0 rounded-full"
-                    transition={{ duration: reduceMotion ? 0 : 0.35, ease: [0.4, 0, 0.2, 1] }}
-                  />
-                )}
-                <span className="relative">{buddy.name}</span>
-              </button>
+              <div key={group.id} role="group" aria-label={group.label} className="mb-1">
+                <button
+                  type="button"
+                  onClick={() => setOpenGroups((g) => ({ ...g, [group.id]: !g[group.id] }))}
+                  aria-expanded={open}
+                  className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-xs text-zinc-400 hover:bg-zinc-900"
+                >
+                  <ChevronRight className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-90" : ""}`} />
+                  <span className="font-semibold text-zinc-300">{group.label}</span>
+                  <span>
+                    ({group.id === "offline" ? 0 : group.members.length}/{group.members.length})
+                  </span>
+                </button>
+
+                {open &&
+                  group.members.map((buddy) => {
+                    const active = buddy.i === selected;
+                    return (
+                      <button
+                        key={buddy.name}
+                        id={`buddy-${buddy.i}`}
+                        data-buddy={buddy.i}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        tabIndex={active ? 0 : -1}
+                        onClick={() => select(buddy.i)}
+                        className={`aim-buddy relative flex w-full items-center gap-2 rounded-lg py-1.5 pl-7 pr-2 text-left ${
+                          buddy.signedOff ? "aim-buddy-off" : "aim-buddy-away"
+                        } ${active ? "aim-buddy-active" : ""}`}
+                      >
+                        {active && (
+                          <motion.span
+                            layoutId="aim-highlight"
+                            className="aim-highlight absolute inset-0 rounded-lg"
+                            transition={{ duration: reduceMotion ? 0 : 0.35, ease: [0.4, 0, 0.2, 1] }}
+                          />
+                        )}
+                        <span className="relative min-w-0 flex-1 truncate">{buddy.name}</span>
+                        {!buddy.signedOff && (
+                          <StickyNote className="aim-away-icon relative h-3.5 w-3.5 shrink-0" aria-label="Away" />
+                        )}
+                      </button>
+                    );
+                  })}
+              </div>
             );
           })}
         </div>
       </div>
 
-      <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:p-5">
+      {/* Buddy Info window */}
+      <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-8 md:p-5">
         <div className="mb-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-amber-300">
             <User className="h-3.5 w-3.5" /> Buddy Info
@@ -3029,31 +3079,50 @@ function BuddyList() {
             <span className="text-[12px] tabular-nums text-zinc-500">
               {selected + 1} / {count}
             </span>
-            <button type="button" onClick={() => select(selected - 1)} className="os-round-btn" aria-label="Previous legend">
+            <button type="button" onClick={() => setSelected((selected - 1 + count) % count)} className="os-round-btn" aria-label="Previous buddy">
               <span aria-hidden="true">&lsaquo;</span>
             </button>
-            <button type="button" onClick={() => select(selected + 1)} className="os-round-btn" aria-label="Next legend">
+            <button type="button" onClick={() => setSelected((selected + 1) % count)} className="os-round-btn" aria-label="Next buddy">
               <span aria-hidden="true">&rsaquo;</span>
             </button>
           </div>
         </div>
 
-        {/* Every card sits side by side on one track; changing the selection slides the track with translateX */}
-        <div className="overflow-hidden" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        {/* Every card sits side by side on one track; changing buddies slides it with translateX */}
+        <div className="overflow-hidden" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} aria-live="polite">
           <div className="buddy-track flex" style={{ transform: `translateX(-${selected * 100}%)` }}>
             {buddyListData.map((buddy, i) => (
               <article
                 key={buddy.name}
-                id={`buddy-panel-${buddySlug(buddy.name)}`}
-                role="tabpanel"
-                aria-labelledby={`buddy-tab-${buddySlug(buddy.name)}`}
                 aria-hidden={i !== selected}
                 inert={i !== selected ? "" : undefined}
                 className="w-full shrink-0 px-0.5"
               >
-                <h3 className="text-2xl font-semibold tracking-tight text-zinc-100 md:text-3xl">{buddy.name}</h3>
-                <p className="mt-3 max-w-3xl text-sm leading-7 text-zinc-300 md:text-base">{buddy.bio}</p>
-                <div className="mt-5 text-[10px] uppercase tracking-[0.2em] text-zinc-500">Known for</div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <h3 className="text-2xl font-semibold tracking-tight text-zinc-100 md:text-3xl">{buddy.name}</h3>
+                  {buddy.signedOff ? (
+                    <span className="aim-status aim-status-off">
+                      <span className="aim-status-dot" aria-hidden="true" /> signed off
+                    </span>
+                  ) : (
+                    <span className="aim-status aim-status-away">
+                      <span className="aim-status-dot" aria-hidden="true" /> away
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+                    {buddy.signedOff ? "Signed off" : "Away message"}
+                  </div>
+                  <p className="mt-1.5 text-sm leading-6 text-zinc-200">
+                    {buddy.signedOff ? `${buddy.name} is no longer online. In memory, ${buddy.signedOff}.` : AWAY_MESSAGE}
+                  </p>
+                </div>
+
+                <div className="mt-5 text-[10px] uppercase tracking-[0.2em] text-zinc-500">Profile</div>
+                <p className="mt-1.5 max-w-3xl text-sm leading-7 text-zinc-300 md:text-base">{buddy.bio}</p>
+                <div className="mt-4 text-[10px] uppercase tracking-[0.2em] text-zinc-500">Known for</div>
                 <ul className="mt-2 flex flex-wrap gap-2">
                   {buddy.products.map((product) => (
                     <li key={product} className="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1.5 text-sm text-zinc-200">
@@ -3065,6 +3134,9 @@ function BuddyList() {
             ))}
           </div>
         </div>
+        <span className="sr-only">
+          {current.name}, {current.signedOff ? "signed off" : "away"}
+        </span>
       </div>
     </section>
   );
