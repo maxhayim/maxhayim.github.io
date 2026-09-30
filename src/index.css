@@ -220,6 +220,11 @@
 .prefs-option:hover { background: var(--os-hover); }
 .prefs-option[aria-disabled="true"] { cursor: default; }
 .prefs-option[aria-disabled="true"]:hover { background: transparent; }
+.os-range {
+  accent-color: var(--os-accent);
+  cursor: pointer;
+}
+.os-range:disabled { cursor: default; }
 .os-check {
   appearance: none;
   display: inline-grid;

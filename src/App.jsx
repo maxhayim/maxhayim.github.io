@@ -23,6 +23,8 @@ import {
   Keyboard,
   Printer,
   Volume2,
+  VolumeX,
+  Volume1,
   Network,
   Share2,
   RefreshCw,
@@ -827,7 +829,7 @@ const PREF_SECTIONS = [
       { id: "keyboard", label: "Keyboard", Icon: Keyboard },
       { id: "pointer", label: "Pointer", Icon: Mouse },
       { id: "printing", label: "Printing", Icon: Printer },
-      { id: "sound", label: "Sound", Icon: Volume2 },
+      { id: "sound", label: "Sound", Icon: Volume2, ready: true },
     ],
   },
   {
@@ -984,6 +986,15 @@ function SystemPreferences() {
             <MonitorPlay className="h-5 w-5" strokeWidth={1.6} />
             screen saver
           </button>
+          <button
+            type="button"
+            onClick={() => setPane("sound")}
+            aria-pressed={pane === "sound"}
+            className={`prefs-tool flex flex-col items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] ${pane === "sound" ? "prefs-tool-active" : ""}`}
+          >
+            <Volume2 className="h-5 w-5" strokeWidth={1.6} />
+            sound
+          </button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -1017,6 +1028,7 @@ function SystemPreferences() {
 
           {pane === "screensaver" && <ScreenSaverPane />}
           {pane === "theme" && <ThemePane />}
+          {pane === "sound" && <SoundPane />}
 
           {pane === "wallpaper" && (
             <div className="p-5">
@@ -1059,6 +1071,156 @@ function SystemPreferences() {
 }
 
 
+
+
+/* ---------- Sound: one switch and one volume for every sound on the site ---------- */
+
+const SOUND_COOKIE = "comcen_sound";
+const SOUND_DEFAULT = { on: true, volume: 80 };
+
+function readSound() {
+  if (typeof document === "undefined") return SOUND_DEFAULT;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${SOUND_COOKIE}=([^;]*)`));
+  if (!match) return SOUND_DEFAULT;
+  const [on, volume] = decodeURIComponent(match[1]).split(":");
+  const v = Number(volume);
+  return { on: on !== "off", volume: Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : SOUND_DEFAULT.volume };
+}
+
+let soundState = readSound();
+const liveMedia = new Set(); // <audio> / new Audio() currently playing
+const liveGains = new Set(); // Web Audio master gains (the boot synth)
+
+function applyMedia(el) {
+  const base = el._mhBase ?? 1;
+  el.volume = Math.max(0, Math.min(1, base * (soundState.volume / 100)));
+  el.muted = !soundState.on;
+}
+
+function applyAllSound() {
+  liveMedia.forEach(applyMedia);
+  liveGains.forEach(({ gain, base, ctx }) => {
+    gain.gain.setTargetAtTime(soundState.on ? base * (soundState.volume / 100) : 0, ctx.currentTime, 0.05);
+  });
+}
+
+function saveSound(next) {
+  soundState = next;
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${SOUND_COOKIE}=${encodeURIComponent(`${next.on ? "on" : "off"}:${next.volume}`)}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;
+  applyAllSound();
+  window.dispatchEvent(new CustomEvent("mh-sound-changed", { detail: next }));
+}
+
+// Every sound on the site goes through here, so the switch and volume always apply.
+function playSound(el, base = 1) {
+  if (!el) return Promise.resolve();
+  el._mhBase = base;
+  applyMedia(el);
+  if (!soundState.on) return Promise.resolve();
+  liveMedia.add(el);
+  el.addEventListener("ended", () => liveMedia.delete(el), { once: true });
+  el.currentTime = 0;
+  return el.play();
+}
+
+function useSound() {
+  const [state, setState] = useState(soundState);
+  useEffect(() => {
+    const onChanged = (e) => setState(e.detail);
+    window.addEventListener("mh-sound-changed", onChanged);
+    return () => window.removeEventListener("mh-sound-changed", onChanged);
+  }, []);
+  return state;
+}
+
+// Menu bar speaker: click to mute or unmute, right-click for Sound settings
+function SoundToggle() {
+  const sound = useSound();
+  const Icon = !sound.on || sound.volume === 0 ? VolumeX : sound.volume < 45 ? Volume1 : Volume2;
+  return (
+    <button
+      type="button"
+      onClick={() => saveSound({ ...sound, on: !sound.on })}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        openPreferences("sound");
+      }}
+      aria-pressed={!sound.on}
+      aria-label={sound.on ? "Mute sound" : "Unmute sound"}
+      title={`${sound.on ? "Sound on" : "Muted"}: click to ${sound.on ? "mute" : "unmute"}, right-click for sound settings`}
+      className={`flex h-8 items-center rounded-full px-1.5 hover:bg-[var(--os-hover)] sm:px-2 ${sound.on ? "" : "text-[var(--os-ink-3)]"}`}
+    >
+      <Icon className="h-4 w-4" strokeWidth={2} />
+    </button>
+  );
+}
+
+function SoundPane() {
+  const sound = useSound();
+  const update = (next) => saveSound({ ...sound, ...next });
+
+  return (
+    <div className="p-5">
+      <div className="mb-1 flex items-center gap-2 font-semibold">
+        <span className="h-[7px] w-[7px] rounded-full bg-[var(--os-accent)]" aria-hidden="true" />
+        sound
+      </div>
+      <p className="mb-5 text-[13px] text-[var(--os-ink-3)]">
+        Covers every sound on the site: the startup chime, drive sounds, the dial-up modem, and mail.
+      </p>
+
+      <div className="flex max-w-[460px] flex-col gap-5 text-[13px]">
+        <label className="flex items-center justify-between gap-3">
+          <span>play sounds</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={sound.on}
+            onClick={() => update({ on: !sound.on })}
+            className={`os-switch ${sound.on ? "os-switch-on" : ""} shrink-0 cursor-pointer`}
+          >
+            <span className="sr-only">play sounds</span>
+          </button>
+        </label>
+
+        <div className={`flex flex-col gap-2 ${sound.on ? "" : "opacity-50"}`}>
+          <div className="flex items-center justify-between">
+            <label htmlFor="sound-volume">volume</label>
+            <span className="tabular-nums text-[var(--os-ink-3)]">{sound.volume}%</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <Volume1 className="h-4 w-4 shrink-0 text-[var(--os-ink-3)]" aria-hidden="true" />
+            <input
+              id="sound-volume"
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={sound.volume}
+              disabled={!sound.on}
+              onChange={(e) => update({ volume: Number(e.target.value) })}
+              className="os-range w-full"
+            />
+            <Volume2 className="h-4 w-4 shrink-0 text-[var(--os-ink-3)]" aria-hidden="true" />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[var(--os-ink-3)]">Your choice is remembered on this browser.</span>
+          <button
+            type="button"
+            disabled={!sound.on}
+            onClick={() => playSound(new Audio("/audio/comcen-boot.mp3"), 0.8).catch(() => {})}
+            className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]"
+          >
+            test
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ---------- Theme: light, dark, or follow the computer ---------- */
 
@@ -1687,6 +1849,7 @@ function SharedShell({ currentPage, children }) {
       <header className="mh-fixed os-ui os-menubar fixed inset-x-0 top-0 z-40 flex h-11 items-center justify-between pl-2 pr-1.5 sm:pl-3 sm:pr-2">
         <SystemMenu />
         <div className="flex items-center gap-0.5">
+          <SoundToggle />
           <BatteryIndicator battery={battery} />
           <SignalIndicator signal={signal} />
           <div className="flex h-8 items-center gap-2 px-1 tabular-nums sm:px-2">
@@ -2038,10 +2201,7 @@ function InteractiveDialup() {
       "Dialing 305-503-0823...",
     ]);
 
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(() => {});
-    }
+    if (audioRef.current) playSound(audioRef.current).catch(() => {});
 
     setTimeout(() => {
       setLines((prev) => [
@@ -3068,11 +3228,7 @@ function ContactPage() {
   const handleFakeSubmit = (e) => {
     e.preventDefault();
     setSubmitted(true);
-    const audio = mailAudioRef.current;
-    if (audio) {
-      audio.currentTime = 0;
-      audio.play().catch(() => {});
-    }
+    playSound(mailAudioRef.current).catch(() => {});
   };
 
   return (
@@ -3385,6 +3541,7 @@ function createBootAudio() {
   let master = null;
   let recording = null;
   let stopped = false;
+  let gainEntry = null;
 
   const noiseBuffer = () => {
     const length = ctx.sampleRate;
@@ -3474,14 +3631,17 @@ function createBootAudio() {
 
   return {
     start() {
+      if (!soundState.on) return; // muted in Sound settings
       recording = new Audio("/audio/boot.mp3");
-      recording.play().catch(() => {
+      playSound(recording).catch(() => {
         recording = null;
         if (stopped || !AudioCtx) return;
         ctx = new AudioCtx();
         master = ctx.createGain();
-        master.gain.value = 0.7;
+        master.gain.value = 0.7 * (soundState.volume / 100);
         master.connect(ctx.destination);
+        gainEntry = { gain: master, base: 0.7, ctx };
+        liveGains.add(gainEntry);
         synth.hum();
       });
     },
@@ -3493,7 +3653,12 @@ function createBootAudio() {
       stopped = true;
       if (recording) {
         recording.pause();
+        liveMedia.delete(recording);
         recording = null;
+      }
+      if (gainEntry) {
+        liveGains.delete(gainEntry);
+        gainEntry = null;
       }
       if (ctx) {
         const c = ctx;
@@ -3549,9 +3714,7 @@ function BootScreen({ onDone, mode }) {
     doneRef.current = true;
     timersRef.current.forEach(clearTimeout);
     audioRef.current?.stop();
-    const chime = new Audio("/audio/comcen-boot.mp3");
-    chime.volume = 0.8;
-    chime.play().catch(() => {});
+    playSound(new Audio("/audio/comcen-boot.mp3"), 0.8).catch(() => {});
     setLeaving(true);
     setTimeout(onDone, 600);
   };
