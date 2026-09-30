@@ -3028,7 +3028,7 @@ function BuddyList() {
   const awayCount = legends.length - onlineCount;
 
   const groups = [
-    { id: "legends", label: "Design Legends", members: legends, tally: `${onlineCount}/${legends.length}` },
+    { id: "legends", label: "Buddies", members: legends, tally: `${onlineCount}/${legends.length}` },
     { id: "offline", label: "Offline", members: buddies.filter((b) => b.signedOff), tally: `0/${count - legends.length}` },
   ];
   const visible = groups.flatMap((g) => (openGroups[g.id] ? g.members.map((m) => m.i) : []));
