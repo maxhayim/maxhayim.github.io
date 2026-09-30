@@ -707,6 +707,7 @@ const WALLPAPERS = [
   { id: "calm", label: "calm", src: "/wallpaper/system6-calm.jpg", thumb: "/wallpaper/system6-calm-thumb.jpg", position: "70% center" },
   { id: "fish", label: "fish", src: "/wallpaper/system6-fish.jpg", thumb: "/wallpaper/system6-fish-thumb.jpg", position: "center" },
   { id: "wetleaf", label: "wet leaf", src: "/wallpaper/system6-wetleaf.jpg", thumb: "/wallpaper/system6-wetleaf-thumb.jpg", position: "center" },
+  { id: "abstractgreen", label: "abstract green", src: "/wallpaper/system6-abstractgreen.jpg", thumb: "/wallpaper/system6-abstractgreen-thumb.jpg", position: "center" },
 ];
 const WALLPAPER_COOKIE = "comcen_wallpaper";
 
@@ -1001,7 +1002,7 @@ function SystemPreferences() {
                 wallpaper
               </div>
               <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">Choose the picture on your desktop. It&rsquo;s remembered on this browser.</p>
-              <div role="radiogroup" aria-label="Wallpaper" className="grid grid-cols-3 gap-3">
+              <div role="radiogroup" aria-label="Wallpaper" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {WALLPAPERS.map((w) => {
                   const active = w.id === current;
                   return (
