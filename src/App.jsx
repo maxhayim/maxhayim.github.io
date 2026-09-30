@@ -842,7 +842,7 @@ const PREF_SECTIONS = [
     title: "Connections",
     panes: [
       { id: "network", label: "Network", Icon: Network },
-      { id: "modem", label: "Modem", Icon: Phone },
+      { id: "modem", label: "Modem", Icon: Phone, ready: true },
       { id: "mesh", label: "Mesh Radio", Icon: Radio },
       { id: "sharing", label: "File Sharing", Icon: Share2 },
     ],
@@ -859,6 +859,72 @@ const PREF_SECTIONS = [
     ],
   },
 ];
+
+
+/* Modem pane: shows how the site dials in and reaches ProtoWeb. Managed by comcen online, so it's read-only. */
+const DIALUP_NUMBER = "305-503-0823";
+const MODEM_SETTINGS = [
+  {
+    title: "Dial-up",
+    rows: [
+      ["Modem", "U.S. Robotics Courier V.Everything"],
+      ["Phone number", DIALUP_NUMBER],
+      ["Dialing", "Tone"],
+      ["Connect speed", "14,400 bps"],
+    ],
+  },
+  {
+    title: "ProtoWeb proxy",
+    rows: [
+      ["HTTP proxy", "wayback.protoweb.org"],
+      ["Port", "7851"],
+      ["FTP proxy", "wayback.protoweb.org : 7851"],
+      ["Modem-speed port", "7856"],
+      ["Start page", "http://www.inode.com/"],
+    ],
+  },
+];
+
+function ModemPane() {
+  return (
+    <div className="p-5">
+      <div className="mb-1 flex items-center gap-2 font-semibold">
+        <span className="h-[7px] w-[7px] rounded-full bg-[var(--os-accent)]" aria-hidden="true" />
+        modem
+      </div>
+      <p className="mb-4 flex items-center gap-1.5 text-[13px] text-[var(--os-ink-3)]">
+        <Lock className="h-3.5 w-3.5" aria-hidden="true" />
+        Set by comcen online. These settings can&rsquo;t be changed.
+      </p>
+
+      <div className="flex flex-col gap-5">
+        {MODEM_SETTINGS.map((group) => (
+          <fieldset key={group.title} disabled className="min-w-0">
+            <legend className="mb-2 text-[13px] font-semibold">{group.title}</legend>
+            <div className="grid gap-2 sm:grid-cols-[150px_1fr] sm:items-center">
+              {group.rows.map(([label, value]) => {
+                const id = `modem-${label.toLowerCase().replace(/[^a-z]+/g, "-")}`;
+                return (
+                  <React.Fragment key={label}>
+                    <label htmlFor={id} className="text-[13px] text-[var(--os-ink-2)]">
+                      {label}
+                    </label>
+                    <input
+                      id={id}
+                      readOnly
+                      value={value}
+                      className="prefs-locked w-full rounded-lg px-2.5 py-1.5 text-[13px] tabular-nums"
+                    />
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </fieldset>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function SystemPreferences() {
   const [pane, setPane] = useState(null); // null = closed, "all", or a pane id
@@ -1035,6 +1101,7 @@ function SystemPreferences() {
           {pane === "screensaver" && <ScreenSaverPane />}
           {pane === "theme" && <ThemePane />}
           {pane === "sound" && <SoundPane />}
+          {pane === "modem" && <ModemPane />}
 
           {pane === "wallpaper" && (
             <div className="p-5">
@@ -1073,7 +1140,11 @@ function SystemPreferences() {
         </div>
 
         <p className="prefs-footer border-t border-[var(--os-line)] px-5 py-2.5 text-[12px] text-[var(--os-ink-3)]">
-          {pane === "all" ? "Your preferences are remembered on this browser." : "Your preference is remembered on this browser."}
+          {pane === "all"
+            ? "Your preferences are remembered on this browser."
+            : pane === "modem"
+              ? "These settings are managed by comcen online."
+              : "Your preference is remembered on this browser."}
         </p>
       </motion.div>
     </div>
@@ -2207,7 +2278,7 @@ function InteractiveDialup({ onConnected, onDisconnected }) {
     onDisconnected?.();
   };
   const [lines, setLines] = useState([
-    "ATDT 305-503-0823",
+    `ATDT ${DIALUP_NUMBER}`,
     "System ready. Awaiting connection command.",
   ]);
 
@@ -2216,9 +2287,9 @@ function InteractiveDialup({ onConnected, onDisconnected }) {
 
     setStatus("connecting");
     setLines([
-      "ATDT 305-503-0823",
+      `ATDT ${DIALUP_NUMBER}`,
       "Initializing modem...",
-      "Dialing 305-503-0823...",
+      `Dialing ${DIALUP_NUMBER}...`,
     ]);
 
     if (audioRef.current) playSound(audioRef.current).catch(() => {});
@@ -3293,8 +3364,8 @@ function InternetPage() {
         </div>
         <h1 className="mt-2 text-[26px] font-semibold tracking-tight text-zinc-100 sm:text-3xl md:text-5xl">Internet</h1>
         <p className="mt-4 max-w-3xl text-sm leading-7 text-zinc-300 md:text-base">
-          Dial up, listen to the handshake, and take the browser for a spin. New members get a {TRIAL_MINUTES}-minute free
-          trial.
+          Dial up, listen to the handshake, and once you&rsquo;re online the browser opens. New members get a{" "}
+          {TRIAL_MINUTES}-minute free trial.
         </p>
       </section>
 
@@ -3309,20 +3380,27 @@ function InternetPage() {
           }} onDisconnected={() => setOnline(false)} />
       </section>
 
-      <section className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl">
-        <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-amber-300">
-          <Monitor className="h-3.5 w-3.5" />
-          Web Browser
-        </div>
-        <RetroBrowser
-          key={online ? "on" : "off"}
-          online={online}
-          onHangUp={() => {
-            setOnline(false);
-            setDialKey((k) => k + 1);
-          }}
-        />
-      </section>
+      {/* Like signing on to AOL: the browser only opens once the modem connects */}
+      {online && (
+        <motion.section
+          initial={{ opacity: 0, y: 16, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: prefersReducedMotion() ? 0 : 0.35, ease: [0.3, 0, 0.2, 1] }}
+          className="rounded-3xl border border-zinc-800 bg-black/50 p-5 shadow-2xl backdrop-blur-xl"
+        >
+          <div className="mb-4 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-amber-300">
+            <Monitor className="h-3.5 w-3.5" />
+            Web Browser
+          </div>
+          <RetroBrowser
+            online
+            onHangUp={() => {
+              setOnline(false);
+              setDialKey((k) => k + 1);
+            }}
+          />
+        </motion.section>
+      )}
     </SharedShell>
   );
 }

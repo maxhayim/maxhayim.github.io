@@ -220,6 +220,12 @@
 .prefs-option:hover { background: var(--os-hover); }
 .prefs-option[aria-disabled="true"] { cursor: default; }
 .prefs-option[aria-disabled="true"]:hover { background: transparent; }
+.prefs-locked {
+  background: var(--os-desk);
+  color: var(--os-ink-2);
+  box-shadow: inset 0 0 0 1px var(--os-line) !important;
+  cursor: not-allowed;
+}
 .os-range {
   accent-color: var(--os-accent);
   cursor: pointer;
