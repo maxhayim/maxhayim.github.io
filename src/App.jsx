@@ -333,27 +333,55 @@ function useBattery() {
   return battery; // null where the browser doesn't expose it (Safari, Firefox)
 }
 
+function barsFromLatency(ms) {
+  if (ms < 90) return 4;
+  if (ms < 220) return 3;
+  if (ms < 600) return 2;
+  return 1;
+}
+
 function useSignal() {
-  const read = () => {
-    if (!navigator.onLine) return { bars: 0, label: "offline" };
-    const c = navigator.connection;
-    if (!c || !c.effectiveType) return { bars: 4, label: "online" };
-    const bars = { "slow-2g": 1, "2g": 2, "3g": 3, "4g": 4 }[c.effectiveType] || 4;
-    const speed = c.downlink ? `, ~${c.downlink} Mbps` : "";
-    return { bars, label: `${c.effectiveType}${speed}` };
-  };
-  const [signal, setSignal] = useState(read);
+  const [signal, setSignal] = useState(() =>
+    navigator.onLine ? { bars: 4, label: "checking…" } : { bars: 0, label: "offline" }
+  );
+
   useEffect(() => {
-    const update = () => setSignal(read());
-    window.addEventListener("online", update);
-    window.addEventListener("offline", update);
-    navigator.connection?.addEventListener?.("change", update);
+    let cancelled = false;
+
+    // Time a tiny request back to this site. No browser exposes Wi-Fi strength, so latency is the honest proxy.
+    const measure = async () => {
+      if (!navigator.onLine) {
+        setSignal({ bars: 0, label: "offline" });
+        return;
+      }
+      const start = performance.now();
+      try {
+        await fetch(`/logo_fullclear_favicon.ico?ping=${Date.now()}`, { method: "HEAD", cache: "no-store" });
+        if (cancelled) return;
+        const ms = Math.round(performance.now() - start);
+        const c = navigator.connection;
+        const type = c?.effectiveType ? `${c.effectiveType}, ` : "";
+        const typeBars = c?.effectiveType ? { "slow-2g": 1, "2g": 2, "3g": 3, "4g": 4 }[c.effectiveType] : 4;
+        setSignal({ bars: Math.min(barsFromLatency(ms), typeBars || 4), label: `${type}${ms} ms` });
+      } catch {
+        if (!cancelled) setSignal({ bars: 0, label: "no connection" });
+      }
+    };
+
+    measure();
+    const id = setInterval(measure, 30000);
+    window.addEventListener("online", measure);
+    window.addEventListener("offline", measure);
+    navigator.connection?.addEventListener?.("change", measure);
     return () => {
-      window.removeEventListener("online", update);
-      window.removeEventListener("offline", update);
-      navigator.connection?.removeEventListener?.("change", update);
+      cancelled = true;
+      clearInterval(id);
+      window.removeEventListener("online", measure);
+      window.removeEventListener("offline", measure);
+      navigator.connection?.removeEventListener?.("change", measure);
     };
   }, []);
+
   return signal;
 }
 
@@ -2901,18 +2929,28 @@ const buddySlug = (name) => name.toLowerCase().replace(/[^a-z]+/g, "-");
 
 function BuddyList() {
   const [selected, setSelected] = useState(0);
-  const listRef = useRef(null);
+  const barRef = useRef(null);
   const touchStartRef = useRef(null);
   const count = buddyListData.length;
+  const reduceMotion = prefersReducedMotion();
 
   const select = (index, focus = false) => {
     const next = (index + count) % count;
     setSelected(next);
-    if (focus) listRef.current?.querySelectorAll('[role="tab"]')[next]?.focus();
+    if (focus) barRef.current?.querySelectorAll('[role="tab"]')[next]?.focus({ preventScroll: true });
   };
 
-  const onListKeyDown = (e) => {
-    const keys = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 };
+  // Keep the active pill in view inside the bar without scrolling the page
+  useEffect(() => {
+    const bar = barRef.current;
+    const pill = bar?.querySelectorAll('[role="tab"]')[selected];
+    if (!bar || !pill) return;
+    const target = pill.offsetLeft - bar.clientWidth / 2 + pill.offsetWidth / 2;
+    bar.scrollTo({ left: Math.max(0, target), behavior: reduceMotion ? "auto" : "smooth" });
+  }, [selected, reduceMotion]);
+
+  const onBarKeyDown = (e) => {
+    const keys = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
     if (e.key in keys) {
       e.preventDefault();
       select(selected + keys[e.key], true);
@@ -2925,7 +2963,6 @@ function BuddyList() {
     }
   };
 
-  // Swipe the info pane on touch screens
   const onTouchStart = (e) => {
     touchStartRef.current = e.touches[0]?.clientX ?? null;
   };
@@ -2938,9 +2975,9 @@ function BuddyList() {
   };
 
   return (
-    <section className="grid gap-6 md:grid-cols-12">
-      <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-4 md:p-5">
-        <div className="mb-4 flex items-center justify-between gap-2">
+    <section className="flex flex-col gap-6">
+      <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:p-5">
+        <div className="mb-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-amber-300">
             <Users className="h-3.5 w-3.5" /> Buddy List
           </div>
@@ -2948,12 +2985,12 @@ function BuddyList() {
         </div>
 
         <div
-          ref={listRef}
+          ref={barRef}
           role="tablist"
-          aria-orientation="vertical"
+          aria-orientation="horizontal"
           aria-label="Design legends"
-          onKeyDown={onListKeyDown}
-          className="buddy-pills flex max-h-[420px] flex-col gap-1 overflow-y-auto pr-1"
+          onKeyDown={onBarKeyDown}
+          className="buddy-bar flex gap-1 overflow-x-auto p-1"
         >
           {buddyListData.map((buddy, i) => {
             const active = i === selected;
@@ -2967,24 +3004,23 @@ function BuddyList() {
                 aria-controls={`buddy-panel-${buddySlug(buddy.name)}`}
                 tabIndex={active ? 0 : -1}
                 onClick={() => select(i)}
-                className={`buddy-pill relative flex w-full items-center gap-2.5 rounded-full px-4 py-2 text-left ${active ? "buddy-pill-active" : ""}`}
+                className={`buddy-pill relative shrink-0 whitespace-nowrap rounded-full px-4 py-1.5 ${active ? "buddy-pill-active" : ""}`}
               >
                 {active && (
                   <motion.span
                     layoutId="buddy-pill-highlight"
                     className="buddy-pill-highlight absolute inset-0 rounded-full"
-                    transition={{ duration: prefersReducedMotion() ? 0 : 0.35, ease: [0.4, 0, 0.2, 1] }}
+                    transition={{ duration: reduceMotion ? 0 : 0.35, ease: [0.4, 0, 0.2, 1] }}
                   />
                 )}
-                <span className={`relative h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-amber-300" : "bg-zinc-700"}`} aria-hidden="true" />
-                <span className="relative truncate">{buddy.name}</span>
+                <span className="relative">{buddy.name}</span>
               </button>
             );
           })}
         </div>
       </div>
 
-      <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:col-span-8 md:p-5">
+      <div className="rounded-3xl border border-zinc-800 bg-black/50 p-4 shadow-2xl backdrop-blur-xl md:p-5">
         <div className="mb-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.24em] term-title text-amber-300">
             <User className="h-3.5 w-3.5" /> Buddy Info
@@ -3002,8 +3038,8 @@ function BuddyList() {
           </div>
         </div>
 
-        {/* The track holds every card side by side; changing the selection slides it with translateX */}
-        <div className="buddy-viewport overflow-hidden" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        {/* Every card sits side by side on one track; changing the selection slides the track with translateX */}
+        <div className="overflow-hidden" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
           <div className="buddy-track flex" style={{ transform: `translateX(-${selected * 100}%)` }}>
             {buddyListData.map((buddy, i) => (
               <article
