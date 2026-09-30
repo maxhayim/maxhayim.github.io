@@ -405,20 +405,20 @@ function BatteryIndicator({ battery }) {
 }
 
 function SignalIndicator({ signal }) {
+  // Wi-Fi fan: the dot plus three arcs light up with signal strength (0 to 4)
+  const lit = (level) => (level <= signal.bars ? "currentColor" : "var(--os-line)");
   return (
-    <span className="flex h-8 items-center px-1 sm:px-2" title={`Network: ${signal.label}`} aria-label={`Network signal ${signal.bars} of 4, ${signal.label}`} role="img">
-      <svg viewBox="0 0 18 12" className="h-3 w-[18px]" aria-hidden="true">
-        {[0, 1, 2, 3].map((i) => (
-          <rect
-            key={i}
-            x={i * 4.6}
-            y={9 - i * 3}
-            width="3.2"
-            height={3 + i * 3}
-            rx="0.8"
-            fill={i < signal.bars ? "currentColor" : "var(--os-line)"}
-          />
-        ))}
+    <span
+      className="flex h-8 items-center px-1 sm:px-2"
+      title={`Network: ${signal.label}`}
+      aria-label={`Wi-Fi signal ${signal.bars} of 4, ${signal.label}`}
+      role="img"
+    >
+      <svg viewBox="0 0 20 15" className="h-[13px] w-[17px]" fill="none" strokeLinecap="round" aria-hidden="true">
+        <path d="M1.5 5.2a12 12 0 0 1 17 0" stroke={lit(4)} strokeWidth="2" />
+        <path d="M4.6 8.3a7.6 7.6 0 0 1 10.8 0" stroke={lit(3)} strokeWidth="2" />
+        <path d="M7.6 11.2a3.4 3.4 0 0 1 4.8 0" stroke={lit(2)} strokeWidth="2" />
+        <circle cx="10" cy="13.4" r="1.3" fill={lit(1)} />
       </svg>
     </span>
   );
@@ -696,15 +696,15 @@ function SharedShell({ currentPage, children }) {
       <header className="mh-fixed os-ui os-menubar fixed inset-x-0 top-0 z-40 flex h-11 items-center justify-between pl-2 pr-1.5 sm:pl-3 sm:pr-2">
         <SystemMenu />
         <div className="flex items-center gap-0.5">
+          <BatteryIndicator battery={battery} />
+          <SignalIndicator signal={signal} />
           <div className="flex h-8 items-center gap-2 px-1 tabular-nums sm:px-2">
+            <span className="whitespace-nowrap">{formatMenuDate(now)}</span>
             <span className="hidden sm:inline-flex">
               <AnalogClock now={now} />
             </span>
-            <span className="whitespace-nowrap">{formatMenuDate(now)}</span>
-            <span className="hidden md:inline">{time}</span>
+            <span className="hidden whitespace-nowrap md:inline">{time}</span>
           </div>
-          <BatteryIndicator battery={battery} />
-          <SignalIndicator signal={signal} />
           <button
             type="button"
             onClick={() => window.dispatchEvent(new Event("mh-power-off"))}
