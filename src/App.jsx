@@ -3153,6 +3153,7 @@ function formatLeft(ms) {
 }
 
 const DIAL_STEPS = ["Dialing", "Connecting", "Signing on"];
+const PRODIGY_ID = "MXHM23A"; // Prodigy member IDs looked like this: four letters, two digits, a letter
 const DIALUP_SECONDS = 26; // length of /audio/dialup-connect.mp3, used if the audio can't report its own
 
 function StartPage() {
@@ -3331,29 +3332,46 @@ function InternetWindow() {
         <motion.div key="dialup" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={fade} className="flex flex-col items-center px-5 py-10 text-center sm:py-14">
           {/* The logo is a stencil filled with the theme's ink, so it's dark on light and light on dark */}
           <h2 className="m-0">
-            <span role="img" aria-label="Prodigy" className="prodigy-logo block w-[132px] sm:w-[150px]" />
+            <span role="img" aria-label="Prodigy" className="prodigy-logo block w-[210px] sm:w-[260px]" />
           </h2>
-          <dl className="mt-5 grid grid-cols-[auto_auto] gap-x-4 gap-y-1 text-left text-[13px]">
-            <dt className="text-zinc-500">Service</dt>
-            <dd className="text-zinc-200">Prodigy Internet</dd>
-            <dt className="text-zinc-500">Local access number</dt>
-            <dd className="tabular-nums text-zinc-200">{DIALUP_NUMBER}</dd>
-            <dt className="text-zinc-500">Modem</dt>
-            <dd className="text-zinc-200">14,400 bps</dd>
-          </dl>
-          <p className="mt-3 max-w-md text-[13px] leading-6 text-zinc-500">
-            Started by IBM and Sears, Prodigy went nationwide in 1990 as one of the first big online services. Members
-            dialed a local access number, which varied by city, rather than one nationwide number.
-          </p>
-          <p className="mt-3 text-sm text-zinc-400">
-            Dial {DIALUP_NUMBER} to sign on.{" "}
-            {registered
-              ? "This copy is registered."
-              : usedTrialEnd && now < trialResetAt(usedTrialEnd)
-                ? `Your free trial has ended. It resets in ${formatResetIn(trialResetAt(usedTrialEnd) - now)}.`
-                : `New members get a ${TRIAL_MINUTES}-minute free trial.`}
-          </p>
-          <SoundHint className="mt-2" />
+          <p className="mt-3 text-[15px] tracking-[0.04em] text-zinc-300 sm:text-base">Interactive Personal Service</p>
+
+          {/* Sign-on panel: the member ID and password are saved and locked */}
+          <div className="mt-7 w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-left sm:p-5">
+            <p className="flex items-center justify-center gap-1.5 text-center text-[13px] text-zinc-400">
+              <Lock className="h-3.5 w-3.5" aria-hidden="true" />
+              Your ID and password are saved. Press Connect to sign on.
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[12px] text-zinc-500">ID</span>
+                <input readOnly disabled value={PRODIGY_ID} className="prefs-locked w-full rounded-lg px-3 py-2 font-mono text-[14px] tracking-[0.12em]" />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[12px] text-zinc-500">Password</span>
+                <input readOnly disabled type="password" value="comcenos" className="prefs-locked w-full rounded-lg px-3 py-2 font-mono text-[14px] tracking-[0.12em]" />
+              </label>
+            </div>
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <span className="text-[12px] text-zinc-500">
+                {registered
+                  ? "This copy is registered."
+                  : usedTrialEnd && now < trialResetAt(usedTrialEnd)
+                    ? `Free trial ended. Resets in ${formatResetIn(trialResetAt(usedTrialEnd) - now)}.`
+                    : `New members get a ${TRIAL_MINUTES}-minute free trial.`}
+              </span>
+              {dial === "idle" ? (
+                <button type="button" onClick={connect} className="net-primary shrink-0">
+                  Connect
+                </button>
+              ) : (
+                <button type="button" onClick={hangUp} className="net-secondary shrink-0">
+                  Cancel
+                </button>
+              )}
+            </div>
+          </div>
+          <SoundHint className="mt-3" />
 
           <ol className="mt-6 flex items-center gap-2 text-[12px] sm:gap-3" aria-label="Sign-on progress">
             {DIAL_STEPS.map((label, i) => (
@@ -3375,16 +3393,19 @@ function InternetWindow() {
             ))}
           </div>
 
-          <div className="mt-6">
-            {dial === "idle" ? (
-              <button type="button" onClick={connect} className="net-primary">
-                Connect
-              </button>
-            ) : (
-              <button type="button" onClick={hangUp} className="net-secondary">
-                Cancel
-              </button>
-            )}
+          {/* Footer line, like the service notice along the bottom of the original sign-on screen */}
+          <div className="mt-8 w-full max-w-2xl border-t border-zinc-800 pt-4 text-[12px] leading-6 text-zinc-500">
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+              <span>Prodigy Internet</span>
+              <span>
+                Local access number <span className="tabular-nums text-zinc-300">{DIALUP_NUMBER}</span>
+              </span>
+              <span>14,400 bps</span>
+            </div>
+            <p className="mt-1.5">
+              Started by IBM and Sears, Prodigy went nationwide in 1990 as one of the first big online services. Members
+              dialed a local access number, which varied by city, rather than one nationwide number.
+            </p>
           </div>
         </motion.div>
       ) : (
