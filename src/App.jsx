@@ -68,6 +68,8 @@ import {
   CloudSnow,
   CloudLightning,
   LocateFixed,
+  LayoutDashboard,
+  RotateCcw,
 } from "lucide-react";
 import { version as OS_VERSION } from "../package.json";
 
@@ -709,7 +711,7 @@ function Dock({ currentPage, windowState, onMinimize, onRestore }) {
           <span className="mb-5 h-8 w-px bg-[var(--os-line)]" aria-hidden="true" />
           <button type="button" onClick={toggleDashboard} aria-pressed={dashboard} className="os-dock-item" title={dashboard ? "Put widgets away" : "Show widgets"}>
             <span className="os-knob">
-              <LayoutGrid className="h-[18px] w-[18px]" strokeWidth={1.6} />
+              <LayoutDashboard className="h-[18px] w-[18px]" strokeWidth={1.6} />
             </span>
             <span className="flex items-center gap-1">
               <span className={`os-dot ${dashboard ? "os-dot-on" : ""}`} aria-hidden="true" />
@@ -855,6 +857,7 @@ const PREF_SECTIONS = [
       { id: "theme", label: "Theme", Icon: Palette, ready: true },
       { id: "wallpaper", label: "Wallpaper", Icon: ImageIcon, ready: true },
       { id: "screensaver", label: "Screen Saver", Icon: MonitorPlay, ready: true },
+      { id: "widgets", label: "Widgets", Icon: LayoutDashboard, ready: true },
       { id: "dock", label: "Dock", Icon: PanelBottom },
       { id: "windows", label: "Windows", Icon: AppWindow },
       { id: "language", label: "Language", Icon: Globe },
@@ -1138,6 +1141,7 @@ function SystemPreferences() {
           {pane === "theme" && <ThemePane />}
           {pane === "sound" && <SoundPane />}
           {pane === "modem" && <ModemPane />}
+          {pane === "widgets" && <WidgetsPane />}
 
           {pane === "wallpaper" && (
             <div className="p-5">
@@ -5537,10 +5541,159 @@ function WeatherWidget() {
   );
 }
 
+/* Which widgets are out and where they sit. Positions are kept as a share of the free width (so a widget on the
+   right stays on the right when the screen changes size) plus a distance from the top. */
+const WIDGET_KINDS = [
+  { id: "clock", label: "Clock", note: "after the Braun ABW 41 wall clock", Icon: Clock3, Component: ClockWidget },
+  { id: "radio", label: "Radio", note: "after the Braun T3 pocket radio", Icon: Radio, Component: RadioWidget },
+  { id: "weather", label: "Weather", note: "Miami, or wherever you are", Icon: CloudSun, Component: WeatherWidget },
+];
+const WIDGET_WIDTH = 196;
+const WIDGET_GAP = 16;
+const WIDGET_EDGE = 20;
+const WIDGET_LAYOUT_KEY = "comcen_widget_layout";
+const WIDGET_HOLD_MS = 550; // press and hold this long to start editing, like iOS
+const WIDGET_DRAG_SLOP = 5; // px of movement before a press becomes a drag
+
+function readWidgetLayout() {
+  const shown = Object.fromEntries(WIDGET_KINDS.map((w) => [w.id, true]));
+  try {
+    const saved = JSON.parse(readStore("localStorage", WIDGET_LAYOUT_KEY) || "{}");
+    WIDGET_KINDS.forEach((w) => {
+      if (typeof saved.shown?.[w.id] === "boolean") shown[w.id] = saved.shown[w.id];
+    });
+    const pos = {};
+    Object.entries(saved.pos || {}).forEach(([id, p]) => {
+      if (Number.isFinite(p?.fx) && Number.isFinite(p?.y)) pos[id] = { fx: Math.max(0, Math.min(1, p.fx)), y: Math.max(0, p.y) };
+    });
+    return { shown, pos };
+  } catch {
+    return { shown, pos: {} };
+  }
+}
+
+const widgetLayout = { ...readWidgetLayout(), listeners: new Set() };
+
+function setWidgetLayout(patch) {
+  Object.assign(widgetLayout, patch);
+  writeStore("localStorage", WIDGET_LAYOUT_KEY, JSON.stringify({ shown: widgetLayout.shown, pos: widgetLayout.pos }));
+  widgetLayout.listeners.forEach((listener) => listener());
+}
+
+function setWidgetShown(id, on) {
+  if (!on && id === "radio") radioStop(); // nothing left to switch it off with
+  setWidgetLayout({ shown: { ...widgetLayout.shown, [id]: on } });
+}
+
+function useWidgetLayout() {
+  const [, rerender] = useState(0);
+  useEffect(() => {
+    const listener = () => rerender((n) => n + 1);
+    widgetLayout.listeners.add(listener);
+    return () => widgetLayout.listeners.delete(listener);
+  }, []);
+  return widgetLayout;
+}
+
+function useViewport() {
+  const [size, setSize] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
+  useEffect(() => {
+    const onResize = () => setSize({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return size;
+}
+
+// System Preferences → Widgets
+function WidgetsPane() {
+  const layout = useWidgetLayout();
+  const [onDesk, setOnDesk] = useState(readWidgetsOnDesk);
+  const moved = Object.keys(layout.pos).length > 0;
+
+  return (
+    <div className="p-5">
+      <div className="mb-1 flex items-center gap-2 font-semibold">
+        <span className="h-[7px] w-[7px] rounded-full bg-[var(--os-accent)]" aria-hidden="true" />
+        widgets
+      </div>
+      <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">
+        Braun-inspired desk accessories. Drag a widget to move it; press and hold one to remove it.
+      </p>
+
+      <ul className="divide-y divide-[var(--os-line)] rounded-xl ring-1 ring-[var(--os-line)]">
+        {WIDGET_KINDS.map(({ id, label, note, Icon }) => (
+          <li key={id} className="flex items-center gap-3 px-3 py-2.5 text-[13px]">
+            <span className="prefs-icon shrink-0">
+              <Icon className="h-5 w-5" strokeWidth={1.6} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">{label}</span>
+              <span className="block truncate text-[12px] text-[var(--os-ink-3)]">{note}</span>
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={layout.shown[id]}
+              aria-label={`Show the ${label.toLowerCase()} widget`}
+              onClick={() => setWidgetShown(id, !layout.shown[id])}
+              className={`os-switch ${layout.shown[id] ? "os-switch-on" : ""} shrink-0 cursor-pointer`}
+            />
+          </li>
+        ))}
+      </ul>
+
+      <label className="mt-5 flex items-center justify-between gap-3 text-[13px]">
+        <span>
+          <span className="block">show widgets on the desktop</span>
+          <span className="block text-[12px] text-[var(--os-ink-3)]">With the window open, only on wide screens. The dock&rsquo;s widgets button always brings them forward.</span>
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={onDesk}
+          onClick={() => {
+            saveWidgetsOnDesk(!onDesk);
+            setOnDesk(!onDesk);
+          }}
+          className={`os-switch ${onDesk ? "os-switch-on" : ""} shrink-0 cursor-pointer`}
+        >
+          <span className="sr-only">show widgets on the desktop</span>
+        </button>
+      </label>
+
+      <div className="mt-5 flex flex-wrap items-center justify-end gap-2 text-[13px]">
+        <button
+          type="button"
+          disabled={!moved}
+          onClick={() => setWidgetLayout({ pos: {} })}
+          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)] disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+          reset positions
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Widgets({ disabled }) {
+  const layout = useWidgetLayout();
+  const viewport = useViewport();
   const [dashboard, setDashboard] = useState(false);
   const [onDesk, setOnDesk] = useState(readWidgetsOnDesk);
   const [windowOpen, setWindowOpen] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [drag, setDrag] = useState(null); // { id, x, y } while a widget is being moved
+  const press = useRef(null); // the pointer that's down on a widget
+  const swallowClick = useRef(false);
+  const [heights, setHeights] = useState({}); // measured, for the default column and keeping widgets on screen
+
+  // Phones: one centered column you scroll, no dragging
+  const stacked = viewport.w < 640;
+  const areaTop = 44; // under the menu bar
+  const areaW = viewport.w;
+  const areaH = viewport.h - areaTop;
 
   useEffect(() => {
     const onToggle = () => setDashboard((d) => !d);
@@ -5561,42 +5714,191 @@ function Widgets({ disabled }) {
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("mh-dashboard-state", { detail: dashboard }));
-    if (!dashboard) return;
-    const onKey = (e) => e.key === "Escape" && setDashboard(false);
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
   }, [dashboard]);
+
+  // Escape or a click away from the widgets ends editing first, then closes the dashboard
+  useEffect(() => {
+    if (!dashboard && !editing) return;
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      if (editing) setEditing(false);
+      else setDashboard(false);
+    };
+    const onDown = (e) => {
+      if (editing && !e.target.closest(".widget-slot, .widget-done")) setEditing(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown, true);
+    };
+  }, [dashboard, editing]);
 
   if (disabled) return null;
 
-  const widgets = (
-    <>
-      <ClockWidget />
-      <RadioWidget />
-      <WeatherWidget />
-    </>
+  const shown = WIDGET_KINDS.filter((w) => layout.shown[w.id]);
+
+  // Where each widget sits: its saved spot, or the default column down the right edge
+  const place = (id, index) => {
+    const h = heights[id] || WIDGET_WIDTH;
+    const free = Math.max(0, areaW - WIDGET_WIDTH - WIDGET_EDGE * 2);
+    let x;
+    let y;
+    if (drag?.id === id) {
+      ({ x, y } = drag);
+    } else if (layout.pos[id]) {
+      x = WIDGET_EDGE + layout.pos[id].fx * free;
+      y = layout.pos[id].y;
+    } else {
+      x = WIDGET_EDGE + free;
+      y = WIDGET_EDGE + shown.slice(0, index).reduce((sum, w) => sum + (heights[w.id] || WIDGET_WIDTH) + WIDGET_GAP, 0);
+    }
+    return {
+      x: Math.max(WIDGET_EDGE, Math.min(x, areaW - WIDGET_WIDTH - WIDGET_EDGE)),
+      y: Math.max(8, Math.min(y, areaH - Math.min(h, 120) - 8)),
+    };
+  };
+
+  const onPointerDown = (e, id, index) => {
+    if (e.button !== 0 || e.target.closest(".widget-remove")) return;
+    const start = place(id, index);
+    const interactive = !!e.target.closest("button, a, input, select");
+    const p = { id, pointerId: e.pointerId, sx: e.clientX, sy: e.clientY, ox: start.x, oy: start.y, dragging: false, interactive };
+    p.timer = setTimeout(() => {
+      if (press.current !== p || p.dragging) return;
+      setEditing(true);
+      swallowClick.current = true; // the release after a long press isn't a click
+      navigator.vibrate?.(10);
+    }, WIDGET_HOLD_MS);
+    press.current = p;
+  };
+
+  const onPointerMove = (e) => {
+    const p = press.current;
+    if (!p || p.pointerId !== e.pointerId) return;
+    const dx = e.clientX - p.sx;
+    const dy = e.clientY - p.sy;
+    if (!p.dragging) {
+      if (Math.hypot(dx, dy) < WIDGET_DRAG_SLOP) return;
+      clearTimeout(p.timer);
+      // Controls only drag while editing; the rest of a widget is a handle any time. Phones scroll instead.
+      if (stacked || (p.interactive && !editing)) {
+        press.current = null;
+        return;
+      }
+      p.dragging = true;
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    }
+    p.x = p.ox + dx;
+    p.y = p.oy + dy;
+    setDrag({ id: p.id, x: p.x, y: p.y });
+  };
+
+  const onPointerUp = (e) => {
+    const p = press.current;
+    if (!p || p.pointerId !== e.pointerId) return;
+    clearTimeout(p.timer);
+    press.current = null;
+    if (!p.dragging) return;
+    swallowClick.current = true;
+    const free = Math.max(1, areaW - WIDGET_WIDTH - WIDGET_EDGE * 2);
+    const h = heights[p.id] || WIDGET_WIDTH;
+    const x = Math.max(WIDGET_EDGE, Math.min(p.x, areaW - WIDGET_WIDTH - WIDGET_EDGE));
+    const y = Math.max(8, Math.min(p.y, areaH - Math.min(h, 120) - 8));
+    setDrag(null);
+    setWidgetLayout({ pos: { ...widgetLayout.pos, [p.id]: { fx: Math.max(0, Math.min(1, (x - WIDGET_EDGE) / free)), y: Math.round(y) } } });
+  };
+
+  const onClickCapture = (e) => {
+    if (!swallowClick.current) return;
+    swallowClick.current = false;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const slots = shown.map((kind, index) => {
+    const { id, label } = kind;
+    const Body = kind.Component;
+    const { x, y } = place(id, index);
+    return (
+      <div
+        key={id}
+        ref={(el) => {
+          if (el && el.offsetHeight && heights[id] !== el.offsetHeight) setHeights((hs) => ({ ...hs, [id]: el.offsetHeight }));
+        }}
+        className={`widget-slot ${editing ? "widget-slot-editing" : ""} ${drag?.id === id ? "widget-slot-dragging" : ""}`}
+        style={stacked ? undefined : { transform: `translate(${Math.round(x)}px, ${Math.round(y)}px)`, "--jiggle-delay": `${index * -0.11}s` }}
+        onPointerDown={(e) => onPointerDown(e, id, index)}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onClickCapture={onClickCapture}
+        onContextMenu={(e) => editing && e.preventDefault()}
+      >
+        <Body />
+        {editing && (
+          <button
+            type="button"
+            className="widget-remove"
+            onClick={() => setWidgetShown(id, false)}
+            aria-label={`Remove the ${label.toLowerCase()} widget`}
+            title="Remove"
+          >
+            <X className="h-3.5 w-3.5" strokeWidth={2.6} />
+          </button>
+        )}
+      </div>
+    );
+  });
+
+  const done = editing && (
+    <button type="button" className="widget-done" onClick={() => setEditing(false)}>
+      done
+    </button>
+  );
+
+  const empty = (
+    <div className="widget-empty">
+      <p>No widgets out.</p>
+      <button
+        type="button"
+        onClick={() => {
+          setDashboard(false);
+          openPreferences("widgets");
+        }}
+        className="mt-2 rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
+      >
+        add widgets…
+      </button>
+    </div>
   );
 
   if (dashboard) {
     return (
       <div
-        className="os-ui widget-dashboard fixed inset-x-0 bottom-0 top-11 z-[35] overflow-y-auto"
-        onMouseDown={(e) => e.target === e.currentTarget && setDashboard(false)}
+        className={`os-ui widget-dashboard fixed inset-x-0 bottom-0 top-11 z-[35] ${stacked ? "widget-area-stacked overflow-y-auto" : "overflow-hidden"}`}
+        onMouseDown={(e) => e.target === e.currentTarget && !editing && setDashboard(false)}
         role="dialog"
         aria-label="Widgets"
       >
-        <div className="widget-dashboard-row" onMouseDown={(e) => e.target === e.currentTarget && setDashboard(false)}>
-          {widgets}
-        </div>
+        {shown.length ? slots : empty}
+        {done}
       </div>
     );
   }
 
-  if (!onDesk) return null;
-  // On the desktop: beside the window when there's room for them, otherwise only once the window is out of the way
+  if (!onDesk || !shown.length) return null;
+  // On the desktop, under the window: shown beside it when there's room, otherwise once the window is out of the way
   return (
-    <div className={`os-ui widget-desk ${windowOpen ? "widget-desk-beside" : ""}`} aria-label="Desktop widgets">
-      {widgets}
+    <div
+      className={`os-ui widget-desk fixed inset-x-0 bottom-0 top-11 ${drag ? "z-[36]" : "z-[5]"} ${stacked ? "widget-area-stacked" : ""} ${
+        windowOpen ? "widget-desk-beside" : ""
+      }`}
+      aria-label="Desktop widgets"
+    >
+      {slots}
+      {done}
     </div>
   );
 }
