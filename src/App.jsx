@@ -313,8 +313,8 @@ function buildFlightCode(repo) {
 const OS_PAGES = [
   { page: "home", label: "home", href: "#/", Icon: House },
   { page: "gits", label: "gits", href: "#/gits", Icon: Github },
-  { page: "about", label: "about", href: "#/about", Icon: FileText },
   { page: "internet", label: "internet", href: "#/internet", Icon: Globe },
+  { page: "about", label: "about", href: "#/about", Icon: FileText },
   { page: "contact", label: "contact", href: "#/contact", Icon: Mail },
 ];
 
@@ -2036,19 +2036,20 @@ function SharedShell({ currentPage, children }) {
               <span className="text-[var(--os-ink-3)]">/ {page.label}</span>
             </div>
 
-            <nav aria-label="Pages" className="os-segment ml-auto">
-              {OS_PAGES.map((p) => (
-                <a
-                  key={p.page}
-                  href={p.href}
-                  aria-current={p.page === currentPage ? "page" : undefined}
-                  className="os-segment-item"
-                >
-                  {p.label}
-                </a>
-              ))}
-            </nav>
           </div>
+
+          {/* Finder-style tabs: one per page; the active tab joins the page below */}
+          <nav aria-label="Pages" className="os-tabs flex">
+            {OS_PAGES.map(({ page: id, label, href, Icon }) => {
+              const active = id === currentPage;
+              return (
+                <a key={id} href={href} aria-current={active ? "page" : undefined} className={`os-tab ${active ? "os-tab-active" : ""}`}>
+                  <Icon className="hidden h-3.5 w-3.5 shrink-0 sm:block" strokeWidth={1.8} aria-hidden="true" />
+                  <span className="truncate">{label}</span>
+                </a>
+              );
+            })}
+          </nav>
 
           <div className="os relative p-3 sm:p-5 md:p-6">
             <main className="relative z-10 flex flex-col gap-5">{children}</main>
@@ -2358,18 +2359,18 @@ function HomePage() {
               </a>
 
               <a
-                href="#/about"
-                className="flex items-center justify-between rounded-xl border border-zinc-800 bg-black/40 px-4 py-3 text-sm text-zinc-300 transition hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
-              >
-                About
-                <ExternalLink className="h-4 w-4" />
-              </a>
-
-              <a
                 href="#/internet"
                 className="flex items-center justify-between rounded-xl border border-zinc-800 bg-black/40 px-4 py-3 text-sm text-zinc-300 transition hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
               >
                 Internet
+                <ExternalLink className="h-4 w-4" />
+              </a>
+
+              <a
+                href="#/about"
+                className="flex items-center justify-between rounded-xl border border-zinc-800 bg-black/40 px-4 py-3 text-sm text-zinc-300 transition hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
+              >
+                About
                 <ExternalLink className="h-4 w-4" />
               </a>
 
