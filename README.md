@@ -20,6 +20,7 @@ comcen os is a communications center operating system imagined through a late-19
 
 - **Boot sequence:** BIOS-style power-on screen with memory count, drive detection, and boot audio. It plays on the first visit and can be triggered again with Reboot or Power from the system menu.
 - **Desktop shell:** menu bar with clock, battery, and signal indicators, a draggable dock, and a window that can be minimized and maximized.
+- **Widgets:** a Braun-inspired wall clock, a T3-style pocket radio (Radio Paradise, KEXP, FIP, and NTS), and a weather station for Miami or your own location (forecasts from [Open-Meteo](https://open-meteo.com/)). They sit on the desktop beside the window on wide screens, and the dock's widgets button brings them forward on any screen.
 - **System Preferences:** working panes for Theme (light, dark, or auto), Wallpaper (four System 6-inspired images), Screen Saver (Mesh or Starfield), Sound, and Modem. Preferences are saved in cookies.
 - **This computer:** a fictional COMCEN Model 2000 graphics workstation (1999).
 

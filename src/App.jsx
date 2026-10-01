@@ -55,6 +55,19 @@ import {
   X,
   Maximize2,
   Minimize2,
+  Play,
+  Square,
+  Sun,
+  Moon,
+  Cloud,
+  CloudSun,
+  CloudMoon,
+  CloudFog,
+  CloudDrizzle,
+  CloudRain,
+  CloudSnow,
+  CloudLightning,
+  LocateFixed,
 } from "lucide-react";
 import { version as OS_VERSION } from "../package.json";
 
@@ -646,6 +659,7 @@ const SNAP_BACK = { bounceStiffness: 420, bounceDamping: 28 };
 
 function Dock({ currentPage, windowState, onMinimize, onRestore }) {
   const minimized = windowState !== "open";
+  const dashboard = useDashboardOpen();
   const controls = useDragControls();
   const boundsRef = useRef(null);
 
@@ -693,6 +707,15 @@ function Dock({ currentPage, windowState, onMinimize, onRestore }) {
             );
           })}
           <span className="mb-5 h-8 w-px bg-[var(--os-line)]" aria-hidden="true" />
+          <button type="button" onClick={toggleDashboard} aria-pressed={dashboard} className="os-dock-item" title={dashboard ? "Put widgets away" : "Show widgets"}>
+            <span className="os-knob">
+              <LayoutGrid className="h-[18px] w-[18px]" strokeWidth={1.6} />
+            </span>
+            <span className="flex items-center gap-1">
+              <span className={`os-dot ${dashboard ? "os-dot-on" : ""}`} aria-hidden="true" />
+              widgets
+            </span>
+          </button>
           <button
             type="button"
             onClick={minimized ? onRestore : onMinimize}
@@ -779,7 +802,7 @@ function DesktopMenu() {
 
   if (!menu) return null;
   const width = 230;
-  const height = 250;
+  const height = 282;
   const left = Math.max(8, Math.min(menu.x, window.innerWidth - width - 8));
   const top = Math.max(52, Math.min(menu.y, window.innerHeight - height - 8));
   const item = "flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left";
@@ -803,6 +826,17 @@ function DesktopMenu() {
         }}
       >
         change wallpaper…
+      </button>
+      <button
+        role="menuitem"
+        type="button"
+        className={on}
+        onClick={() => {
+          setMenu(null);
+          saveWidgetsOnDesk(!readWidgetsOnDesk());
+        }}
+      >
+        {readWidgetsOnDesk() ? "hide desktop widgets" : "show desktop widgets"}
       </button>
       {divider}
       <button role="menuitem" type="button" aria-disabled="true" className={off}>
@@ -1939,6 +1973,11 @@ function SharedShell({ currentPage, children }) {
     window.scrollTo(0, 0);
   };
   const restore = () => setWindowState("open");
+
+  // Desktop widgets step out from behind the window once it's minimized or closed
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("mh-window-state", { detail: windowState }));
+  }, [windowState]);
   const toggleMaximize = () => {
     setMaximized((m) => !m);
     window.scrollTo(0, 0);
@@ -4998,6 +5037,570 @@ function BuddyList() {
 
 /* ---------- App ---------- */
 
+/* ---------- Widgets: a Braun-style wall clock, pocket radio, and weather station ----------
+   They sit on the desktop beside the window (or behind it on smaller screens).
+   The dock's widgets button brings them all forward, like a dashboard. */
+
+const WIDGETS_COOKIE = "comcen_widgets";
+
+function readWidgetsOnDesk() {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${WIDGETS_COOKIE}=([^;]*)`));
+  return !match || decodeURIComponent(match[1]) !== "off";
+}
+
+function saveWidgetsOnDesk(on) {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${WIDGETS_COOKIE}=${on ? "on" : "off"}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;
+  window.dispatchEvent(new CustomEvent("mh-widgets-desk", { detail: on }));
+}
+
+const toggleDashboard = () => window.dispatchEvent(new Event("mh-dashboard-toggle"));
+
+// Lets the dock light its widgets button while the dashboard is open
+function useDashboardOpen() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const onState = (e) => setOpen(e.detail);
+    window.addEventListener("mh-dashboard-state", onState);
+    return () => window.removeEventListener("mh-dashboard-state", onState);
+  }, []);
+  return open;
+}
+
+/* Clock: after the Braun ABW 41 wall clock. Flat black hands, yellow sweep hand with a round counterweight. */
+function ClockWidget() {
+  const now = useClock();
+  const s = now.getSeconds();
+  const m = now.getMinutes() + s / 60;
+  const h = (now.getHours() % 12) + m / 60;
+  const hand = (deg, length, tail, width, color) => (
+    <line x1="100" y1={100 + tail} x2="100" y2={100 - length} stroke={color} strokeWidth={width} transform={`rotate(${deg} 100 100)`} />
+  );
+
+  return (
+    <section
+      className="widget widget-clock"
+      aria-label={`Clock: ${now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
+    >
+      <svg viewBox="0 0 200 200" className="block h-full w-full" aria-hidden="true">
+        <circle cx="100" cy="100" r="90" fill="var(--w-face)" />
+        {Array.from({ length: 60 }, (_, i) =>
+          i % 5 === 0 ? null : (
+            <line key={i} x1="100" y1="13" x2="100" y2="17" stroke="var(--w-mark)" strokeWidth="1" transform={`rotate(${i * 6} 100 100)`} />
+          ),
+        )}
+        {Array.from({ length: 12 }, (_, i) => {
+          const n = i + 1;
+          const a = (n * 30 * Math.PI) / 180;
+          return (
+            <text
+              key={n}
+              x={100 + Math.sin(a) * 72}
+              y={100 - Math.cos(a) * 72}
+              textAnchor="middle"
+              dominantBaseline="central"
+              className="widget-clock-num"
+            >
+              {n}
+            </text>
+          );
+        })}
+        <text x="100" y="62" textAnchor="middle" className="widget-clock-brand">comcen</text>
+        {hand(h * 30, 46, 10, 6, "var(--w-hand)")}
+        {hand(m * 6, 70, 12, 4, "var(--w-hand)")}
+        <g transform={`rotate(${s * 6} 100 100)`}>
+          <line x1="100" y1="124" x2="100" y2="20" stroke="var(--w-yellow)" strokeWidth="1.6" />
+          <circle cx="100" cy="122" r="5" fill="var(--w-yellow)" />
+        </g>
+        <circle cx="100" cy="100" r="4" fill="var(--w-yellow)" />
+      </svg>
+    </section>
+  );
+}
+
+/* Radio: after the Braun T3 pocket radio. Perforated grille on top, a tuning wheel you turn to change stations.
+   All six are listener-supported or public stations that welcome listening from other sites. */
+const RADIO_STATIONS = [
+  { id: "rp", name: "Radio Paradise", genre: "eclectic mix · California", stream: "https://stream.radioparadise.com/mp3-128", site: "https://radioparadise.com/" },
+  { id: "rp-mellow", name: "RP Mellow", genre: "mellow mix · California", stream: "https://stream.radioparadise.com/mellow-128", site: "https://radioparadise.com/" },
+  {
+    id: "kexp",
+    name: "KEXP",
+    genre: "indie and alternative · Seattle",
+    stream: "https://kexp.streamguys1.com/kexp160.aac",
+    site: "https://www.kexp.org/",
+    nowPlaying: async () => {
+      const play = (await (await fetch("https://api.kexp.org/v2/plays/?limit=1")).json()).results?.[0];
+      return play?.play_type === "trackplay" && play.artist ? `${play.artist} — ${play.song}` : null;
+    },
+  },
+  { id: "fip", name: "FIP", genre: "eclectic · Paris", stream: "https://icecast.radiofrance.fr/fip-midfi.mp3", site: "https://www.radiofrance.fr/fip" },
+  { id: "fip-jazz", name: "FIP Jazz", genre: "jazz · Paris", stream: "https://icecast.radiofrance.fr/fipjazz-midfi.mp3", site: "https://www.radiofrance.fr/fip" },
+  {
+    id: "nts",
+    name: "NTS 1",
+    genre: "underground radio · London",
+    stream: "https://stream-relay-geo.ntslive.net/stream",
+    site: "https://www.nts.live/",
+    nowPlaying: async () => {
+      const live = (await (await fetch("https://www.nts.live/api/v2/live")).json()).results?.find((c) => c.channel_name === "1");
+      return live?.now?.broadcast_title || null;
+    },
+  },
+];
+const RADIO_KEY = "comcen_radio_station";
+const RADIO_LEVEL = 0.7; // under the site volume, so it never drowns out system sounds
+
+// One radio for the whole site, outside React, so it keeps playing as you move between pages.
+const radio = {
+  station: Math.max(0, Math.min(RADIO_STATIONS.length - 1, Number(readStore("localStorage", RADIO_KEY)) || 0)),
+  status: "off", // "off" | "tuning" | "on" | "error"
+  audio: null,
+  listeners: new Set(),
+};
+
+function setRadio(patch) {
+  Object.assign(radio, patch);
+  radio.listeners.forEach((listener) => listener());
+}
+
+function useRadio() {
+  const [, rerender] = useState(0);
+  useEffect(() => {
+    const listener = () => rerender((n) => n + 1);
+    radio.listeners.add(listener);
+    return () => radio.listeners.delete(listener);
+  }, []);
+  return radio;
+}
+
+function radioAudio() {
+  if (!radio.audio) {
+    const audio = new Audio();
+    audio.preload = "none";
+    audio._mhBase = RADIO_LEVEL;
+    audio.addEventListener("playing", () => setRadio({ status: "on" }));
+    audio.addEventListener("waiting", () => radio.status !== "off" && setRadio({ status: "tuning" }));
+    audio.addEventListener("error", () => radio.status !== "off" && setRadio({ status: "error" }));
+    radio.audio = audio;
+  }
+  return radio.audio;
+}
+
+function radioStart() {
+  const audio = radioAudio();
+  audio.src = RADIO_STATIONS[radio.station].stream;
+  applyMedia(audio);
+  liveMedia.add(audio);
+  setRadio({ status: "tuning" });
+  audio.play().catch(() => radio.status !== "off" && setRadio({ status: "error" }));
+}
+
+function radioStop() {
+  setRadio({ status: "off" });
+  const audio = radio.audio;
+  if (!audio) return;
+  audio.pause();
+  audio.removeAttribute("src");
+  audio.load();
+  liveMedia.delete(audio);
+}
+
+function radioTune(step) {
+  const n = RADIO_STATIONS.length;
+  const station = (radio.station + step + n) % n;
+  writeStore("localStorage", RADIO_KEY, String(station));
+  setRadio({ station });
+  if (radio.status !== "off") radioStart();
+}
+
+// What's on now, for the stations that publish it
+function useNowPlaying(station, active) {
+  const [track, setTrack] = useState(null); // { stationId, text }
+  useEffect(() => {
+    if (!active || !station.nowPlaying) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const text = await station.nowPlaying();
+        if (!cancelled) setTrack({ stationId: station.id, text });
+      } catch {
+        /* the station description is enough */
+      }
+    };
+    load();
+    const id = setInterval(load, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [station, active]);
+  return active && track?.stationId === station.id ? track.text : null;
+}
+
+function RadioWidget() {
+  const { station, status } = useRadio();
+  const sound = useSound();
+  const current = RADIO_STATIONS[station];
+  const playing = status !== "off";
+  const track = useNowPlaying(current, status === "on");
+  const n = RADIO_STATIONS.length;
+
+  const statusLabel = !playing
+    ? "off"
+    : status === "error"
+      ? "no signal"
+      : status === "tuning"
+        ? "tuning…"
+        : sound.on
+          ? "on air"
+          : "muted";
+
+  return (
+    <section className="widget widget-radio" aria-label="Radio">
+      <div className="widget-radio-grille" aria-hidden="true" />
+      <div className="px-3.5 pt-3">
+        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-[var(--os-ink-3)]">
+          <span className={`widget-led ${status === "on" && sound.on ? "widget-led-on" : ""}`} aria-hidden="true" />
+          <span aria-live="polite">{statusLabel}</span>
+          <span className="ml-auto tabular-nums">
+            {station + 1}/{n}
+          </span>
+        </div>
+        <div className="mt-1 truncate text-[15px] font-semibold tracking-tight">{current.name}</div>
+        <div className="truncate text-[11px] text-[var(--os-ink-3)]" title={track || current.genre}>
+          {playing && !sound.on ? (
+            <button type="button" className="underline underline-offset-2 hover:text-[var(--os-ink)]" onClick={() => saveSound({ ...sound, on: true })}>
+              turn sound on
+            </button>
+          ) : (
+            track || current.genre
+          )}
+        </div>
+      </div>
+      <div className="flex items-end justify-between px-3.5 pb-4 pt-2.5">
+        {/* Tuning wheel: click for the next station, shift-click or arrow keys to go back */}
+        <button
+          type="button"
+          className="widget-radio-dial"
+          onClick={(e) => radioTune(e.shiftKey ? -1 : 1)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+              e.preventDefault();
+              radioTune(-1);
+            } else if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+              e.preventDefault();
+              radioTune(1);
+            }
+          }}
+          aria-label={`Station ${station + 1} of ${n}: ${current.name}. Turn to change station.`}
+          title="Turn to change station"
+        >
+          <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden="true">
+            <g className="widget-radio-wheel" style={{ transform: `rotate(${(-station * 360) / n}deg)` }}>
+              <circle cx="32" cy="32" r="30" fill="var(--w-face)" />
+              {Array.from({ length: 36 }, (_, i) => (
+                <line key={i} x1="32" y1="3" x2="32" y2="6.5" stroke="var(--w-mark)" strokeWidth="0.8" transform={`rotate(${i * 10} 32 32)`} />
+              ))}
+              {RADIO_STATIONS.map((s, i) => {
+                const deg = (i * 360) / n;
+                const a = deg * (Math.PI / 180);
+                const x = 32 + Math.sin(a) * 19;
+                const y = 32 - Math.cos(a) * 19;
+                return (
+                  <text key={s.id} x={x} y={y} textAnchor="middle" dominantBaseline="central" transform={`rotate(${deg} ${x} ${y})`} className="widget-radio-num">
+                    {i + 1}
+                  </text>
+                );
+              })}
+              <circle cx="32" cy="32" r="7" fill="var(--w-case)" stroke="var(--w-mark)" strokeWidth="0.6" />
+            </g>
+            <path d="M32 0 L35 5 L29 5 Z" fill="var(--os-accent)" />
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => (playing ? radioStop() : radioStart())}
+          aria-pressed={playing}
+          aria-label={playing ? "Turn radio off" : "Turn radio on"}
+          title={playing ? "Off" : "On"}
+          className={`os-knob widget-radio-power ${playing ? "os-knob-power" : ""}`}
+        >
+          {playing ? <Square className="h-3.5 w-3.5" fill="currentColor" strokeWidth={0} /> : <Play className="ml-0.5 h-4 w-4" fill="currentColor" strokeWidth={0} />}
+        </button>
+      </div>
+      <a href={current.site} target="_blank" rel="noreferrer" className="widget-credit">
+        {current.name}
+      </a>
+    </section>
+  );
+}
+
+/* Weather: a Braun-style weather station. Miami by default; the locate button switches to the visitor's own location.
+   Forecasts come from Open-Meteo. */
+const WEATHER_HOME = { name: "Miami", lat: 25.7617, lon: -80.1918 };
+const WEATHER_KEY = "comcen_weather";
+const WEATHER_REFRESH_MS = 15 * 60 * 1000;
+
+function readWeatherPrefs() {
+  try {
+    const saved = JSON.parse(readStore("localStorage", WEATHER_KEY) || "{}");
+    const place = Number.isFinite(saved.place?.lat) && Number.isFinite(saved.place?.lon) ? saved.place : WEATHER_HOME;
+    return { place, unit: saved.unit === "c" ? "c" : "f" };
+  } catch {
+    return { place: WEATHER_HOME, unit: "f" };
+  }
+}
+
+// WMO weather codes, as Open-Meteo reports them
+function describeWeather(code, day = true) {
+  if (code === 0) return { label: day ? "Clear" : "Clear night", Icon: day ? Sun : Moon };
+  if (code === 1) return { label: "Mostly clear", Icon: day ? Sun : Moon };
+  if (code === 2) return { label: "Partly cloudy", Icon: day ? CloudSun : CloudMoon };
+  if (code === 3) return { label: "Overcast", Icon: Cloud };
+  if (code === 45 || code === 48) return { label: "Fog", Icon: CloudFog };
+  if (code >= 51 && code <= 57) return { label: "Drizzle", Icon: CloudDrizzle };
+  if (code >= 61 && code <= 67) return { label: "Rain", Icon: CloudRain };
+  if (code >= 71 && code <= 77) return { label: "Snow", Icon: CloudSnow };
+  if (code >= 80 && code <= 82) return { label: "Showers", Icon: CloudRain };
+  if (code === 85 || code === 86) return { label: "Snow showers", Icon: CloudSnow };
+  if (code >= 95) return { label: "Thunderstorms", Icon: CloudLightning };
+  return { label: "—", Icon: Cloud };
+}
+
+// Last forecast per place and unit, so the widgets don't reload it each time they move between desktop and dashboard
+const weatherCache = new Map(); // key -> { data, at }
+
+function useWeather(place, unit) {
+  const key = `${place.lat},${place.lon},${unit}`;
+  const [state, setState] = useState(() => ({ data: weatherCache.get(key)?.data ?? null, error: false, key }));
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const params = new URLSearchParams({
+        latitude: place.lat.toFixed(3),
+        longitude: place.lon.toFixed(3),
+        current: "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day",
+        daily: "weather_code,temperature_2m_max,temperature_2m_min",
+        forecast_days: "5",
+        timezone: "auto",
+        temperature_unit: unit === "c" ? "celsius" : "fahrenheit",
+        wind_speed_unit: unit === "c" ? "kmh" : "mph",
+      });
+      try {
+        const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
+        if (!response.ok) throw new Error("weather");
+        const json = await response.json();
+        weatherCache.set(key, { data: json, at: Date.now() });
+        if (!cancelled) setState({ data: json, error: false, key });
+      } catch {
+        if (!cancelled) setState((s) => ({ data: s.key === key ? s.data : null, error: true, key }));
+      }
+    };
+    const cached = weatherCache.get(key);
+    const age = cached ? Date.now() - cached.at : Infinity;
+    let id;
+    // Fetch now if there's nothing fresh, then every 15 minutes
+    const first = setTimeout(
+      () => {
+        load();
+        id = setInterval(load, WEATHER_REFRESH_MS);
+      },
+      Math.max(0, WEATHER_REFRESH_MS - age),
+    );
+    return () => {
+      cancelled = true;
+      clearTimeout(first);
+      clearInterval(id);
+    };
+  }, [key, place.lat, place.lon, unit]);
+  // Only report what belongs to this place and unit, so switching never shows stale numbers
+  if (state.key === key) return state;
+  return { data: weatherCache.get(key)?.data ?? null, error: false };
+}
+
+function WeatherWidget() {
+  const [prefs, setPrefs] = useState(readWeatherPrefs);
+  const [locating, setLocating] = useState(false);
+  const { data, error } = useWeather(prefs.place, prefs.unit);
+  const isHome = prefs.place.name === WEATHER_HOME.name;
+
+  const update = (next) => {
+    const merged = { ...prefs, ...next };
+    setPrefs(merged);
+    writeStore("localStorage", WEATHER_KEY, JSON.stringify(merged));
+  };
+
+  const locate = () => {
+    if (!isHome) {
+      update({ place: WEATHER_HOME });
+      return;
+    }
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        // Rounded to about a kilometer: plenty for a forecast
+        update({ place: { name: "Here", lat: Math.round(pos.coords.latitude * 100) / 100, lon: Math.round(pos.coords.longitude * 100) / 100 } });
+      },
+      () => setLocating(false),
+      { maximumAge: 30 * 60 * 1000, timeout: 10000 },
+    );
+  };
+
+  const current = data?.current;
+  const daily = data?.daily;
+  const now = current ? describeWeather(current.weather_code, current.is_day === 1) : null;
+  const days = daily
+    ? daily.time.map((date, i) => ({
+        date,
+        hi: Math.round(daily.temperature_2m_max[i]),
+        lo: Math.round(daily.temperature_2m_min[i]),
+        code: daily.weather_code[i],
+      }))
+    : [];
+  const lowest = Math.min(...days.map((d) => d.lo));
+  const highest = Math.max(...days.map((d) => d.hi));
+  const span = Math.max(1, highest - lowest);
+  const weekday = (date) => new Date(`${date}T12:00:00`).toLocaleDateString([], { weekday: "short" }).slice(0, 2);
+
+  return (
+    <section className="widget widget-weather px-3.5 pb-3 pt-3" aria-label="Weather">
+      <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.16em] text-[var(--os-ink-3)]">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className={`widget-led ${current ? "widget-led-on" : ""}`} aria-hidden="true" />
+          <span className="truncate">{isHome ? prefs.place.name : "your location"}</span>
+        </span>
+        <button
+          type="button"
+          onClick={locate}
+          disabled={locating}
+          className={`widget-mini-btn ${isHome ? "" : "widget-mini-btn-on"}`}
+          aria-label={isHome ? "Show weather for your location" : `Back to ${WEATHER_HOME.name}`}
+          title={isHome ? "Use my location" : `Back to ${WEATHER_HOME.name}`}
+        >
+          <LocateFixed className={`h-3.5 w-3.5 ${locating ? "animate-pulse" : ""}`} strokeWidth={2} />
+        </button>
+      </div>
+
+      {current ? (
+        <>
+          <div className="mt-1.5 flex items-start justify-between">
+            <button
+              type="button"
+              onClick={() => update({ unit: prefs.unit === "f" ? "c" : "f" })}
+              className="widget-weather-temp"
+              aria-label={`${Math.round(current.temperature_2m)} degrees ${prefs.unit === "f" ? "Fahrenheit" : "Celsius"}. Switch to ${prefs.unit === "f" ? "Celsius" : "Fahrenheit"}.`}
+              title={`Switch to °${prefs.unit === "f" ? "C" : "F"}`}
+            >
+              {Math.round(current.temperature_2m)}
+              <span className="widget-weather-unit">°{prefs.unit.toUpperCase()}</span>
+            </button>
+            <now.Icon className="mt-1.5 h-8 w-8 text-[var(--os-ink-2)]" strokeWidth={1.4} aria-hidden="true" />
+          </div>
+          <div className="truncate text-[12px] font-semibold">{now.label}</div>
+          <div className="truncate text-[11px] tabular-nums text-[var(--os-ink-3)]">
+            feels {Math.round(current.apparent_temperature)}° · {Math.round(current.relative_humidity_2m)}% · {Math.round(current.wind_speed_10m)} {prefs.unit === "c" ? "km/h" : "mph"}
+          </div>
+
+          {/* Five-day range meter: each bar runs from the day's low to its high on a shared scale */}
+          <div className="mt-2.5 grid grid-cols-5 gap-1 border-t border-[var(--w-line)] pt-2" role="list" aria-label="Five-day forecast">
+            {days.map((d, i) => {
+              const { label } = describeWeather(d.code);
+              return (
+                <div key={d.date} role="listitem" className="flex flex-col items-center text-[10px] tabular-nums" aria-label={`${weekday(d.date)}: ${label}, high ${d.hi}, low ${d.lo}`}>
+                  <span className={`uppercase tracking-[0.08em] ${i === 0 ? "font-semibold text-[var(--os-ink)]" : "text-[var(--os-ink-3)]"}`}>{weekday(d.date)}</span>
+                  <span className="mt-0.5 text-[var(--os-ink-2)]">{d.hi}</span>
+                  <span className="widget-weather-track" aria-hidden="true">
+                    <span
+                      className="widget-weather-range"
+                      style={{ top: `${((highest - d.hi) / span) * 100}%`, bottom: `${((d.lo - lowest) / span) * 100}%` }}
+                    />
+                  </span>
+                  <span className="text-[var(--os-ink-3)]">{d.lo}</span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <div className="flex h-[150px] items-center justify-center text-[12px] text-[var(--os-ink-3)]">
+          {error ? "No forecast right now." : "Reading the sky…"}
+        </div>
+      )}
+      <a href="https://open-meteo.com/" target="_blank" rel="noreferrer" className="widget-credit">
+        Open-Meteo
+      </a>
+    </section>
+  );
+}
+
+function Widgets({ disabled }) {
+  const [dashboard, setDashboard] = useState(false);
+  const [onDesk, setOnDesk] = useState(readWidgetsOnDesk);
+  const [windowOpen, setWindowOpen] = useState(true);
+
+  useEffect(() => {
+    const onToggle = () => setDashboard((d) => !d);
+    const onDeskChange = (e) => setOnDesk(e.detail);
+    const onWindow = (e) => setWindowOpen(e.detail === "open");
+    const onRoute = () => setDashboard(false);
+    window.addEventListener("mh-dashboard-toggle", onToggle);
+    window.addEventListener("mh-widgets-desk", onDeskChange);
+    window.addEventListener("mh-window-state", onWindow);
+    window.addEventListener("hashchange", onRoute);
+    return () => {
+      window.removeEventListener("mh-dashboard-toggle", onToggle);
+      window.removeEventListener("mh-widgets-desk", onDeskChange);
+      window.removeEventListener("mh-window-state", onWindow);
+      window.removeEventListener("hashchange", onRoute);
+    };
+  }, []);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("mh-dashboard-state", { detail: dashboard }));
+    if (!dashboard) return;
+    const onKey = (e) => e.key === "Escape" && setDashboard(false);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [dashboard]);
+
+  if (disabled) return null;
+
+  const widgets = (
+    <>
+      <ClockWidget />
+      <RadioWidget />
+      <WeatherWidget />
+    </>
+  );
+
+  if (dashboard) {
+    return (
+      <div
+        className="os-ui widget-dashboard fixed inset-x-0 bottom-0 top-11 z-[35] overflow-y-auto"
+        onMouseDown={(e) => e.target === e.currentTarget && setDashboard(false)}
+        role="dialog"
+        aria-label="Widgets"
+      >
+        <div className="widget-dashboard-row" onMouseDown={(e) => e.target === e.currentTarget && setDashboard(false)}>
+          {widgets}
+        </div>
+      </div>
+    );
+  }
+
+  if (!onDesk) return null;
+  // On the desktop: beside the window when there's room for them, otherwise only once the window is out of the way
+  return (
+    <div className={`os-ui widget-desk ${windowOpen ? "widget-desk-beside" : ""}`} aria-label="Desktop widgets">
+      {widgets}
+    </div>
+  );
+}
+
 export default function App() {
   const route = useHashRoute();
   const [booting, setBooting] = useState(
@@ -5049,6 +5652,7 @@ export default function App() {
   return (
     <>
       {page}
+      <Widgets disabled={booting} />
       <ScreenSaverHost disabled={booting} />
       {booting && (
         <BootScreen
