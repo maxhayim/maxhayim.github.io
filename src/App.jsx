@@ -1215,6 +1215,31 @@ function useSound() {
   return state;
 }
 
+
+// "Best with sound" note for anything that plays audio; offers to unmute if sound is off.
+function SoundHint({ className = "" }) {
+  const sound = useSound();
+  return (
+    <p className={`flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[12px] text-zinc-500 ${className}`}>
+      {sound.on ? <Volume2 className="h-3.5 w-3.5" aria-hidden="true" /> : <VolumeX className="h-3.5 w-3.5" aria-hidden="true" />}
+      {sound.on ? (
+        <span>Turn your sound on for the best experience.</span>
+      ) : (
+        <>
+          <span>Sound is off. Turn it on for the best experience.</span>
+          <button
+            type="button"
+            onClick={() => saveSound({ ...sound, on: true })}
+            className="rounded-full border border-zinc-800 px-2.5 py-0.5 text-zinc-300 hover:bg-[var(--os-hover)] hover:text-zinc-100"
+          >
+            Turn on
+          </button>
+        </>
+      )}
+    </p>
+  );
+}
+
 // Menu bar speaker: click to mute or unmute, right-click for Sound settings
 function SoundToggle() {
   const sound = useSound();
@@ -3127,6 +3152,7 @@ function formatLeft(ms) {
 }
 
 const DIAL_STEPS = ["Dialing", "Connecting", "Signing on"];
+const DIALUP_SECONDS = 26; // length of /audio/dialup-connect.mp3, used if the audio can't report its own
 
 function StartPage() {
   return (
@@ -3185,6 +3211,7 @@ function NotFoundPage() {
 function InternetWindow() {
   const audioRef = useRef(null);
   const timersRef = useRef([]);
+  const endListenerRef = useRef(null);
   const [stage, setStage] = useState("dialup"); // "dialup" | "browser"
   const [dial, setDial] = useState("idle"); // "idle" | "dialing"
   const [step, setStep] = useState(-1);
@@ -3212,22 +3239,40 @@ function InternetWindow() {
     return () => clearInterval(id);
   }, [stage]);
 
+  // The sign-on follows the dial-up recording (about 26 s): the steps and modem messages are spread across it,
+  // and the browser only opens once the recording has finished.
   const connect = () => {
     if (dial !== "idle") return;
+    const audio = audioRef.current;
+    const total = (audio && Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : DIALUP_SECONDS) * 1000;
+    let opened = false;
+
     setDial("dialing");
     setStep(0);
     setLog([`ATDT ${DIALUP_NUMBER}`, "Initializing modem...", `Dialing ${DIALUP_NUMBER}...`]);
-    playSound(audioRef.current).catch(() => {});
-    const later = (ms, fn) => timersRef.current.push(setTimeout(fn, ms));
-    later(1600, () => {
+    playSound(audio).catch(() => {});
+
+    const later = (fraction, fn) => timersRef.current.push(setTimeout(fn, Math.round(total * fraction)));
+    const say = (line) => setLog((l) => [...l, line]);
+
+    later(0.1, () => say("Ringing..."));
+    later(0.2, () => {
       setStep(1);
-      setLog((l) => [...l, "Negotiating carrier... 2400 / 9600 / 14400"]);
+      say("Carrier detected. Handshaking...");
     });
-    later(3400, () => {
+    later(0.42, () => say("Negotiating carrier... 2400 / 9600 / 14400"));
+    later(0.62, () => say("Error correction: V.42bis"));
+    later(0.76, () => {
       setStep(2);
-      setLog((l) => [...l, "CONNECT 14400", "Logging on to the network..."]);
+      say("CONNECT 14400");
     });
-    later(4600, () => {
+    later(0.84, () => say("Logging on to the network..."));
+    later(0.93, () => say("Verifying member ID..."));
+
+    const openBrowser = () => {
+      if (opened) return;
+      opened = true;
+      audio?.removeEventListener("ended", openBrowser);
       // The trial clock starts the first time a visitor gets online, and never resets
       setTrialEnd(startTrial());
       setNow(Date.now());
@@ -3236,10 +3281,16 @@ function InternetWindow() {
       setCdKey("");
       setKeyError("");
       setStage("browser");
-    });
+    };
+    // Open when the recording ends; the timer covers muted sound or a recording that can't play.
+    audio?.addEventListener("ended", openBrowser);
+    endListenerRef.current = () => audio?.removeEventListener("ended", openBrowser);
+    timersRef.current.push(setTimeout(openBrowser, total + 400));
   };
 
   const hangUp = () => {
+    endListenerRef.current?.();
+    endListenerRef.current = null;
     const end = readTrialEnd();
     setUsedTrialEnd(end && Date.now() >= end ? end : null);
     setNow(Date.now());
@@ -3301,6 +3352,7 @@ function InternetWindow() {
                 ? `Your free trial has ended. It resets in ${formatResetIn(trialResetAt(usedTrialEnd) - now)}.`
                 : `New members get a ${TRIAL_MINUTES}-minute free trial.`}
           </p>
+          <SoundHint className="mt-2" />
 
           <ol className="mt-6 flex items-center gap-2 text-[12px] sm:gap-3" aria-label="Sign-on progress">
             {DIAL_STEPS.map((label, i) => (
@@ -3736,6 +3788,7 @@ function ContactPage() {
                   <div className="mt-1 text-sm text-zinc-500">
                     Compose a message and stage it in demonstration mode.
                   </div>
+                  <SoundHint className="mt-1.5 !justify-start" />
                 </div>
                 <div className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-emerald-300">
                   relay ready
@@ -4418,6 +4471,7 @@ function BootScreen({ onDone, mode }) {
                 ) : null}
                 , any other key to skip
               </div>
+              <div>Turn your sound on for the best experience</div>
               <div>{bootDateCode()}</div>
             </div>
           )}
