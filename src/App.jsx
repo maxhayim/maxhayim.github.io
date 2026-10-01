@@ -56,6 +56,7 @@ import {
   Maximize2,
   Minimize2,
 } from "lucide-react";
+import { version as OS_VERSION } from "../package.json";
 
 const radarPositions = [
   { top: "14%", left: "58%" },
@@ -323,6 +324,7 @@ const THIS_COMPUTER_NAME = "COMCEN Model 2000";
 const THIS_COMPUTER_KIND = "professional graphics workstation, 1999";
 const THIS_COMPUTER = [
   ["system", "COMCEN OS I"],
+  ["version", `v${OS_VERSION}`],
   ["processor", "2× MIPS R12000, 300 MHz"],
   ["memory", "1 GB ECC SDRAM"],
   ["graphics", "SGI InfiniteReality2 Graphics"],
@@ -2058,7 +2060,7 @@ function SharedShell({ currentPage, children }) {
                 <img src="/logo_fullclear.png" alt="maxhayim logo" className="os-logo h-4 w-auto" />
                 <span>&copy; 2009 - {currentYear} MAXYIM.COM. All Rights Reserved.</span>
               </div>
-              <span>comcen os I on the COMCEN Model 2000</span>
+              <span>comcen os I v{OS_VERSION} on the COMCEN Model 2000</span>
             </footer>
           </div>
         </motion.div>
