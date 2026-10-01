@@ -2058,7 +2058,7 @@ function SharedShell({ currentPage, children }) {
             <footer className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--os-line)] pt-4 text-[13px] text-[var(--os-ink-3)]">
               <div className="flex items-center gap-2">
                 <img src="/logo_fullclear.png" alt="maxhayim logo" className="os-logo h-4 w-auto" />
-                <span>&copy; 2009 - {currentYear} MAXYIM.COM. All Rights Reserved.</span>
+                <span>&copy; 2009 - {currentYear} MAXHAYIM.COM. All Rights Reserved.</span>
               </div>
               <span>comcen os I v{OS_VERSION} on the COMCEN Model 2000</span>
             </footer>
