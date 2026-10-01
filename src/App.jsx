@@ -861,7 +861,7 @@ const PREF_SECTIONS = [
 ];
 
 
-/* Modem pane: shows how the site dials in and reaches ProtoWeb. Managed by comcen online, so it's read-only. */
+/* Modem pane: shows how the site dials in and reaches ProtoWeb. Managed by Prodigy, so it's read-only. */
 const DIALUP_NUMBER = "305-503-0823";
 const MODEM_SETTINGS = [
   {
@@ -894,7 +894,7 @@ function ModemPane() {
       </div>
       <p className="mb-4 flex items-center gap-1.5 text-[13px] text-[var(--os-ink-3)]">
         <Lock className="h-3.5 w-3.5" aria-hidden="true" />
-        Set by comcen online. These settings can&rsquo;t be changed.
+        Set by Prodigy. These settings can&rsquo;t be changed.
       </p>
 
       <div className="flex flex-col gap-5">
@@ -1143,7 +1143,7 @@ function SystemPreferences() {
           {pane === "all"
             ? "Your preferences are remembered on this browser."
             : pane === "modem"
-              ? "These settings are managed by comcen online."
+              ? "These settings are managed by Prodigy."
               : "Your preference is remembered on this browser."}
         </p>
       </motion.div>
@@ -3131,7 +3131,7 @@ const DIAL_STEPS = ["Dialing", "Connecting", "Signing on"];
 function StartPage() {
   return (
     <article className="mx-auto max-w-2xl px-5 py-8 sm:px-8">
-      <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">comcen online</div>
+      <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Prodigy</div>
       <h2 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">Welcome to the Information Superhighway</h2>
       <p className="mt-2 text-sm text-zinc-400">You&rsquo;re connected at 14,400 bps.</p>
 
@@ -3277,11 +3277,23 @@ function InternetWindow() {
 
       {stage === "dialup" ? (
         <motion.div key="dialup" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={fade} className="flex flex-col items-center px-5 py-10 text-center sm:py-14">
-          <span className="os-knob h-14 w-14">
-            <Phone className="h-6 w-6" strokeWidth={1.6} />
-          </span>
-          <h2 className="mt-4 text-2xl font-semibold tracking-tight text-zinc-100">comcen online</h2>
-          <p className="mt-1 text-sm text-zinc-400">
+          {/* The logo is a stencil filled with the theme's ink, so it's dark on light and light on dark */}
+          <h2 className="m-0">
+            <span role="img" aria-label="Prodigy" className="prodigy-logo block w-[132px] sm:w-[150px]" />
+          </h2>
+          <dl className="mt-5 grid grid-cols-[auto_auto] gap-x-4 gap-y-1 text-left text-[13px]">
+            <dt className="text-zinc-500">Service</dt>
+            <dd className="text-zinc-200">Prodigy Internet</dd>
+            <dt className="text-zinc-500">Local access number</dt>
+            <dd className="tabular-nums text-zinc-200">{DIALUP_NUMBER}</dd>
+            <dt className="text-zinc-500">Modem</dt>
+            <dd className="text-zinc-200">14,400 bps</dd>
+          </dl>
+          <p className="mt-3 max-w-md text-[13px] leading-6 text-zinc-500">
+            Started by IBM and Sears, Prodigy went nationwide in 1990 as one of the first big online services. Members
+            dialed a local access number, which varied by city, rather than one nationwide number.
+          </p>
+          <p className="mt-3 text-sm text-zinc-400">
             Dial {DIALUP_NUMBER} to sign on.{" "}
             {registered
               ? "This copy is registered."
@@ -3361,8 +3373,8 @@ function InternetWindow() {
                         </h3>
                       </div>
                       <p id="trial-text" className="mt-2 text-sm leading-6 text-zinc-400">
-                        Thanks for trying comcen online! To keep surfing the Information Superhighway, enter the CD key from
-                        your comcen online disc, or sign up for a membership.
+                        Thanks for trying Prodigy! To keep surfing the Information Superhighway, enter the CD key from
+                        your Prodigy disc, or sign up for a membership.
                       </p>
                       <p className="mt-2 text-[13px] text-zinc-500">
                         Your free trial resets in <span className="tabular-nums text-zinc-300">{formatResetIn(resetIn)}</span>.
@@ -3388,7 +3400,7 @@ function InternetWindow() {
                         </h3>
                       </div>
                       <p id="trial-text" className="mt-2 text-sm leading-6 text-zinc-400">
-                        You&rsquo;ll find the 25-character key on the back of your comcen online CD case.
+                        You&rsquo;ll find the 25-character key on the back of your Prodigy CD case.
                       </p>
                       <label htmlFor="cd-key" className="sr-only">
                         CD key

@@ -523,6 +523,14 @@
 
 /* ---------- Internet window (dial-up, then browser) ---------- */
 
+/* Prodigy logo as a stencil: takes the theme's ink color, so it reads on both editions */
+.prodigy-logo {
+  aspect-ratio: 640 / 496;
+  background-color: var(--os-ink);
+  -webkit-mask: url("/bios/prodigy-logo.png") center / contain no-repeat;
+  mask: url("/bios/prodigy-logo.png") center / contain no-repeat;
+}
+
 .net-window { background: var(--os-card); }
 .os .net-primary,
 .net-primary {
