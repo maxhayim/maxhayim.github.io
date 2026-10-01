@@ -484,7 +484,8 @@ function SignalIndicator({ signal }) {
   );
 }
 
-function formatMenuDate(d) {
+function formatMenuDate(d, locale = "en-US") {
+  if (locale !== "en-US") return d.toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric" });
   const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
   const month = d.toLocaleDateString("en-US", { month: "short" });
   return `${weekday} ${month} ${d.getDate()}`;
@@ -664,11 +665,27 @@ function Dock({ currentPage, windowState, onMinimize, onRestore }) {
   const dashboard = useDashboardOpen();
   const controls = useDragControls();
   const boundsRef = useRef(null);
+  const [dock] = usePrefs(DOCK_PREFS);
+  const [revealed, setRevealed] = useState(false);
+  // Auto-hide needs a pointer that can reach the bottom edge; touch screens keep the dock out
+  const autohide = dock.autohide && window.matchMedia?.("(pointer: fine)").matches;
+
+  useEffect(() => {
+    if (!autohide) return;
+    const onMove = (e) => setRevealed(e.clientY > window.innerHeight - (dock.size === "large" ? 130 : 110));
+    window.addEventListener("pointermove", onMove);
+    return () => window.removeEventListener("pointermove", onMove);
+  }, [autohide, dock.size]);
 
   return (
     <>
       <div ref={boundsRef} className="pointer-events-none fixed inset-x-1 bottom-1 top-12" aria-hidden="true" />
-      <nav aria-label="Dock" className="mh-fixed os-ui pointer-events-none fixed inset-x-0 bottom-3 z-40 flex justify-center px-2">
+      <nav
+        aria-label="Dock"
+        className={`mh-fixed os-ui pointer-events-none fixed inset-x-0 bottom-3 z-40 flex justify-center px-2 os-dock-${dock.size} ${dock.labels ? "" : "os-dock-nolabels"} ${
+          autohide ? "os-dock-autohide" : ""
+        } ${autohide && !revealed ? "os-dock-away" : ""}`}
+      >
         <motion.div
           drag
           dragControls={controls}
@@ -703,19 +720,19 @@ function Dock({ currentPage, windowState, onMinimize, onRestore }) {
                 </span>
                 <span className="flex items-center gap-1">
                   <span className={`os-dot ${active ? "os-dot-on" : ""}`} aria-hidden="true" />
-                  {label}
+                  <span className="os-dock-label">{label}</span>
                 </span>
               </a>
             );
           })}
-          <span className="mb-5 h-8 w-px bg-[var(--os-line)]" aria-hidden="true" />
+          <span className="os-dock-sep mb-5 h-8 w-px bg-[var(--os-line)]" aria-hidden="true" />
           <button type="button" onClick={toggleDashboard} aria-pressed={dashboard} className="os-dock-item" title={dashboard ? "Put widgets away" : "Show widgets"}>
             <span className="os-knob">
               <LayoutDashboard className="h-[18px] w-[18px]" strokeWidth={1.6} />
             </span>
             <span className="flex items-center gap-1">
               <span className={`os-dot ${dashboard ? "os-dot-on" : ""}`} aria-hidden="true" />
-              widgets
+              <span className="os-dock-label">widgets</span>
             </span>
           </button>
           <button
@@ -727,7 +744,10 @@ function Dock({ currentPage, windowState, onMinimize, onRestore }) {
             <span className="os-knob">
               <AppWindow className="h-[18px] w-[18px]" strokeWidth={1.6} />
             </span>
-            <span>{windowState === "closed" ? "open" : minimized ? "show" : "hide"}</span>
+            <span className="flex items-center gap-1">
+              <span className="os-dot invisible" aria-hidden="true" />
+              <span className="os-dock-label">{windowState === "closed" ? "open" : minimized ? "show" : "hide"}</span>
+            </span>
           </button>
         </motion.div>
       </nav>
@@ -850,6 +870,402 @@ function DesktopMenu() {
 }
 
 /* System Preferences: the full grid of panes; only Desktop & Wallpaper works for now */
+/* ---------- Dock, Windows, Language, and Privacy settings: each kept in its own cookie, like the other preferences ---------- */
+
+const REGION_LOCALES = [
+  { id: "en-US", label: "English (US)" },
+  { id: "en-GB", label: "English (UK)" },
+  { id: "es", label: "Español" },
+  { id: "fr", label: "Français" },
+  { id: "de", label: "Deutsch" },
+  { id: "it", label: "Italiano" },
+  { id: "pt-BR", label: "Português (Brasil)" },
+  { id: "ja", label: "日本語" },
+];
+
+const DOCK_PREFS = {
+  cookie: "comcen_dock",
+  event: "mh-dock-changed",
+  defaults: { size: "medium", labels: true, autohide: false },
+  allowed: { size: ["small", "medium", "large"] },
+};
+const WINDOW_PREFS = {
+  cookie: "comcen_windows",
+  event: "mh-windows-changed",
+  defaults: { doubleClick: "maximize", openMaximized: false, animate: true },
+  allowed: { doubleClick: ["maximize", "minimize", "none"] },
+};
+const REGION_PREFS = {
+  cookie: "comcen_region",
+  event: "mh-region-changed",
+  defaults: { locale: "en-US", clock: "12", temperature: "f" },
+  allowed: { locale: REGION_LOCALES.map((l) => l.id), clock: ["12", "24"], temperature: ["f", "c"] },
+};
+
+function readPrefs({ cookie, defaults, allowed = {} }) {
+  let saved = {};
+  try {
+    const match = document.cookie.match(new RegExp(`(?:^|; )${cookie}=([^;]*)`));
+    if (match) saved = JSON.parse(decodeURIComponent(match[1])) || {};
+  } catch {
+    saved = {};
+  }
+  return Object.fromEntries(
+    Object.entries(defaults).map(([key, fallback]) => {
+      const value = saved[key];
+      const ok = typeof value === typeof fallback && (!allowed[key] || allowed[key].includes(value));
+      return [key, ok ? value : fallback];
+    }),
+  );
+}
+
+function savePrefs(spec, next) {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${spec.cookie}=${encodeURIComponent(JSON.stringify(next))}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;
+  window.dispatchEvent(new CustomEvent(spec.event, { detail: next }));
+}
+
+function usePrefs(spec) {
+  const [prefs, setPrefs] = useState(() => readPrefs(spec));
+  useEffect(() => {
+    const onChanged = (e) => setPrefs(e.detail);
+    window.addEventListener(spec.event, onChanged);
+    return () => window.removeEventListener(spec.event, onChanged);
+  }, [spec]);
+  const update = (patch) => savePrefs(spec, { ...readPrefs(spec), ...patch });
+  return [prefs, update];
+}
+
+// Times follow the Language pane: its language and 12- or 24-hour clock
+function formatTime(date, region = readPrefs(REGION_PREFS), extra = {}) {
+  return date.toLocaleTimeString(region.locale, {
+    hour: "numeric",
+    minute: "2-digit",
+    hourCycle: region.clock === "24" ? "h23" : "h12",
+    ...extra,
+  });
+}
+
+/* Usage statistics: Google Analytics, loaded by index.html only while this is on */
+const ANALYTICS_COOKIE = "comcen_analytics";
+const ANALYTICS_ID = "G-ZRECP8G16F";
+
+function readAnalyticsOn() {
+  return !document.cookie.match(new RegExp(`(?:^|; )${ANALYTICS_COOKIE}=off`));
+}
+
+function saveAnalyticsOn(on) {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${ANALYTICS_COOKIE}=${on ? "on" : "off"}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;
+  window[`ga-disable-${ANALYTICS_ID}`] = !on; // stops this visit too, not just the next one
+  if (on) return;
+  // Clear the cookies Google Analytics already set, on this host and the parent domain
+  const host = window.location.hostname;
+  document.cookie
+    .split("; ")
+    .map((c) => c.split("=")[0])
+    .filter((name) => name === "_ga" || name.startsWith("_ga_") || name === "_gid")
+    .forEach((name) => {
+      [host, `.${host.replace(/^www\./, "")}`].forEach((domain) => {
+        document.cookie = `${name}=; Max-Age=0; Path=/; Domain=${domain}`;
+      });
+      document.cookie = `${name}=; Max-Age=0; Path=/`;
+    });
+}
+
+// Everything comcen os keeps on this browser, for the Privacy pane
+const STORED_ITEMS = [
+  { label: "theme", key: "comcen_theme" },
+  { label: "wallpaper", key: "comcen_wallpaper" },
+  { label: "screen saver", key: "comcen_screensaver" },
+  { label: "sound", key: "comcen_sound" },
+  { label: "dock", key: "comcen_dock" },
+  { label: "windows", key: "comcen_windows" },
+  { label: "language and clock", key: "comcen_region" },
+  { label: "usage statistics choice", key: "comcen_analytics" },
+  { label: "desktop widgets", key: "comcen_widgets" },
+  { label: "widget layout", key: "comcen_widget_layout" },
+  { label: "radio station", key: "comcen_radio_station" },
+  { label: "weather location", key: "comcen_weather" },
+  { label: "internet trial", key: "comcen_trial_end" },
+  { label: "registration", key: "comcen_license" },
+  { label: "startup screen seen", key: "mh-booted" },
+];
+
+const ownKey = (name) => name.startsWith("comcen_") || name.startsWith("mh-");
+
+function isStored(key) {
+  return readStore("localStorage", key) !== null || new RegExp(`(?:^|; )${key}=`).test(document.cookie);
+}
+
+function deleteEverything() {
+  const statsOff = !readAnalyticsOn(); // deleting preferences never turns tracking back on
+  document.cookie
+    .split("; ")
+    .map((c) => c.split("=")[0])
+    .filter(ownKey)
+    .forEach((name) => {
+      document.cookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax`;
+    });
+  try {
+    Object.keys(localStorage).filter(ownKey).forEach((key) => localStorage.removeItem(key));
+    Object.keys(sessionStorage).filter(ownKey).forEach((key) => sessionStorage.removeItem(key));
+  } catch {
+    /* storage blocked: nothing was saved there */
+  }
+  if (statsOff) saveAnalyticsOn(false);
+  window.location.reload();
+}
+
+/* Pane building blocks */
+function PaneHeader({ title, children }) {
+  return (
+    <>
+      <div className="mb-1 flex items-center gap-2 font-semibold">
+        <span className="h-[7px] w-[7px] rounded-full bg-[var(--os-accent)]" aria-hidden="true" />
+        {title}
+      </div>
+      <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">{children}</p>
+    </>
+  );
+}
+
+function PrefSwitch({ label, hint, checked, onChange }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-[13px]">
+      <span>
+        <span className="block">{label}</span>
+        {hint && <span className="block text-[12px] text-[var(--os-ink-3)]">{hint}</span>}
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
+        className={`os-switch ${checked ? "os-switch-on" : ""} shrink-0 cursor-pointer`}
+      />
+    </div>
+  );
+}
+
+function PrefChoice({ label, options, value, onChange, columns = options.length }) {
+  return (
+    <div className="text-[13px]">
+      <div className="mb-1.5">{label}</div>
+      <div role="radiogroup" aria-label={label} className="grid gap-2" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+        {options.map((o) => {
+          const active = o.id === value;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onChange(o.id)}
+              className={`prefs-option flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] ring-1 ${
+                active ? "bg-[var(--os-hover)] ring-[var(--os-accent)]" : "ring-[var(--os-line)]"
+              }`}
+            >
+              <span className={`os-dot shrink-0 ${active ? "os-dot-on" : ""}`} aria-hidden="true" />
+              <span className="truncate">{o.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DockPane() {
+  const [dock, setDock] = usePrefs(DOCK_PREFS);
+  return (
+    <div className="p-5">
+      <PaneHeader title="dock">The hi-fi panel along the bottom of the screen.</PaneHeader>
+      <div className="flex flex-col gap-5">
+        <PrefChoice
+          label="size"
+          value={dock.size}
+          onChange={(size) => setDock({ size })}
+          options={[
+            { id: "small", label: "small" },
+            { id: "medium", label: "medium" },
+            { id: "large", label: "large" },
+          ]}
+        />
+        <PrefSwitch label="show labels" hint="Names under each button." checked={dock.labels} onChange={(labels) => setDock({ labels })} />
+        <PrefSwitch
+          label="hide the dock automatically"
+          hint="It slides away until you move the pointer to the bottom of the screen. Touch screens always show it."
+          checked={dock.autohide}
+          onChange={(autohide) => setDock({ autohide })}
+        />
+      </div>
+    </div>
+  );
+}
+
+function WindowsPane() {
+  const [win, setWin] = usePrefs(WINDOW_PREFS);
+  return (
+    <div className="p-5">
+      <PaneHeader title="windows">How the command center window behaves.</PaneHeader>
+      <div className="flex flex-col gap-5">
+        <PrefChoice
+          label="double-click a title bar to"
+          value={win.doubleClick}
+          onChange={(doubleClick) => setWin({ doubleClick })}
+          options={[
+            { id: "maximize", label: "maximize" },
+            { id: "minimize", label: "minimize" },
+            { id: "none", label: "do nothing" },
+          ]}
+        />
+        <PrefSwitch
+          label="open pages maximized"
+          hint="Each page fills the screen under the menu bar."
+          checked={win.openMaximized}
+          onChange={(openMaximized) => setWin({ openMaximized })}
+        />
+        <PrefSwitch
+          label="animate windows"
+          hint="Windows grow and shrink as they open, minimize, and close."
+          checked={win.animate}
+          onChange={(animate) => setWin({ animate })}
+        />
+      </div>
+    </div>
+  );
+}
+
+function LanguagePane() {
+  const [region, setRegion] = usePrefs(REGION_PREFS);
+  const now = useClock();
+  return (
+    <div className="p-5">
+      <PaneHeader title="language">
+        Dates, days, and times follow the language you choose. Menus and pages stay in English.
+      </PaneHeader>
+      <div className="flex flex-col gap-5">
+        <PrefChoice
+          label="dates and times in"
+          value={region.locale}
+          onChange={(locale) => setRegion({ locale })}
+          options={REGION_LOCALES}
+          columns={2}
+        />
+        <PrefChoice
+          label="clock"
+          value={region.clock}
+          onChange={(clock) => setRegion({ clock })}
+          options={[
+            { id: "12", label: `12-hour · ${formatTime(now, { ...region, clock: "12" })}` },
+            { id: "24", label: `24-hour · ${formatTime(now, { ...region, clock: "24" })}` },
+          ]}
+        />
+        <PrefChoice
+          label="temperature"
+          value={region.temperature}
+          onChange={(temperature) => setRegion({ temperature })}
+          options={[
+            { id: "f", label: "Fahrenheit (°F)" },
+            { id: "c", label: "Celsius (°C)" },
+          ]}
+        />
+        <p className="text-[12px] text-[var(--os-ink-3)]">
+          Today: {formatMenuDate(now, region.locale)}, {formatTime(now, region)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function PrivacyPane() {
+  const [analytics, setAnalytics] = useState(readAnalyticsOn);
+  const [place, setPlace] = useState(() => readWeatherPrefs().place);
+  const [confirming, setConfirming] = useState(false);
+  const usingLocation = place.name !== WEATHER_HOME.name;
+  const stored = STORED_ITEMS.filter((item) => isStored(item.key));
+
+  return (
+    <div className="p-5">
+      <PaneHeader title="privacy">What comcen os keeps, what it shares, and how to clear it.</PaneHeader>
+      <div className="flex flex-col gap-5">
+        <PrefSwitch
+          label="share anonymous usage statistics"
+          hint="Page visits are counted with Google Analytics. Turning this off stops it and deletes its cookies."
+          checked={analytics}
+          onChange={(on) => {
+            saveAnalyticsOn(on);
+            setAnalytics(on);
+          }}
+        />
+
+        <div className="flex items-center justify-between gap-3 text-[13px]">
+          <span>
+            <span className="block">location</span>
+            <span className="block text-[12px] text-[var(--os-ink-3)]">
+              {usingLocation
+                ? "The weather widget is using your location, rounded to about a kilometer. It's kept only on this browser."
+                : `The weather widget shows ${WEATHER_HOME.name}. Your location is used only if you press its locate button.`}
+            </span>
+          </span>
+          <button
+            type="button"
+            disabled={!usingLocation}
+            onClick={() => {
+              saveWeatherPlace(WEATHER_HOME);
+              setPlace(WEATHER_HOME);
+            }}
+            className="shrink-0 rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)] disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            stop using
+          </button>
+        </div>
+
+        <div className="text-[13px]">
+          <div className="mb-1.5">saved on this browser</div>
+          {stored.length ? (
+            <ul className="flex flex-wrap gap-1.5">
+              {stored.map((item) => (
+                <li key={item.key} className="rounded-full px-2.5 py-0.5 text-[12px] ring-1 ring-[var(--os-line)]">
+                  {item.label}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[12px] text-[var(--os-ink-3)]">Nothing yet. Everything is at its default.</p>
+          )}
+          <p className="mt-2 text-[12px] text-[var(--os-ink-3)]">Nothing here leaves your browser.</p>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2 text-[13px]">
+          {confirming ? (
+            <>
+              <span className="mr-auto text-[12px] text-[var(--os-ink-2)]">Delete every preference, the widget layout, and registration, then restart? Usage statistics stay off if you turned them off.</span>
+              <button type="button" onClick={() => setConfirming(false)} className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
+                cancel
+              </button>
+              <button type="button" onClick={deleteEverything} className="rounded-full bg-[var(--os-warn)] px-3 py-1 font-semibold text-white hover:brightness-105">
+                delete
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled={!stored.length}
+              onClick={() => setConfirming(true)}
+              className="rounded-full px-3 py-1 text-[var(--os-warn)] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)] disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              delete my preferences…
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const PREF_SECTIONS = [
   {
     title: "Desk",
@@ -858,10 +1274,10 @@ const PREF_SECTIONS = [
       { id: "wallpaper", label: "Wallpaper", Icon: ImageIcon, ready: true },
       { id: "screensaver", label: "Screen Saver", Icon: MonitorPlay, ready: true },
       { id: "widgets", label: "Widgets", Icon: LayoutDashboard, ready: true },
-      { id: "dock", label: "Dock", Icon: PanelBottom },
-      { id: "windows", label: "Windows", Icon: AppWindow },
-      { id: "language", label: "Language", Icon: Globe },
-      { id: "privacy", label: "Privacy", Icon: ShieldCheck },
+      { id: "dock", label: "Dock", Icon: PanelBottom, ready: true },
+      { id: "windows", label: "Windows", Icon: AppWindow, ready: true },
+      { id: "language", label: "Language", Icon: Globe, ready: true },
+      { id: "privacy", label: "Privacy", Icon: ShieldCheck, ready: true },
     ],
   },
   {
@@ -1142,6 +1558,10 @@ function SystemPreferences() {
           {pane === "sound" && <SoundPane />}
           {pane === "modem" && <ModemPane />}
           {pane === "widgets" && <WidgetsPane />}
+          {pane === "dock" && <DockPane />}
+          {pane === "windows" && <WindowsPane />}
+          {pane === "language" && <LanguagePane />}
+          {pane === "privacy" && <PrivacyPane />}
 
           {pane === "wallpaper" && (
             <div className="p-5">
@@ -1180,11 +1600,19 @@ function SystemPreferences() {
         </div>
 
         <p className="prefs-footer border-t border-[var(--os-line)] px-5 py-2.5 text-[12px] text-[var(--os-ink-3)]">
-          {pane === "all"
-            ? "Your preferences are remembered on this browser."
-            : pane === "modem"
-              ? "These settings are managed by Prodigy."
-              : "Your preference is remembered on this browser."}
+          {pane === "modem" ? (
+            "These settings are managed by Prodigy."
+          ) : pane === "privacy" ? (
+            "Your preferences are remembered on this browser unless you delete them."
+          ) : (
+            <>
+              Your preferences are remembered on this browser unless you{" "}
+              <button type="button" onClick={() => setPane("privacy")} className="underline underline-offset-2 hover:text-[var(--os-ink)]">
+                delete them
+              </button>
+              .
+            </>
+          )}
         </p>
       </motion.div>
     </div>
@@ -1854,7 +2282,7 @@ function ScreenSaverHost({ disabled }) {
       <SaverCanvas saver={settings.saver} />
       <div className="os-ui pointer-events-none absolute bottom-8 left-8" style={{ color: "#eeebe4" }}>
         <div className="text-5xl font-semibold tabular-nums tracking-tight opacity-80">
-          {now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+          {formatTime(now)}
         </div>
         <div className="mt-1 text-sm opacity-50">comcen os</div>
       </div>
@@ -1958,13 +2386,15 @@ function SharedShell({ currentPage, children }) {
   const signal = useSignal();
   // "open", "minimized" (tucked into the dock), or "closed"
   const [windowState, setWindowState] = useState("open");
-  const [maximized, setMaximized] = useState(false);
-  const reduceMotion = prefersReducedMotion();
+  const [region] = usePrefs(REGION_PREFS);
+  const [win] = usePrefs(WINDOW_PREFS);
+  const [maximized, setMaximized] = useState(win.openMaximized);
+  const reduceMotion = prefersReducedMotion() || !win.animate;
   const windowDrag = useDragControls();
   usePageMeta(currentPage);
 
   const page = OS_PAGES.find((p) => p.page === currentPage) || OS_PAGES[0];
-  const time = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const time = formatTime(now, region);
   const isOpen = windowState === "open";
 
   const minimize = () => {
@@ -2002,7 +2432,7 @@ function SharedShell({ currentPage, children }) {
           <BatteryIndicator battery={battery} />
           <SignalIndicator signal={signal} />
           <div className="flex h-8 items-center gap-2 px-1 tabular-nums sm:px-2">
-            <span className="whitespace-nowrap">{formatMenuDate(now)}</span>
+            <span className="whitespace-nowrap">{formatMenuDate(now, region.locale)}</span>
             <span className="hidden sm:inline-flex">
               <AnalogClock now={now} />
             </span>
@@ -2053,7 +2483,8 @@ function SharedShell({ currentPage, children }) {
             }}
             onDoubleClick={(e) => {
               if (e.target.closest("a, button")) return;
-              toggleMaximize();
+              if (win.doubleClick === "maximize") toggleMaximize();
+              else if (win.doubleClick === "minimize") minimize();
             }}
           >
             <div className="flex items-center gap-1.5">
@@ -4777,7 +5208,7 @@ function localClock(timeZone, now) {
   const hour = Number(
     new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", hourCycle: "h23" }).format(now)
   );
-  const time = new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit" }).format(now);
+  const time = formatTime(now, undefined, { timeZone });
   const zone =
     new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "long" })
       .formatToParts(now)
@@ -5084,7 +5515,7 @@ function ClockWidget() {
   return (
     <section
       className="widget widget-clock"
-      aria-label={`Clock: ${now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
+      aria-label={`Clock: ${formatTime(now)}`}
     >
       <svg viewBox="0 0 200 200" className="block h-full w-full" aria-hidden="true">
         <circle cx="100" cy="100" r="90" fill="var(--w-face)" />
@@ -5351,10 +5782,16 @@ function readWeatherPrefs() {
   try {
     const saved = JSON.parse(readStore("localStorage", WEATHER_KEY) || "{}");
     const place = Number.isFinite(saved.place?.lat) && Number.isFinite(saved.place?.lon) ? saved.place : WEATHER_HOME;
-    return { place, unit: saved.unit === "c" ? "c" : "f" };
+    return { place };
   } catch {
-    return { place: WEATHER_HOME, unit: "f" };
+    return { place: WEATHER_HOME };
   }
+}
+
+// Also used by Privacy → stop using my location; the widget follows along
+function saveWeatherPlace(place) {
+  writeStore("localStorage", WEATHER_KEY, JSON.stringify({ place }));
+  window.dispatchEvent(new CustomEvent("mh-weather-place", { detail: place }));
 }
 
 // WMO weather codes, as Open-Meteo reports them
@@ -5426,15 +5863,19 @@ function useWeather(place, unit) {
 
 function WeatherWidget() {
   const [prefs, setPrefs] = useState(readWeatherPrefs);
+  const [region, setRegion] = usePrefs(REGION_PREFS); // °F or °C lives in the Language pane
   const [locating, setLocating] = useState(false);
-  const { data, error } = useWeather(prefs.place, prefs.unit);
+  const unit = region.temperature;
+  const { data, error } = useWeather(prefs.place, unit);
   const isHome = prefs.place.name === WEATHER_HOME.name;
 
-  const update = (next) => {
-    const merged = { ...prefs, ...next };
-    setPrefs(merged);
-    writeStore("localStorage", WEATHER_KEY, JSON.stringify(merged));
-  };
+  useEffect(() => {
+    const onPlace = (e) => setPrefs({ place: e.detail });
+    window.addEventListener("mh-weather-place", onPlace);
+    return () => window.removeEventListener("mh-weather-place", onPlace);
+  }, []);
+
+  const update = ({ place }) => saveWeatherPlace(place);
 
   const locate = () => {
     if (!isHome) {
@@ -5468,7 +5909,7 @@ function WeatherWidget() {
   const lowest = Math.min(...days.map((d) => d.lo));
   const highest = Math.max(...days.map((d) => d.hi));
   const span = Math.max(1, highest - lowest);
-  const weekday = (date) => new Date(`${date}T12:00:00`).toLocaleDateString([], { weekday: "short" }).slice(0, 2);
+  const weekday = (date) => new Date(`${date}T12:00:00`).toLocaleDateString(region.locale, { weekday: "short" }).replace(".", "").slice(0, 2);
 
   return (
     <section className="widget widget-weather px-3.5 pb-3 pt-3" aria-label="Weather">
@@ -5494,19 +5935,19 @@ function WeatherWidget() {
           <div className="mt-1.5 flex items-start justify-between">
             <button
               type="button"
-              onClick={() => update({ unit: prefs.unit === "f" ? "c" : "f" })}
+              onClick={() => setRegion({ temperature: unit === "f" ? "c" : "f" })}
               className="widget-weather-temp"
-              aria-label={`${Math.round(current.temperature_2m)} degrees ${prefs.unit === "f" ? "Fahrenheit" : "Celsius"}. Switch to ${prefs.unit === "f" ? "Celsius" : "Fahrenheit"}.`}
-              title={`Switch to °${prefs.unit === "f" ? "C" : "F"}`}
+              aria-label={`${Math.round(current.temperature_2m)} degrees ${unit === "f" ? "Fahrenheit" : "Celsius"}. Switch to ${unit === "f" ? "Celsius" : "Fahrenheit"}.`}
+              title={`Switch to °${unit === "f" ? "C" : "F"}`}
             >
               {Math.round(current.temperature_2m)}
-              <span className="widget-weather-unit">°{prefs.unit.toUpperCase()}</span>
+              <span className="widget-weather-unit">°{unit.toUpperCase()}</span>
             </button>
             <now.Icon className="mt-1.5 h-8 w-8 text-[var(--os-ink-2)]" strokeWidth={1.4} aria-hidden="true" />
           </div>
           <div className="truncate text-[12px] font-semibold">{now.label}</div>
           <div className="truncate text-[11px] tabular-nums text-[var(--os-ink-3)]">
-            feels {Math.round(current.apparent_temperature)}° · {Math.round(current.relative_humidity_2m)}% · {Math.round(current.wind_speed_10m)} {prefs.unit === "c" ? "km/h" : "mph"}
+            feels {Math.round(current.apparent_temperature)}° · {Math.round(current.relative_humidity_2m)}% · {Math.round(current.wind_speed_10m)} {unit === "c" ? "km/h" : "mph"}
           </div>
 
           {/* Five-day range meter: each bar runs from the day's low to its high on a shared scale */}

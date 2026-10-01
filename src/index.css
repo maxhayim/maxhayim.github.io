@@ -496,6 +496,24 @@
   .os-dock-grip { width: 18px !important; }
 }
 
+/* Dock preferences: size, labels, auto-hide (phones keep the compact size above) */
+@media (min-width: 481px) {
+  .os-dock-small .os-knob { width: 36px; height: 36px; }
+  .os-dock-small .os-dock-item { font-size: 11px; }
+  .os-dock-large .os-knob { width: 54px; height: 54px; }
+  .os-dock-large .os-knob svg { width: 22px; height: 22px; }
+  .os-dock-large .os-dock-item { font-size: 13px; }
+}
+.os-dock-nolabels .os-dock-label { display: none; }
+.os-dock-nolabels .os-dock-item { gap: 5px; }
+.os-dock-nolabels .os-dock-sep { margin-bottom: 10px; }
+.os-dock-autohide { transition: transform 0.25s cubic-bezier(0.3, 0, 0.2, 1); }
+.os-dock-away { transform: translateY(calc(100% + 16px)); }
+.os-dock-away:focus-within { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .os-dock-autohide { transition: none; }
+}
+
 .os-dot {
   width: 5px;
   height: 5px;
