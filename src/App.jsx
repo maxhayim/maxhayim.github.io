@@ -73,6 +73,7 @@ import {
   Pause,
   SkipBack,
   SkipForward,
+  RadioTower,
 } from "lucide-react";
 import { version as OS_VERSION } from "../package.json";
 
@@ -1107,6 +1108,7 @@ const STORED_ITEMS = [
   { label: "automatic updates", key: "comcen_updates" },
   { label: "network", key: "comcen_network" },
   { label: "mesh radio station", key: "comcen_mesh" },
+  { label: "MeshMonitor connection", key: "comcen_meshmonitor" },
   { label: "displays", key: "comcen_display" },
   { label: "power", key: "comcen_power" },
   { label: "keyboard", key: "comcen_keyboard" },
@@ -2501,6 +2503,8 @@ function MeshPane() {
         </p>
       </div>
 
+      <MeshMonitorSettings />
+
       <div className="mt-6 flex items-center justify-between gap-3">
         <h4 className="text-[13px] font-semibold">MeshMonitor scripts by Max</h4>
         <a href="https://github.com/maxhayim?tab=repositories&q=mesh" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] underline underline-offset-2 hover:text-[var(--os-ink)]">
@@ -2539,7 +2543,11 @@ function exportSettings(user) {
     exported: new Date().toISOString(),
     from: `comcen os ${OS_VERSION}`,
     user: user.owner ? { name: user.name } : { name: user.name, color: user.color, photo: user.photo },
-    prefs: collectUserPrefs(),
+    prefs: (() => {
+      const prefs = collectUserPrefs();
+      delete prefs.local[MESHMONITOR_KEY]; // the MeshMonitor token never leaves this browser
+      return prefs;
+    })(),
   };
   const blob = new Blob([JSON.stringify(file, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -2556,7 +2564,7 @@ function exportSettings(user) {
 function readSettingsFile(text) {
   const data = JSON.parse(text);
   if (data?.format !== SETTINGS_FORMAT || !data.prefs) throw new Error("That isn't a comcen os settings file.");
-  const allowed = (key) => typeof key === "string" && key.startsWith("comcen_") && !MACHINE_KEYS.has(key);
+  const allowed = (key) => typeof key === "string" && key.startsWith("comcen_") && !MACHINE_KEYS.has(key) && key !== MESHMONITOR_KEY;
   const pick = (obj) => Object.fromEntries(Object.entries(obj || {}).filter(([k, v]) => allowed(k) && typeof v === "string" && v.length < 200000));
   const user = data.user && typeof data.user.name === "string" ? data.user : null;
   return { prefs: { cookies: pick(data.prefs.cookies), local: pick(data.prefs.local) }, user };
@@ -3540,6 +3548,376 @@ function AccessibilityPane() {
           .
         </p>
       </div>
+    </div>
+  );
+}
+
+/* ---------- MeshMonitor: a live look at your own mesh, through MeshMonitor's v1 API ----------
+   The browser talks to your MeshMonitor directly. The address and API token stay in this browser's storage
+   (not a cookie, so they're never sent to maxhayim.com), and they're left out of settings exports. */
+
+const MESHMONITOR_KEY = "comcen_meshmonitor"; // { url, token, source }
+const MESHMONITOR_REFRESH_MS = 60 * 1000;
+const MESH_BROADCAST = "!ffffffff";
+
+function readMeshMonitor() {
+  const saved = readJSON(MESHMONITOR_KEY, null);
+  if (!saved || typeof saved.url !== "string" || typeof saved.token !== "string" || !saved.url || !saved.token) return null;
+  return { url: saved.url, token: saved.token, source: typeof saved.source === "string" && saved.source ? saved.source : "default" };
+}
+
+function saveMeshMonitor(conn) {
+  if (conn) writeStore("localStorage", MESHMONITOR_KEY, JSON.stringify(conn));
+  else {
+    try {
+      localStorage.removeItem(MESHMONITOR_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+  meshSnapshots.clear();
+  window.dispatchEvent(new Event("mh-meshmonitor-changed"));
+}
+
+function useMeshMonitorConfig() {
+  const [conn, setConn] = useState(readMeshMonitor);
+  useEffect(() => {
+    const onChanged = () => setConn(readMeshMonitor());
+    window.addEventListener("mh-meshmonitor-changed", onChanged);
+    return () => window.removeEventListener("mh-meshmonitor-changed", onChanged);
+  }, []);
+  return conn;
+}
+
+// "meshmonitor.example.com/" → "https://meshmonitor.example.com"; a pasted ".../api/v1" is trimmed off
+function normalizeMeshMonitorUrl(raw) {
+  let url = raw.trim().replace(/\/+$/, "");
+  if (!url) return "";
+  // No scheme typed: https, except for MeshMonitor on this computer, which usually runs plain http
+  if (!/^https?:\/\//i.test(url)) url = /^(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(url) ? `http://${url}` : `https://${url}`;
+  return url.replace(/\/api(\/v1)?$/i, "");
+}
+
+const isLocalHost = (url) => /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(url);
+
+async function meshMonitorFetch(conn, path) {
+  let response;
+  try {
+    response = await fetch(`${conn.url}/api/v1${path}`, {
+      headers: { Authorization: `Bearer ${conn.token}`, Accept: "application/json" },
+      credentials: "omit",
+      cache: "no-store",
+    });
+  } catch {
+    throw new Error("unreachable");
+  }
+  if (response.status === 401) throw new Error("token");
+  if (response.status === 403) throw new Error("permission");
+  if (!response.ok) throw new Error("server");
+  const json = await response.json().catch(() => null);
+  if (!json || json.success === false) throw new Error("server");
+  return json.data;
+}
+
+function describeMeshMonitorError(error, url = "") {
+  if (error.message === "insecure") {
+    return "maxhayim.com uses https, so browsers block plain http servers. Use an https address, for example through a reverse proxy or Tailscale Serve.";
+  }
+  if (error.message === "unreachable") {
+    return `Couldn't reach ${url || "MeshMonitor"}. Check the address, that it's online and uses https, and that MeshMonitor's ALLOWED_ORIGINS setting includes ${window.location.origin}.`;
+  }
+  if (error.message === "token") return "MeshMonitor didn't accept that API token.";
+  if (error.message === "permission") return "That token isn't allowed to read nodes on this source.";
+  return "MeshMonitor answered with an error. Check that it's version 4.13 or newer.";
+}
+
+// The latest snapshot per server and source, so the widget doesn't reload when it moves
+const meshSnapshots = new Map(); // key -> { data, at }
+
+async function loadMeshSnapshot(conn) {
+  const base = `/sources/${encodeURIComponent(conn.source)}`;
+  const [nodes, status, messages] = await Promise.all([
+    meshMonitorFetch(conn, `${base}/nodes`),
+    meshMonitorFetch(conn, `${base}/status`).catch(() => null),
+    meshMonitorFetch(conn, `${base}/messages?limit=25`).catch(() => []),
+  ]);
+  const list = Array.isArray(nodes) ? nodes : [];
+  const nowSeconds = Date.now() / 1000;
+  const heardWithin = (seconds) => list.filter((n) => n.lastHeard && nowSeconds - n.lastHeard < seconds).length;
+  const nameOf = (id) => {
+    const node = list.find((n) => n.nodeId === id);
+    return node?.longName || node?.shortName || id;
+  };
+  // Channel messages only: direct messages stay private, even on your own screen
+  const latest = (Array.isArray(messages) ? messages : []).find((m) => m.text && m.toNodeId === MESH_BROADCAST);
+  return {
+    total: list.length,
+    hour: heardWithin(3600),
+    day: heardWithin(86400),
+    week: heardWithin(7 * 86400),
+    local: status ? { name: status.longName || status.shortName || status.localNodeId, connected: !!status.connected } : null,
+    message: latest ? { from: nameOf(latest.fromNodeId), text: latest.text, at: latest.timestamp } : null,
+  };
+}
+
+function useMeshSnapshot(conn) {
+  const key = conn ? `${conn.url}|${conn.source}` : "";
+  const [state, setState] = useState(() => ({ key, data: meshSnapshots.get(key)?.data ?? null, error: null }));
+
+  useEffect(() => {
+    if (!conn) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const data = await loadMeshSnapshot(conn);
+        meshSnapshots.set(key, { data, at: Date.now() });
+        if (!cancelled) setState({ key, data, error: null });
+      } catch (error) {
+        if (!cancelled) setState((s) => ({ key, data: s.key === key ? s.data : null, error }));
+      }
+    };
+    const age = Date.now() - (meshSnapshots.get(key)?.at ?? 0);
+    let id;
+    const first = setTimeout(
+      () => {
+        load();
+        id = setInterval(load, MESHMONITOR_REFRESH_MS);
+      },
+      Math.max(0, MESHMONITOR_REFRESH_MS - age),
+    );
+    return () => {
+      cancelled = true;
+      clearTimeout(first);
+      clearInterval(id);
+    };
+  }, [conn, key]);
+
+  if (!conn) return { data: null, error: null };
+  if (state.key === key) return state;
+  return { data: meshSnapshots.get(key)?.data ?? null, error: null };
+}
+
+const timeAgo = (ms) => {
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 60) return "now";
+  if (s < 3600) return `${Math.floor(s / 60)} min`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h`;
+  return `${Math.floor(s / 86400)} d`;
+};
+
+/* Mesh widget: a Braun-style receiver panel for your MeshMonitor */
+function MeshWidget() {
+  const conn = useMeshMonitorConfig();
+  const { data, error } = useMeshSnapshot(conn);
+  useMinuteClock(); // keeps "5 min ago" current
+  const open = () => openPreferences("mesh");
+  const live = data && !error && data.local?.connected !== false;
+
+  return (
+    <section
+      className="widget widget-mesh cursor-pointer px-3.5 pb-4 pt-3"
+      role="button"
+      tabIndex={0}
+      aria-label={conn ? `Mesh: ${data ? `${data.hour} nodes heard in the last hour` : "loading"}. Open Mesh Radio preferences.` : "Mesh: not connected. Open Mesh Radio preferences."}
+      title="Mesh Radio preferences"
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          open();
+        }
+      }}
+    >
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-[var(--os-ink-3)]">
+        <span className={`widget-led ${live ? "widget-led-on" : ""}`} aria-hidden="true" />
+        <span className="min-w-0 truncate">{conn ? data?.local?.name || "mesh" : "mesh"}</span>
+      </div>
+
+      {!conn ? (
+        <div className="flex h-[150px] flex-col items-center justify-center gap-2 text-center">
+          <RadioTower className="h-8 w-8 text-[var(--os-ink-3)]" strokeWidth={1.4} aria-hidden="true" />
+          <p className="text-[12px] leading-snug text-[var(--os-ink-2)]">Connect your MeshMonitor to see your mesh here.</p>
+          <span className="rounded-full px-3 py-1 text-[12px] ring-1 ring-[var(--os-line)]">set up…</span>
+        </div>
+      ) : !data ? (
+        <div className="flex h-[150px] items-center justify-center px-2 text-center text-[12px] text-[var(--os-ink-3)]">
+          {error ? describeMeshMonitorError(error).split(". ")[0] + "." : "Listening…"}
+        </div>
+      ) : (
+        <>
+          <div className="mt-1.5 flex items-end gap-2">
+            <span className="widget-weather-temp">{data.hour}</span>
+            <span className="mb-1 text-[11px] leading-tight text-[var(--os-ink-3)]">
+              heard in the
+              <br />
+              last hour
+            </span>
+          </div>
+          <div className="mt-2 grid grid-cols-3 gap-1 border-t border-[var(--w-line)] pt-2 text-center tabular-nums">
+            {[
+              ["day", data.day],
+              ["week", data.week],
+              ["all", data.total],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <div className="text-[14px] font-semibold">{value}</div>
+                <div className="text-[9.5px] uppercase tracking-[0.12em] text-[var(--os-ink-3)]">{label}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 min-h-[34px] border-t border-[var(--w-line)] pt-2 text-[11px] leading-snug">
+            {data.message ? (
+              <>
+                <div className="flex items-baseline justify-between gap-2 text-[10px] text-[var(--os-ink-3)]">
+                  <span className="truncate font-semibold text-[var(--os-ink-2)]">{data.message.from}</span>
+                  <span className="shrink-0">{timeAgo(data.message.at)}</span>
+                </div>
+                <p className="line-clamp-2 text-[var(--os-ink-2)]" dir="auto">
+                  {data.message.text}
+                </p>
+              </>
+            ) : (
+              <p className="text-[var(--os-ink-3)]">No channel messages yet.</p>
+            )}
+          </div>
+        </>
+      )}
+      <span className="widget-credit">MeshMonitor</span>
+    </section>
+  );
+}
+
+// Mesh Radio → MeshMonitor
+function MeshMonitorSettings() {
+  const conn = useMeshMonitorConfig();
+  const [url, setUrl] = useState(conn?.url || "");
+  const [token, setToken] = useState(conn?.token || "");
+  const [sources, setSources] = useState(null);
+  const [source, setSource] = useState(conn?.source || "default");
+  const [state, setState] = useState(null); // { kind: "testing" | "ok" | "error", text }
+
+  const connect = async () => {
+    const clean = normalizeMeshMonitorUrl(url);
+    setUrl(clean);
+    setState({ kind: "testing", text: "Connecting…" });
+    try {
+      if (clean.startsWith("http://") && !isLocalHost(clean) && window.location.protocol === "https:") throw new Error("insecure");
+      const trial = { url: clean, token: token.trim(), source };
+      const list = await meshMonitorFetch(trial, "/sources");
+      const usable = Array.isArray(list) ? list : [];
+      setSources(usable);
+      const chosen = usable.some((s) => s.id === source) ? source : usable.find((s) => s.isPrimary)?.id || usable[0]?.id || "default";
+      setSource(chosen);
+      const status = await meshMonitorFetch({ ...trial, source: chosen }, `/sources/${encodeURIComponent(chosen)}/status`).catch(() => null);
+      saveMeshMonitor({ ...trial, source: chosen });
+      setWidgetShown("mesh", true);
+      const sourceName = usable.find((s) => s.id === chosen)?.name;
+      const node = status?.longName || status?.shortName || status?.localNodeId;
+      setState({ kind: "ok", text: `Connected${node ? ` to ${node}` : ""}${sourceName ? ` on ${sourceName}` : ""}. The Mesh widget is on.` });
+    } catch (error) {
+      setState({ kind: "error", text: describeMeshMonitorError(error, clean) });
+    }
+  };
+
+  const disconnect = () => {
+    saveMeshMonitor(null);
+    setToken("");
+    setSources(null);
+    setState({ kind: "ok", text: "Disconnected. The address and token were removed from this browser." });
+  };
+
+  const input = "w-full rounded-lg bg-[var(--os-card)] px-2.5 py-1.5 ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]";
+
+  return (
+    <div className="mt-4 rounded-xl p-4 ring-1 ring-[var(--os-line)]">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[13px] font-semibold">MeshMonitor</div>
+        <span className="flex items-center gap-1.5 text-[12px] text-[var(--os-ink-3)]">
+          <span className={`widget-led ${conn ? "widget-led-on" : ""}`} aria-hidden="true" />
+          {conn ? "connected" : "not connected"}
+        </span>
+      </div>
+      <p className="mt-1 text-[12px] text-[var(--os-ink-3)]">Show your own mesh in the Mesh widget, live from your MeshMonitor server.</p>
+
+      <form
+        className="mt-3 grid gap-3 text-[13px]"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (url.trim() && token.trim()) connect();
+        }}
+      >
+        <label className="flex flex-col gap-1.5">
+          <span>server address</span>
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://meshmonitor.example.com" inputMode="url" autoComplete="off" spellCheck={false} className={input} />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span>API token</span>
+          <input
+            type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder="mm_v1_…"
+            autoComplete="off"
+            spellCheck={false}
+            className={`${input} font-mono`}
+          />
+        </label>
+        {sources && sources.length > 1 && (
+          <label className="flex flex-col gap-1.5">
+            <span>source</span>
+            <select
+              value={source}
+              onChange={(e) => {
+                setSource(e.target.value);
+                if (conn) saveMeshMonitor({ ...conn, source: e.target.value });
+              }}
+              className={input}
+            >
+              {sources.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                  {s.type ? ` · ${s.type}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <div className="flex flex-wrap justify-end gap-2">
+          {conn && (
+            <button type="button" onClick={disconnect} className="rounded-full px-3 py-1 text-[var(--os-warn)] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
+              disconnect
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={!url.trim() || !token.trim() || state?.kind === "testing"}
+            className="rounded-full bg-[var(--os-accent)] px-3 py-1 font-semibold text-white hover:brightness-105 disabled:opacity-40"
+          >
+            {conn ? "save" : "connect"}
+          </button>
+        </div>
+      </form>
+
+      {state && (
+        <p className={`mt-2 text-[12px] ${state.kind === "error" ? "text-[var(--os-warn)]" : "text-[var(--os-ink-2)]"}`} aria-live="polite">
+          {state.text}
+        </p>
+      )}
+
+      <details className="release group mt-3 text-[12px] text-[var(--os-ink-3)]">
+        <summary className="flex cursor-pointer list-none items-center gap-1.5">
+          <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" aria-hidden="true" />
+          setting up MeshMonitor
+        </summary>
+        <ol className="mt-2 list-decimal space-y-1 pl-5 leading-relaxed">
+          <li>In MeshMonitor, open Settings and create an API token. A token for a read-only user is plenty.</li>
+          <li>
+            Add <code className="font-mono">{window.location.origin}</code> to MeshMonitor&rsquo;s <code className="font-mono">ALLOWED_ORIGINS</code> setting and restart it.
+          </li>
+          <li>Use the https address you open MeshMonitor with. Plain http only works for MeshMonitor on this same computer.</li>
+        </ol>
+        <p className="mt-2">The address and token stay in this browser. They&rsquo;re never sent to maxhayim.com and are left out of exported settings.</p>
+      </details>
     </div>
   );
 }
@@ -8364,6 +8742,8 @@ const WIDGET_KINDS = [
   { id: "clock", label: "Clock", note: "after the Braun ABW 41 wall clock", Icon: Clock3, Component: ClockWidget },
   { id: "radio", label: "Radio", note: "after the Braun T3 pocket radio", Icon: Radio, Component: RadioWidget },
   { id: "weather", label: "Weather", note: "Miami, or wherever you are", Icon: CloudSun, Component: WeatherWidget },
+  // Off until you connect a MeshMonitor in Mesh Radio
+  { id: "mesh", label: "Mesh", note: "live from your MeshMonitor", Icon: RadioTower, Component: MeshWidget, defaultShown: false },
 ];
 const WIDGET_WIDTH = 196;
 const WIDGET_GAP = 16;
@@ -8373,7 +8753,7 @@ const WIDGET_HOLD_MS = 550; // press and hold this long to start editing, like i
 const WIDGET_DRAG_SLOP = 5; // px of movement before a press becomes a drag
 
 function readWidgetLayout() {
-  const shown = Object.fromEntries(WIDGET_KINDS.map((w) => [w.id, true]));
+  const shown = Object.fromEntries(WIDGET_KINDS.map((w) => [w.id, w.defaultShown !== false]));
   try {
     const saved = JSON.parse(readStore("localStorage", WIDGET_LAYOUT_KEY) || "{}");
     WIDGET_KINDS.forEach((w) => {
@@ -8559,8 +8939,24 @@ function Widgets({ disabled }) {
 
   const shown = WIDGET_KINDS.filter((w) => layout.shown[w.id]);
 
-  // Where each widget sits: its saved spot, or the default column down the right edge
-  const place = (id, index) => {
+  // Default spots: a column down the right edge, starting another to its left when one fills up
+  const defaults = {};
+  {
+    let column = 0;
+    let top = WIDGET_EDGE;
+    shown.forEach((w) => {
+      const h = heights[w.id] || WIDGET_WIDTH;
+      if (top > WIDGET_EDGE && top + h > areaH - WIDGET_EDGE) {
+        column += 1;
+        top = WIDGET_EDGE;
+      }
+      defaults[w.id] = { x: areaW - WIDGET_EDGE - WIDGET_WIDTH - column * (WIDGET_WIDTH + WIDGET_GAP), y: top };
+      top += h + WIDGET_GAP;
+    });
+  }
+
+  // Where each widget sits: its saved spot, or its default spot
+  const place = (id) => {
     const h = heights[id] || WIDGET_WIDTH;
     const free = Math.max(0, areaW - WIDGET_WIDTH - WIDGET_EDGE * 2);
     let x;
@@ -8571,8 +8967,7 @@ function Widgets({ disabled }) {
       x = WIDGET_EDGE + layout.pos[id].fx * free;
       y = layout.pos[id].y;
     } else {
-      x = WIDGET_EDGE + free;
-      y = WIDGET_EDGE + shown.slice(0, index).reduce((sum, w) => sum + (heights[w.id] || WIDGET_WIDTH) + WIDGET_GAP, 0);
+      ({ x, y } = defaults[id] || { x: WIDGET_EDGE + free, y: WIDGET_EDGE });
     }
     return {
       x: Math.max(WIDGET_EDGE, Math.min(x, areaW - WIDGET_WIDTH - WIDGET_EDGE)),
