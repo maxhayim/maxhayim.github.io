@@ -1043,7 +1043,7 @@ function clockParts(date, time = readPrefs(TIME_PREFS)) {
   return { h: Number(parts.hour) % 24, m: Number(parts.minute), s: Number(parts.second) };
 }
 
-/* Usage statistics: Google Analytics, loaded by index.html only while this is on */
+/* Usage statistics: Google Analytics and Umami, loaded by index.html only while this is on */
 const ANALYTICS_COOKIE = "comcen_analytics";
 const ANALYTICS_ID = "G-ZRECP8G16F";
 
@@ -1055,7 +1055,16 @@ function saveAnalyticsOn(on) {
   const secure = window.location.protocol === "https:" ? "; Secure" : "";
   document.cookie = `${ANALYTICS_COOKIE}=${on ? "on" : "off"}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;
   window[`ga-disable-${ANALYTICS_ID}`] = !on; // stops this visit too, not just the next one
-  if (on) return;
+  // Umami's own off switch, so it also stops for the rest of this visit
+  if (on) {
+    try {
+      localStorage.removeItem("umami.disabled");
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  writeStore("localStorage", "umami.disabled", "1");
   // Clear the cookies Google Analytics already set, on this host and the parent domain
   const host = window.location.hostname;
   document.cookie
@@ -1373,7 +1382,7 @@ function PrivacyPane() {
       <div className="flex flex-col gap-5">
         <PrefSwitch
           label="share anonymous usage statistics"
-          hint="Page visits are counted with Google Analytics. Turning this off stops it and deletes its cookies."
+          hint="Page visits are counted with Google Analytics and with Umami, run on analytics.maxhayim.com. Turning this off stops both and deletes Google's cookies."
           checked={analytics}
           onChange={(on) => {
             saveAnalyticsOn(on);

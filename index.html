@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <!-- Google tag (gtag.js): loaded unless usage statistics are off in System Preferences → Privacy -->
+    <!-- Usage statistics: Google Analytics and Umami, loaded unless they're turned off in System Preferences → Privacy -->
     <script>
       if (!/(?:^|; )comcen_analytics=off/.test(document.cookie)) {
         var tag = document.createElement("script");
@@ -12,6 +12,12 @@
         function gtag(){dataLayer.push(arguments);}
         gtag('js', new Date());
         gtag('config', 'G-ZRECP8G16F');
+
+        var umami = document.createElement("script");
+        umami.defer = true;
+        umami.src = "https://analytics.maxhayim.com/script.js";
+        umami.setAttribute("data-website-id", "d6e18e89-ea7b-425e-8a86-51aeceff8c34");
+        document.head.appendChild(umami);
       }
     </script>
     <meta charset="UTF-8" />
