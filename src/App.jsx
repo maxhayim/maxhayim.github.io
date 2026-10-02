@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion, useDragControls, useMotionValue, animate } from "framer-motion";
+import { motion, Reorder, useDragControls, useMotionValue, animate } from "framer-motion";
 import {
   Radar,
   Star,
@@ -77,6 +77,7 @@ import {
   Check,
   Calculator,
   CalendarDays,
+  PanelTop,
 } from "lucide-react";
 import { version as OS_VERSION } from "../package.json";
 
@@ -1210,6 +1211,7 @@ const STORED_ITEMS = [
   { label: "widget layout", key: "comcen_widget_layout" },
   { label: "window position", key: "comcen_window_pos" },
   { label: "dock position", key: "comcen_dock_pos" },
+  { label: "menu bar order", key: "comcen_menubar" },
   { label: "radio station", key: "comcen_radio_station" },
   { label: "weather location", key: "comcen_weather" },
   { label: "internet trial", key: "comcen_trial_end" },
@@ -5572,6 +5574,124 @@ function StocksSettings() {
   );
 }
 
+/* ---------- Menu bar: the status items on the right, in an order you can change ---------- */
+
+const MENUBAR_ITEMS = [
+  { id: "user", label: "user", Icon: User },
+  { id: "widgets", label: "widgets", Icon: LayoutDashboard },
+  { id: "sound", label: "sound", Icon: Volume2 },
+  { id: "battery", label: "battery", Icon: BatteryCharging },
+  { id: "network", label: "Wi-Fi", Icon: Network },
+  { id: "clock", label: "date and time", Icon: Clock3 },
+];
+const MENUBAR_DEFAULT = MENUBAR_ITEMS.map((i) => i.id).join(",");
+const MENUBAR_PREFS = { cookie: "comcen_menubar", event: "mh-menubar-changed", defaults: { order: MENUBAR_DEFAULT } };
+
+// The saved order, cleaned up: unknown items dropped, new ones added at the end
+function menuBarOrder(order) {
+  const known = MENUBAR_ITEMS.map((i) => i.id);
+  const saved = String(order).split(",").filter((id, i, all) => known.includes(id) && all.indexOf(id) === i);
+  return [...saved, ...known.filter((id) => !saved.includes(id))];
+}
+
+// Drag the items left or right to rearrange them; the power button stays at the far right
+function MenuBarItems({ items }) {
+  const [prefs, setPrefs] = usePrefs(MENUBAR_PREFS);
+  const dragged = useRef(false);
+  const order = menuBarOrder(prefs.order);
+  const visible = order.filter((id) => items[id]);
+
+  return (
+    <Reorder.Group
+      as="div"
+      axis="x"
+      values={visible}
+      // Saved as items trade places, so a new order is never lost
+      onReorder={(next) => setPrefs({ order: [...next, ...order.filter((id) => !next.includes(id))].join(",") })}
+      className="flex items-center gap-1"
+      // A drag isn't a click: swallow the click that ends one
+      onClickCapture={(e) => {
+        if (!dragged.current) return;
+        dragged.current = false;
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+    >
+      {visible.map((id) => (
+        <Reorder.Item
+          key={id}
+          value={id}
+          as="div"
+          className="menubar-item"
+          onDragStart={() => {
+            dragged.current = true;
+          }}
+        >
+          {items[id]}
+        </Reorder.Item>
+      ))}
+    </Reorder.Group>
+  );
+}
+
+function MenuBarPane() {
+  const [prefs, setPrefs] = usePrefs(MENUBAR_PREFS);
+  const order = menuBarOrder(prefs.order);
+  const move = (index, step) => {
+    const next = [...order];
+    [next[index], next[index + step]] = [next[index + step], next[index]];
+    setPrefs({ order: next.join(",") });
+  };
+  const isDefault = order.join(",") === MENUBAR_DEFAULT;
+
+  return (
+    <div className="p-5">
+      <PaneHeader title="menu bar">The items at the top right of the screen, from left to right. You can also drag them in the menu bar.</PaneHeader>
+      <ol className="divide-y divide-[var(--os-line)] rounded-xl ring-1 ring-[var(--os-line)]">
+        {order.map((id, i) => {
+          const item = MENUBAR_ITEMS.find((m) => m.id === id);
+          return (
+            <li key={id} className="flex items-center gap-3 px-3 py-2 text-[13px]">
+              <span className="w-5 shrink-0 tabular-nums text-[var(--os-ink-3)]">{i + 1}</span>
+              <item.Icon className="h-4 w-4 shrink-0 text-[var(--os-accent)]" strokeWidth={1.8} aria-hidden="true" />
+              <span className="min-w-0 flex-1">{item.label}</span>
+              <button type="button" disabled={i === 0} onClick={() => move(i, -1)} className="widget-mini-btn ring-1 ring-[var(--os-line)] disabled:opacity-30" aria-label={`Move ${item.label} left`} title="Move left">
+                <ChevronRight className="h-3.5 w-3.5 rotate-180" />
+              </button>
+              <button type="button" disabled={i === order.length - 1} onClick={() => move(i, 1)} className="widget-mini-btn ring-1 ring-[var(--os-line)] disabled:opacity-30" aria-label={`Move ${item.label} right`} title="Move right">
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          );
+        })}
+        <li className="flex items-center gap-3 px-3 py-2 text-[13px] text-[var(--os-ink-3)]">
+          <span className="w-5 shrink-0" />
+          <Power className="h-4 w-4 shrink-0" strokeWidth={1.8} aria-hidden="true" />
+          <span className="flex-1">shut down (always last)</span>
+        </li>
+      </ol>
+      <p className="mt-3 text-[12px] text-[var(--os-ink-3)]">
+        Battery and Wi-Fi show when your device reports them; turn Wi-Fi off in{" "}
+        <button type="button" onClick={() => openPreferences("network")} className="underline underline-offset-2 hover:text-[var(--os-ink)]">
+          Network
+        </button>
+        .
+      </p>
+      <div className="mt-4 flex justify-end">
+        <button
+          type="button"
+          disabled={isDefault}
+          onClick={() => setPrefs({ order: MENUBAR_DEFAULT })}
+          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] disabled:opacity-40"
+        >
+          <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+          reset to default
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const PREF_SECTIONS = [
   {
     title: "Desk",
@@ -5581,6 +5701,7 @@ const PREF_SECTIONS = [
       { id: "screensaver", label: "Screen Saver", Icon: MonitorPlay, ready: true },
       { id: "widgets", label: "Widgets", Icon: LayoutDashboard, ready: true },
       { id: "dock", label: "Dock", Icon: PanelBottom, ready: true },
+      { id: "menubar", label: "Menu Bar", Icon: PanelTop, ready: true },
       { id: "windows", label: "Windows", Icon: AppWindow, ready: true },
       { id: "language", label: "Language", Icon: Globe, ready: true },
       { id: "privacy", label: "Privacy", Icon: ShieldCheck, ready: true },
@@ -5889,6 +6010,7 @@ function PrefsWindow({ panelRef, drag, pane, paneInfo, setPane, current }) {
           {pane === "modem" && <ModemPane />}
           {pane === "widgets" && <WidgetsPane />}
           {pane === "dock" && <DockPane />}
+          {pane === "menubar" && <MenuBarPane />}
           {pane === "windows" && <WindowsPane />}
           {pane === "language" && <LanguagePane />}
           {pane === "datetime" && <DateTimePane />}
@@ -6790,45 +6912,53 @@ function SharedShell({ currentPage, children }) {
       <header className="mh-fixed os-ui os-menubar fixed inset-x-0 top-0 z-40 flex h-11 items-center justify-between pl-2 pr-1.5 sm:pl-3 sm:pr-2">
         <SystemMenu />
         <div className="flex items-center gap-0.5">
-          <button
-            type="button"
-            onClick={toggleDashboard}
-            title="Widgets"
-            aria-label="Show widgets"
-            className="flex h-8 items-center rounded-full px-1.5 hover:bg-[var(--os-hover)] sm:px-2"
-          >
-            <LayoutDashboard className="h-4 w-4" strokeWidth={2} />
-          </button>
-          <UserMenuButton />
-          <SoundToggle />
-          {battery && (
-            <button type="button" onClick={() => openPreferences("power")} className="rounded-full hover:bg-[var(--os-hover)]" title="Power preferences">
-              <BatteryIndicator battery={battery} percent={power.percent} />
-            </button>
-          )}
-          {network.menubar && (
-            <button type="button" onClick={() => openPreferences("network")} className="rounded-full hover:bg-[var(--os-hover)]" title="Network preferences">
-              <SignalIndicator signal={signal} />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => openPreferences("datetime")}
-            title="Date & time preferences"
-            className="flex h-8 items-center gap-2 rounded-full px-1 tabular-nums hover:bg-[var(--os-hover)] sm:px-2"
-          >
-            <span className="whitespace-nowrap" dir="auto">
-              {formatMenuDate(now, { region, time: clockPrefs })}
-            </span>
-            {clockPrefs.analog && (
-              <span className="hidden sm:inline-flex">
-                <AnalogClock now={now} time={clockPrefs} />
-              </span>
-            )}
-            <span className="hidden whitespace-nowrap md:inline" dir="auto">
-              {time}
-            </span>
-          </button>
+          <MenuBarItems
+            items={{
+              user: <UserMenuButton />,
+              widgets: (
+                <button
+                  type="button"
+                  onClick={toggleDashboard}
+                  title="Widgets"
+                  aria-label="Show widgets"
+                  className="flex h-8 items-center rounded-full px-1.5 hover:bg-[var(--os-hover)] sm:px-2"
+                >
+                  <LayoutDashboard className="h-4 w-4" strokeWidth={2} />
+                </button>
+              ),
+              sound: <SoundToggle />,
+              battery: battery && (
+                <button type="button" onClick={() => openPreferences("power")} className="rounded-full hover:bg-[var(--os-hover)]" title="Power preferences">
+                  <BatteryIndicator battery={battery} percent={power.percent} />
+                </button>
+              ),
+              network: network.menubar && (
+                <button type="button" onClick={() => openPreferences("network")} className="rounded-full hover:bg-[var(--os-hover)]" title="Network preferences">
+                  <SignalIndicator signal={signal} />
+                </button>
+              ),
+              clock: (
+                <button
+                  type="button"
+                  onClick={() => openPreferences("datetime")}
+                  title="Date & time preferences"
+                  className="flex h-8 items-center gap-2 rounded-full px-1 tabular-nums hover:bg-[var(--os-hover)] sm:px-2"
+                >
+                  <span className="whitespace-nowrap" dir="auto">
+                    {formatMenuDate(now, { region, time: clockPrefs })}
+                  </span>
+                  {clockPrefs.analog && (
+                    <span className="hidden sm:inline-flex">
+                      <AnalogClock now={now} time={clockPrefs} />
+                    </span>
+                  )}
+                  <span className="hidden whitespace-nowrap md:inline" dir="auto">
+                    {time}
+                  </span>
+                </button>
+              ),
+            }}
+          />
           <button
             type="button"
             onClick={() => window.dispatchEvent(new Event("mh-power-off"))}

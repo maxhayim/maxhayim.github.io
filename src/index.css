@@ -318,6 +318,10 @@
 
 .os-logo { filter: grayscale(1) contrast(1.1); }
 
+/* Menu bar items can be dragged to rearrange them */
+.menubar-item { display: flex; align-items: center; touch-action: pan-y; }
+.menubar-item:active { cursor: grabbing; }
+
 .os-popover {
   background: var(--os-case);
   border: 1px solid var(--os-line);
