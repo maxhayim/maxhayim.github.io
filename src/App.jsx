@@ -4546,6 +4546,21 @@ function WidgetExtrasSettings() {
 /* Widget gallery: every widget with a live preview, to add or remove */
 const openWidgetGallery = () => window.dispatchEvent(new Event("mh-widget-gallery-open"));
 
+// Each gallery card gets its own backdrop: the built-in wallpapers, alternating with Braun-style color panels
+const GALLERY_PANELS = [
+  "linear-gradient(150deg, #e8591a, #9c3410)",
+  "linear-gradient(150deg, #8a9a6b, #4f5d3a)",
+  "linear-gradient(150deg, #5d7f93, #2f4b5c)",
+  "linear-gradient(150deg, #d9d4c7, #a8a294)",
+  "linear-gradient(150deg, #f2b200, #b07c00)",
+];
+// Wallpaper, panel, wallpaper, panel… then the remaining panels: nine different backdrops for nine widgets
+const GALLERY_BACKDROPS = [
+  ...WALLPAPERS.flatMap((w, i) => [`url("${w.thumb}")`, GALLERY_PANELS[i]]),
+  ...GALLERY_PANELS.slice(WALLPAPERS.length),
+];
+const galleryBackground = (i) => ({ backgroundImage: GALLERY_BACKDROPS[i % GALLERY_BACKDROPS.length] });
+
 function WidgetGallery() {
   const [open, setOpen] = useState(false);
   const layout = useWidgetLayout();
@@ -4581,19 +4596,29 @@ function WidgetGallery() {
           <h2 id="gallery-title" className="pointer-events-none absolute inset-x-0 text-center font-semibold tracking-tight">
             widget gallery
           </h2>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              openPreferences("widgets");
+            }}
+            className="relative ml-auto rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
+          >
+            widget settings…
+          </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
           <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">
             {out} of {WIDGET_KINDS.length} out. Add one and it appears on your desktop and in the dashboard; drag it wherever you like.
           </p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {WIDGET_KINDS.map((kind) => {
-              const { id, label, note } = kind;
+            {WIDGET_KINDS.map((kind, i) => {
+              const { id, label, note, settings } = kind;
               const Preview = kind.Component;
               const shown = layout.shown[id];
               return (
                 <div key={id} className={`gallery-card ${shown ? "gallery-card-on" : ""}`}>
-                  <div className="gallery-preview" aria-hidden="true" inert>
+                  <div className="gallery-preview" style={galleryBackground(i)} aria-hidden="true" inert>
                     <div className="gallery-preview-scale">
                       <Preview />
                     </div>
@@ -4602,6 +4627,18 @@ function WidgetGallery() {
                     <span className="min-w-0">
                       <span className="block text-[13px] font-semibold">{label}</span>
                       <span className="line-clamp-2 block text-[11.5px] leading-snug text-[var(--os-ink-3)]">{note}</span>
+                      {settings && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpen(false);
+                            openPreferences(settings);
+                          }}
+                          className="mt-0.5 text-[11.5px] text-[var(--os-accent)] underline-offset-2 hover:underline"
+                        >
+                          settings…
+                        </button>
+                      )}
                     </span>
                     <button
                       type="button"
@@ -4968,7 +5005,7 @@ function SystemPreferences() {
         </div>
 
         {/* Toolbar */}
-        <div className="flex items-center gap-2 border-b border-[var(--os-line)] bg-[var(--os-desk)]/40 px-3 py-2">
+        <div className="flex items-center gap-2 overflow-x-auto border-b border-[var(--os-line)] bg-[var(--os-desk)]/40 px-3 py-2">
           <button
             type="button"
             onClick={() => setPane("all")}
@@ -5014,6 +5051,15 @@ function SystemPreferences() {
           >
             <Volume2 className="h-5 w-5" strokeWidth={1.6} />
             sound
+          </button>
+          <button
+            type="button"
+            onClick={() => setPane("widgets")}
+            aria-pressed={pane === "widgets"}
+            className={`prefs-tool flex flex-col items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] ${pane === "widgets" ? "prefs-tool-active" : ""}`}
+          >
+            <LayoutDashboard className="h-5 w-5" strokeWidth={1.6} />
+            widgets
           </button>
         </div>
 
@@ -9592,17 +9638,18 @@ function WeatherWidget() {
 /* Which widgets are out and where they sit. Positions are kept as a share of the free width (so a widget on the
    right stays on the right when the screen changes size) plus a distance from the top. */
 const WIDGET_KINDS = [
-  { id: "clock", label: "Clock", note: "after the Braun ABW 41 wall clock", Icon: Clock3, Component: ClockWidget },
-  { id: "radio", label: "Radio", note: "after the Braun T3 pocket radio", Icon: Radio, Component: RadioWidget },
-  { id: "weather", label: "Weather", note: "Miami, or wherever you are", Icon: CloudSun, Component: WeatherWidget },
+  // settings: the preferences pane each widget follows, linked from the widget gallery
+  { id: "clock", label: "Clock", note: "after the Braun ABW 41 wall clock", Icon: Clock3, Component: ClockWidget, settings: "datetime" },
+  { id: "radio", label: "Radio", note: "after the Braun T3 pocket radio", Icon: Radio, Component: RadioWidget, settings: "sound" },
+  { id: "weather", label: "Weather", note: "Miami, or wherever you are", Icon: CloudSun, Component: WeatherWidget, settings: "language" },
   // Off until you connect a MeshMonitor in Mesh Radio
-  { id: "mesh", label: "Mesh", note: "live from your MeshMonitor", Icon: RadioTower, Component: MeshWidget, defaultShown: false },
+  { id: "mesh", label: "Mesh", note: "live from your MeshMonitor", Icon: RadioTower, Component: MeshWidget, defaultShown: false, settings: "mesh" },
   // More in the widget gallery
   { id: "calculator", label: "Calculator", note: "after the Braun ET66 by Dieter Rams", Icon: Calculator, Component: CalculatorWidget, defaultShown: false },
-  { id: "calendar", label: "Calendar", note: "this month, in your language", Icon: CalendarDays, Component: CalendarWidget, defaultShown: false },
+  { id: "calendar", label: "Calendar", note: "this month, in your language", Icon: CalendarDays, Component: CalendarWidget, defaultShown: false, settings: "datetime" },
   { id: "notes", label: "Notes", note: "a sticky note that saves as you type", Icon: StickyNote, Component: NotesWidget, defaultShown: false },
-  { id: "worldclock", label: "World Clock", note: "three cities at a glance", Icon: Globe, Component: WorldClockWidget, defaultShown: false },
-  { id: "photos", label: "Photo Gallery", note: "your own photos, in a frame", Icon: ImageIcon, Component: PhotosWidget, defaultShown: false },
+  { id: "worldclock", label: "World Clock", note: "three cities at a glance", Icon: Globe, Component: WorldClockWidget, defaultShown: false, settings: "widgets" },
+  { id: "photos", label: "Photo Gallery", note: "your own photos, in a frame", Icon: ImageIcon, Component: PhotosWidget, defaultShown: false, settings: "widgets" },
 ];
 const WIDGET_WIDTH = 196;
 const WIDGET_GAP = 16;

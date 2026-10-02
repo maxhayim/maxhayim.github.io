@@ -716,7 +716,7 @@
 /* Widget gallery */
 .gallery-card { padding: 10px; border-radius: 16px; box-shadow: inset 0 0 0 1px var(--os-line); }
 .gallery-card-on { box-shadow: inset 0 0 0 1.5px var(--os-accent); }
-.gallery-preview { display: flex; height: 186px; justify-content: center; overflow: hidden; border-radius: 12px; background: var(--os-desk); background-image: var(--os-wallpaper); background-size: cover; background-position: center; padding-top: 10px; }
+.gallery-preview { display: flex; height: 186px; justify-content: center; overflow: hidden; border-radius: 12px; background-color: var(--os-desk); background-size: cover; background-position: center; padding-top: 10px; }
 .gallery-preview-scale { width: 196px; transform: scale(0.6); transform-origin: top center; }
 .gallery-toggle { display: inline-flex; width: 26px; height: 26px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 999px; font-size: 16px; line-height: 1; box-shadow: 0 0 0 1px var(--os-line); }
 .gallery-toggle:hover { background: var(--os-hover); }
