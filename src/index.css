@@ -903,3 +903,111 @@
 }
 
 .os ::selection { background: color-mix(in oklab, var(--os-accent) 30%, transparent); }
+
+/* ---------- Displays, Pointer, Accessibility, Discs, Keyboard, Printing ---------- */
+
+/* Night Shift: a warm wash over everything */
+.night-shift {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  pointer-events: none;
+  background: rgb(255, 147, 41);
+  mix-blend-mode: multiply;
+  opacity: calc(var(--warmth, 0.5) * 0.32);
+}
+
+/* Pointer: a classic arrow, or a large one (text fields keep the I-beam) */
+:root[data-cursor="classic"],
+:root[data-cursor="classic"] * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='26' viewBox='0 0 13 21'%3E%3Cpath d='M1 1v16l4-4 3 7 2.5-1-3-7h5.5z' fill='%23000' stroke='%23fff' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E") 1 1, default !important; }
+:root[data-cursor="large"],
+:root[data-cursor="large"] * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='52' viewBox='0 0 13 21'%3E%3Cpath d='M1 1v16l4-4 3 7 2.5-1-3-7h5.5z' fill='%23000' stroke='%23fff' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E") 2 2, default !important; }
+:root[data-cursor="classic"] :is(input:not([type="range"]), textarea),
+:root[data-cursor="large"] :is(input:not([type="range"]), textarea) { cursor: text !important; }
+.pointer-ghost {
+  position: absolute;
+  width: 16px;
+  height: 26px;
+  margin: -1px 0 0 -1px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='26' viewBox='0 0 13 21'%3E%3Cpath d='M1 1v16l4-4 3 7 2.5-1-3-7h5.5z' fill='%23000' stroke='%23fff' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat;
+}
+.pointer-ghost[data-size="large"] { width: 32px; height: 52px; margin: -2px 0 0 -2px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='52' viewBox='0 0 13 21'%3E%3Cpath d='M1 1v16l4-4 3 7 2.5-1-3-7h5.5z' fill='%23000' stroke='%23fff' stroke-width='1.2' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+
+/* Accessibility */
+:root.a11y-reduce-motion *,
+:root.a11y-reduce-motion *::before,
+:root.a11y-reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+:root.a11y-contrast {
+  --os-ink-2: color-mix(in oklab, var(--os-ink) 92%, var(--os-case));
+  --os-ink-3: color-mix(in oklab, var(--os-ink) 80%, var(--os-case));
+  --os-line: color-mix(in oklab, var(--os-ink) 50%, var(--os-case));
+}
+:root.a11y-solid * {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+:root.a11y-solid :is(.os-menubar, .os-dock, .widget-dashboard) { background: var(--os-case) !important; }
+:root.a11y-underline a { text-decoration: underline; text-underline-offset: 2px; }
+
+/* Disc player and key tester: a little LCD */
+.disc-lcd {
+  color: #9fd37f;
+  background: #11140f;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--os-line);
+  text-shadow: 0 0 6px rgba(159, 211, 127, 0.45);
+}
+.os-knob:disabled { opacity: 0.4; cursor: default; }
+.kbd {
+  min-width: 2.2em;
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: center;
+  background: linear-gradient(var(--os-knob-top), var(--os-knob-bot));
+  box-shadow: 0 0 0 1px var(--os-line), 0 1px 0 var(--os-line);
+}
+
+/* Printing: just the page in the window, on white */
+@media print {
+  :root {
+  --os-desk: #e7e3da !important;
+  --os-case: #f3f1ec !important;
+  --os-card: #fbfaf7 !important;
+  --os-ink: #262624 !important;
+  --os-ink-2: #55534e !important;
+  --os-ink-3: #86837c !important;
+  --os-line: #dcd7cc !important;
+  --os-hover: rgba(38, 38, 36, 0.06) !important;
+  --os-accent: #e8591a !important;
+  --os-ok: #3f7f33 !important;
+  --os-cool: #46687a !important;
+  --os-warn: #c8371a !important;
+  --os-knob-top: #ffffff !important;
+  --os-knob-bot: #e6e2d9 !important;
+  --os-dot-grid: rgba(38, 38, 36, 0.22) !important;
+  --os-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 18px 50px -20px rgba(60, 50, 30, 0.35), 0 2px 6px rgba(60, 50, 30, 0.08) !important;
+  }
+  html, body { background: #fff !important; }
+  .os-menubar,
+  nav[aria-label="Dock"],
+  .widget-desk,
+  .widget-dashboard,
+  .night-shift,
+  .screensaver,
+  .no-print,
+  [role="menu"],
+  .os-tabs,
+  .os-window > div:first-child { display: none !important; }
+  .os-desk { background: none !important; padding: 0 !important; min-height: 0 !important; }
+  .os-window { max-width: none !important; border: 0 !important; box-shadow: none !important; transform: none !important; }
+  .os-window * { box-shadow: none !important; }
+  :root.print-mono body { filter: grayscale(1); }
+  :root.print-links main a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.85em; color: #555; word-break: break-all; }
+  :root { zoom: 1 !important; }
+}

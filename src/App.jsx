@@ -70,6 +70,9 @@ import {
   LocateFixed,
   LayoutDashboard,
   RotateCcw,
+  Pause,
+  SkipBack,
+  SkipForward,
 } from "lucide-react";
 import { version as OS_VERSION } from "../package.json";
 
@@ -447,7 +450,7 @@ function useSignal() {
   return signal;
 }
 
-function BatteryIndicator({ battery }) {
+function BatteryIndicator({ battery, percent = true }) {
   if (!battery) return null;
   const fill = Math.max(2, Math.round((battery.level / 100) * 16));
   const low = battery.level <= 20 && !battery.charging;
@@ -459,7 +462,7 @@ function BatteryIndicator({ battery }) {
         <rect x="2.5" y="2.5" width={fill} height="7" rx="1.2" fill={low ? "var(--os-warn)" : battery.charging ? "var(--os-ok)" : "currentColor"} />
         {battery.charging && <path d="M11.5 1.5 L7.5 6.5 H10.5 L9.5 10.5 L13.5 5.5 H10.5 Z" fill="var(--os-case)" />}
       </svg>
-      <span className="hidden sm:inline">{battery.level}%</span>
+      {percent && <span className="hidden sm:inline">{battery.level}%</span>}
     </span>
   );
 }
@@ -872,8 +875,9 @@ function DesktopMenu() {
   if (!menu) return null;
   const width = 230;
   const height = 282;
-  const left = Math.max(8, Math.min(menu.x, window.innerWidth - width - 8));
-  const top = Math.max(52, Math.min(menu.y, window.innerHeight - height - 8));
+  const zoom = pageZoom();
+  const left = Math.max(8, Math.min(menu.x / zoom, window.innerWidth / zoom - width - 8));
+  const top = Math.max(52, Math.min(menu.y / zoom, window.innerHeight / zoom - height - 8));
   const item = "flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left";
   const off = `${item} cursor-default text-[var(--os-ink-3)] opacity-60`;
   const on = `${item} hover:bg-[var(--os-hover)]`;
@@ -1103,6 +1107,14 @@ const STORED_ITEMS = [
   { label: "automatic updates", key: "comcen_updates" },
   { label: "network", key: "comcen_network" },
   { label: "mesh radio station", key: "comcen_mesh" },
+  { label: "displays", key: "comcen_display" },
+  { label: "power", key: "comcen_power" },
+  { label: "keyboard", key: "comcen_keyboard" },
+  { label: "pointer", key: "comcen_pointer" },
+  { label: "printing", key: "comcen_print" },
+  { label: "voice", key: "comcen_voice" },
+  { label: "boot drive", key: "comcen_boot" },
+  { label: "accessibility", key: "comcen_access" },
 ];
 
 const ownKey = (name) => name.startsWith("comcen_") || name.startsWith("mh-");
@@ -2679,6 +2691,859 @@ function SharingPane() {
   );
 }
 
+/* ---------- Devices and System: Bluetooth, Discs, Displays, Power, Keyboard, Pointer, Printing, Voice, Boot Drive, Accessibility ---------- */
+
+const DISPLAY_PREFS = {
+  cookie: "comcen_display",
+  event: "mh-display-changed",
+  defaults: { scale: "100", nightShift: "off", warmth: 50 },
+  allowed: { scale: ["90", "100", "110", "125"], nightShift: ["off", "on", "sunset"] },
+};
+const POWER_PREFS = { cookie: "comcen_power", event: "mh-power-changed", defaults: { lowPower: false, percent: true } };
+const KEYBOARD_PREFS = { cookie: "comcen_keyboard", event: "mh-keyboard-changed", defaults: { shortcuts: true } };
+const POINTER_PREFS = {
+  cookie: "comcen_pointer",
+  event: "mh-pointer-changed",
+  defaults: { cursor: "system", trails: false },
+  allowed: { cursor: ["system", "classic", "large"] },
+};
+const PRINT_PREFS = { cookie: "comcen_print", event: "mh-print-changed", defaults: { mono: false, links: true } };
+const VOICE_PREFS = { cookie: "comcen_voice", event: "mh-voice-changed", defaults: { voice: "", rate: 1, announce: false } };
+const BOOT_PREFS = {
+  cookie: "comcen_boot",
+  event: "mh-boot-changed",
+  defaults: { when: "first", sound: true },
+  allowed: { when: ["first", "always", "never"] },
+};
+const ACCESS_PREFS = {
+  cookie: "comcen_access",
+  event: "mh-access-changed",
+  defaults: { reduceMotion: false, contrast: false, transparency: false, underline: false },
+};
+
+// Settings that change the whole page are applied as classes and styles on <html>
+function applyRootPrefs() {
+  const root = document.documentElement;
+  const access = readPrefs(ACCESS_PREFS);
+  const power = readPrefs(POWER_PREFS);
+  const display = readPrefs(DISPLAY_PREFS);
+  const pointer = readPrefs(POINTER_PREFS);
+  const print = readPrefs(PRINT_PREFS);
+  root.classList.toggle("a11y-reduce-motion", access.reduceMotion || power.lowPower);
+  root.classList.toggle("a11y-contrast", access.contrast);
+  root.classList.toggle("a11y-solid", access.transparency || power.lowPower);
+  root.classList.toggle("a11y-underline", access.underline);
+  root.classList.toggle("print-mono", print.mono);
+  root.classList.toggle("print-links", print.links);
+  root.dataset.cursor = pointer.cursor;
+  root.style.zoom = display.scale === "100" ? "" : `${display.scale}%`;
+}
+
+if (typeof window !== "undefined") {
+  applyRootPrefs();
+  [ACCESS_PREFS, POWER_PREFS, DISPLAY_PREFS, POINTER_PREFS, PRINT_PREFS].forEach((spec) => window.addEventListener(spec.event, applyRootPrefs));
+}
+
+// The interface size from Displays; positions measured in the page are divided by it
+const pageZoom = () => Number(readPrefs(DISPLAY_PREFS).scale) / 100;
+
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+const OPTION_KEY = isMac ? "⌥" : "Alt+";
+
+function PrefRows({ rows }) {
+  return (
+    <div className="divide-y divide-[var(--os-line)] rounded-xl ring-1 ring-[var(--os-line)]">
+      {rows.map(([label, value]) => (
+        <div key={label} className="flex items-center justify-between gap-3 px-3 py-2 text-[13px]">
+          <span>{label}</span>
+          <span className="text-right tabular-nums text-[var(--os-ink-2)]">{value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const paneButton = "rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] disabled:opacity-40";
+const paneButtonPrimary = "rounded-full bg-[var(--os-accent)] px-3 py-1 text-[13px] font-semibold text-white hover:brightness-105 disabled:opacity-40";
+
+/* Bluetooth: the browser's own device picker (Web Bluetooth, in Chrome and Edge) */
+function BluetoothPane() {
+  const supported = typeof navigator !== "undefined" && !!navigator.bluetooth;
+  const [available, setAvailable] = useState(null);
+  const [devices, setDevices] = useState([]); // { id, name, battery, status }
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (!supported || !navigator.bluetooth.getAvailability) return;
+    let cancelled = false;
+    navigator.bluetooth.getAvailability().then((ok) => !cancelled && setAvailable(ok));
+    return () => {
+      cancelled = true;
+    };
+  }, [supported]);
+
+  const patch = (id, next) => setDevices((list) => list.map((d) => (d.id === id ? { ...d, ...next } : d)));
+
+  const search = async () => {
+    setMessage("");
+    try {
+      const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: ["battery_service"] });
+      setDevices((list) => [...list.filter((d) => d.id !== device.id), { id: device.id, name: device.name || "Unnamed device", device, battery: null, status: "" }]);
+    } catch (e) {
+      if (e?.name !== "NotFoundError") setMessage(e?.message || "Bluetooth isn't available right now.");
+    }
+  };
+
+  const readBattery = async (d) => {
+    patch(d.id, { status: "connecting…" });
+    try {
+      const server = await d.device.gatt.connect();
+      const service = await server.getPrimaryService("battery_service");
+      const level = await (await service.getCharacteristic("battery_level")).readValue();
+      patch(d.id, { battery: level.getUint8(0), status: "" });
+      server.disconnect();
+    } catch {
+      patch(d.id, { status: "no battery information" });
+    }
+  };
+
+  return (
+    <div className="p-5">
+      <PaneHeader title="bluetooth">Find nearby Bluetooth devices and check their battery.</PaneHeader>
+      {!supported ? (
+        <p className="text-[13px] text-[var(--os-ink-2)]">This browser doesn&rsquo;t offer Bluetooth to websites. Chrome and Edge on a computer or Android do.</p>
+      ) : (
+        <>
+          <PrefRows rows={[["Bluetooth", available === false ? "off or not found on this computer" : "ready"]]} />
+          <div className="mt-4 flex justify-end">
+            <button type="button" onClick={search} className={paneButtonPrimary}>
+              search for devices…
+            </button>
+          </div>
+          {devices.length > 0 && (
+            <ul className="mt-4 divide-y divide-[var(--os-line)] rounded-xl ring-1 ring-[var(--os-line)]">
+              {devices.map((d) => (
+                <li key={d.id} className="flex items-center gap-3 px-3 py-2.5 text-[13px]">
+                  <Bluetooth className="h-4 w-4 shrink-0 text-[var(--os-accent)]" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate font-semibold">{d.name}</span>
+                  <span className="text-[12px] text-[var(--os-ink-3)]">{d.battery !== null ? `battery ${d.battery}%` : d.status}</span>
+                  <button type="button" onClick={() => readBattery(d)} className={paneButton}>
+                    battery
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {message && <p className="mt-3 text-[12px] text-[var(--os-ink-2)]">{message}</p>}
+          <p className="mt-4 text-[12px] text-[var(--os-ink-3)]">Your browser asks before sharing any device. Devices are forgotten when you leave.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* Discs: a CD player for music on your own computer. Files play locally and are forgotten when you leave. */
+const disc = { tracks: [], index: 0, status: "empty", audio: null, time: 0, listeners: new Set() }; // status: empty | stopped | playing | paused
+
+function setDisc(patch) {
+  Object.assign(disc, patch);
+  disc.listeners.forEach((listener) => listener());
+}
+
+function useDisc() {
+  const [, rerender] = useState(0);
+  useEffect(() => {
+    const listener = () => rerender((n) => n + 1);
+    disc.listeners.add(listener);
+    return () => disc.listeners.delete(listener);
+  }, []);
+  return disc;
+}
+
+function discAudio() {
+  if (!disc.audio) {
+    const audio = new Audio();
+    audio._mhBase = 0.9;
+    audio.addEventListener("timeupdate", () => setDisc({ time: audio.currentTime }));
+    audio.addEventListener("ended", () => (disc.index < disc.tracks.length - 1 ? discPlay(disc.index + 1) : discStop()));
+    disc.audio = audio;
+  }
+  return disc.audio;
+}
+
+function discPlay(index = disc.index) {
+  if (!disc.tracks.length) return;
+  radioStop(); // one sound source at a time, like a real stereo
+  const audio = discAudio();
+  if (index !== disc.index || !audio.src) {
+    audio.src = disc.tracks[index].url;
+    setDisc({ index, time: 0 });
+  }
+  applyMedia(audio);
+  liveMedia.add(audio);
+  setDisc({ status: "playing" });
+  audio.play().catch(() => setDisc({ status: "paused" }));
+}
+
+function discPause() {
+  if (disc.status !== "playing") return;
+  disc.audio?.pause();
+  setDisc({ status: "paused" });
+}
+
+function discStop() {
+  if (disc.audio) {
+    disc.audio.pause();
+    disc.audio.currentTime = 0;
+  }
+  setDisc({ status: disc.tracks.length ? "stopped" : "empty", time: 0 });
+}
+
+function discEject() {
+  discStop();
+  disc.tracks.forEach((t) => URL.revokeObjectURL(t.url));
+  if (disc.audio) {
+    disc.audio.removeAttribute("src");
+    disc.audio.load();
+    liveMedia.delete(disc.audio);
+  }
+  setDisc({ tracks: [], index: 0, status: "empty", time: 0 });
+}
+
+function discInsert(files) {
+  const tracks = [...files]
+    .filter((f) => f.type.startsWith("audio/") || /\.(mp3|m4a|aac|wav|ogg|oga|flac|opus)$/i.test(f.name))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+    // "01 First Song.mp3" → "First Song": the player numbers tracks itself
+    .map((f) => ({ name: f.name.replace(/\.[^.]+$/, "").replace(/^\d{1,3}[\s._-]+/, "") || f.name, url: URL.createObjectURL(f) }));
+  if (!tracks.length) return false;
+  discEject();
+  setDisc({ tracks, index: 0, status: "stopped" });
+  return true;
+}
+
+const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+function DiscsPane() {
+  const d = useDisc();
+  const fileRef = useRef(null);
+  const [message, setMessage] = useState("");
+  const current = d.tracks[d.index];
+
+  return (
+    <div className="p-5">
+      <PaneHeader title="discs">The COMCEN Model 2000&rsquo;s disc player. Insert music from your computer; it plays here and never leaves your browser.</PaneHeader>
+
+      <div className="rounded-xl p-4 ring-1 ring-[var(--os-line)]">
+        <div className="disc-lcd flex items-center justify-between gap-3 rounded-lg px-3 py-2 font-mono text-[13px]">
+          <span className="min-w-0 truncate">
+            {d.status === "empty" ? "NO DISC" : `${String(d.index + 1).padStart(2, "0")} ${current?.name || ""}`}
+          </span>
+          <span className="shrink-0 tabular-nums">{d.status === "empty" ? "--:--" : mmss(d.time)}</span>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+          <button type="button" disabled={d.status === "empty" || d.index === 0} onClick={() => discPlay(d.index - 1)} className="os-knob h-9 w-9" aria-label="Previous track">
+            <SkipBack className="h-4 w-4" fill="currentColor" strokeWidth={1.5} />
+          </button>
+          <button
+            type="button"
+            disabled={d.status === "empty"}
+            onClick={() => (d.status === "playing" ? discPause() : discPlay())}
+            className={`os-knob h-11 w-11 ${d.status === "playing" ? "os-knob-power" : ""}`}
+            aria-label={d.status === "playing" ? "Pause" : "Play"}
+          >
+            {d.status === "playing" ? <Pause className="h-4 w-4" fill="currentColor" strokeWidth={0} /> : <Play className="ml-0.5 h-4 w-4" fill="currentColor" strokeWidth={0} />}
+          </button>
+          <button type="button" disabled={d.status === "empty"} onClick={discStop} className="os-knob h-9 w-9" aria-label="Stop">
+            <Square className="h-3 w-3" fill="currentColor" strokeWidth={0} />
+          </button>
+          <button
+            type="button"
+            disabled={d.status === "empty" || d.index >= d.tracks.length - 1}
+            onClick={() => discPlay(d.index + 1)}
+            className="os-knob h-9 w-9"
+            aria-label="Next track"
+          >
+            <SkipForward className="h-4 w-4" fill="currentColor" strokeWidth={1.5} />
+          </button>
+        </div>
+        <div className="mt-3 flex justify-end gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="audio/*"
+            multiple
+            className="sr-only"
+            tabIndex={-1}
+            onChange={(e) => {
+              setMessage(discInsert(e.target.files || []) ? "" : "Those files aren't music the player can read.");
+              e.target.value = "";
+            }}
+          />
+          {d.status !== "empty" && (
+            <button type="button" onClick={discEject} className={paneButton}>
+              eject
+            </button>
+          )}
+          <button type="button" onClick={() => fileRef.current?.click()} className={paneButtonPrimary}>
+            {d.status === "empty" ? "insert music…" : "insert another…"}
+          </button>
+        </div>
+        {message && <p className="mt-2 text-[12px] text-[var(--os-warn)]">{message}</p>}
+      </div>
+
+      {d.tracks.length > 0 && (
+        <ol className="mt-4 divide-y divide-[var(--os-line)] rounded-xl ring-1 ring-[var(--os-line)]">
+          {d.tracks.map((t, i) => (
+            <li key={t.url}>
+              <button type="button" onClick={() => discPlay(i)} className="flex w-full items-center gap-3 px-3 py-2 text-left text-[13px] hover:bg-[var(--os-hover)]">
+                <span className="w-6 shrink-0 tabular-nums text-[var(--os-ink-3)]">{String(i + 1).padStart(2, "0")}</span>
+                <span className={`min-w-0 flex-1 truncate ${i === d.index && d.status !== "stopped" ? "font-semibold text-[var(--os-accent)]" : ""}`}>{t.name}</span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+      <p className="mt-4 text-[12px] text-[var(--os-ink-3)]">Playing a disc turns the radio off. The music keeps playing while you browse.</p>
+    </div>
+  );
+}
+
+/* Displays: what the browser knows about the screen, the interface size, and Night Shift */
+function useRefreshRate() {
+  const [hz, setHz] = useState(null);
+  useEffect(() => {
+    let frames = 0;
+    let start = 0;
+    let id;
+    const tick = (t) => {
+      if (!start) start = t;
+      frames += 1;
+      if (t - start < 1000) id = requestAnimationFrame(tick);
+      else setHz(Math.round((frames * 1000) / (t - start)));
+    };
+    id = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(id);
+  }, []);
+  return hz;
+}
+
+const nightShiftActive = (display, date = new Date()) =>
+  display.nightShift === "on" || (display.nightShift === "sunset" && (date.getHours() >= 19 || date.getHours() < 7));
+
+function DisplaysPane() {
+  const [display, setDisplay] = usePrefs(DISPLAY_PREFS);
+  const hz = useRefreshRate();
+  const dpr = window.devicePixelRatio || 1;
+  const gamut = window.matchMedia("(color-gamut: rec2020)").matches ? "Rec. 2020" : window.matchMedia("(color-gamut: p3)").matches ? "Display P3" : "sRGB";
+  const hdr = window.matchMedia("(dynamic-range: high)").matches;
+
+  return (
+    <div className="p-5">
+      <PaneHeader title="displays">Your screen, as this browser sees it.</PaneHeader>
+      <PrefRows
+        rows={[
+          ["resolution", `${screen.width} × ${screen.height}${dpr !== 1 ? ` (${Math.round(screen.width * dpr)} × ${Math.round(screen.height * dpr)} pixels)` : ""}`],
+          ["pixel density", `${dpr.toFixed(dpr % 1 ? 2 : 0)}×${dpr >= 2 ? " · high resolution" : ""}`],
+          ["color", `${gamut} · ${screen.colorDepth}-bit${hdr ? " · HDR" : ""}`],
+          ["refresh rate", hz ? `about ${hz} Hz` : "measuring…"],
+        ]}
+      />
+      <div className="mt-5 flex flex-col gap-5">
+        <PrefChoice
+          label="interface size"
+          value={display.scale}
+          onChange={(scale) => setDisplay({ scale })}
+          options={[
+            { id: "90", label: "smaller" },
+            { id: "100", label: "default" },
+            { id: "110", label: "larger" },
+            { id: "125", label: "largest" },
+          ]}
+        />
+        <PrefChoice
+          label="Night Shift"
+          value={display.nightShift}
+          onChange={(nightShift) => setDisplay({ nightShift })}
+          options={[
+            { id: "off", label: "off" },
+            { id: "sunset", label: "7 pm to 7 am" },
+            { id: "on", label: "on" },
+          ]}
+        />
+        <label className={`flex items-center gap-3 text-[13px] ${display.nightShift === "off" ? "opacity-50" : ""}`}>
+          <span className="w-20 shrink-0">warmth</span>
+          <span className="text-[12px] text-[var(--os-ink-3)]">less</span>
+          <input
+            type="range"
+            min="10"
+            max="100"
+            step="5"
+            value={display.warmth}
+            disabled={display.nightShift === "off"}
+            onChange={(e) => setDisplay({ warmth: Number(e.target.value) })}
+            className="os-range flex-1"
+          />
+          <span className="text-[12px] text-[var(--os-ink-3)]">more</span>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+// Night Shift: a warm tint over everything, on a schedule
+function NightShift() {
+  const [display] = usePrefs(DISPLAY_PREFS);
+  const now = useMinuteClock();
+  if (!nightShiftActive(display, now)) return null;
+  return <div className="night-shift no-print" style={{ "--warmth": display.warmth / 100 }} aria-hidden="true" />;
+}
+
+/* Power */
+function useBatteryDetails() {
+  const [info, setInfo] = useState(null);
+  useEffect(() => {
+    if (!navigator.getBattery) return;
+    let bat;
+    let cancelled = false;
+    const update = () =>
+      !cancelled && bat && setInfo({ level: Math.round(bat.level * 100), charging: bat.charging, chargingTime: bat.chargingTime, dischargingTime: bat.dischargingTime });
+    navigator.getBattery().then((b) => {
+      bat = b;
+      update();
+      ["levelchange", "chargingchange", "chargingtimechange", "dischargingtimechange"].forEach((ev) => b.addEventListener(ev, update));
+    });
+    return () => {
+      cancelled = true;
+      if (bat) ["levelchange", "chargingchange", "chargingtimechange", "dischargingtimechange"].forEach((ev) => bat.removeEventListener(ev, update));
+    };
+  }, []);
+  return info;
+}
+
+const hoursMinutes = (seconds) => {
+  const m = Math.round(seconds / 60);
+  return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
+};
+
+function PowerPane() {
+  const [power, setPower] = usePrefs(POWER_PREFS);
+  const battery = useBatteryDetails();
+  const estimate = battery
+    ? battery.charging
+      ? Number.isFinite(battery.chargingTime) && battery.chargingTime > 0
+        ? `full in ${hoursMinutes(battery.chargingTime)}`
+        : battery.level === 100
+          ? "fully charged"
+          : "charging"
+      : Number.isFinite(battery.dischargingTime)
+        ? `${hoursMinutes(battery.dischargingTime)} left`
+        : "on battery"
+    : null;
+
+  return (
+    <div className="p-5">
+      <PaneHeader title="power">Battery, energy use, and turning comcen os off.</PaneHeader>
+      <PrefRows
+        rows={[
+          ["power source", battery ? (battery.charging ? "power adapter" : "battery") : "This browser doesn't share battery details."],
+          ...(battery ? [["battery", `${battery.level}% · ${estimate}`]] : []),
+        ]}
+      />
+      <div className="mt-5 flex flex-col gap-5">
+        <PrefSwitch
+          label="low power mode"
+          hint="Turns off animations and see-through effects to save energy."
+          checked={power.lowPower}
+          onChange={(lowPower) => setPower({ lowPower })}
+        />
+        <PrefSwitch label="show battery percentage in the menu bar" checked={power.percent} onChange={(percent) => setPower({ percent })} />
+        <p className="text-[12px] text-[var(--os-ink-3)]">
+          When the desk is idle, the{" "}
+          <button type="button" onClick={() => openPreferences("screensaver")} className="underline underline-offset-2 hover:text-[var(--os-ink)]">
+            screen saver
+          </button>{" "}
+          takes over.
+        </p>
+      </div>
+      <div className="mt-5 flex justify-end gap-2">
+        <button type="button" onClick={() => window.dispatchEvent(new Event("mh-reboot"))} className={paneButton}>
+          restart…
+        </button>
+        <button type="button" onClick={() => window.dispatchEvent(new Event("mh-power-off"))} className={paneButton}>
+          shut down…
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* Keyboard: shortcuts that work anywhere on the desktop, plus a key tester */
+const SHORTCUTS = [
+  { keys: "1 – 5", label: "home, gits, internet, about, contact", match: (e) => /^Digit[1-5]$/.test(e.code) },
+  { keys: "W", label: "show or put away widgets", match: (e) => e.code === "KeyW" },
+  { keys: ",", label: "system preferences", match: (e) => e.code === "Comma" },
+  { keys: "R", label: "radio on or off", match: (e) => e.code === "KeyR" },
+  { keys: "S", label: "start the screen saver", match: (e) => e.code === "KeyS" },
+  { keys: "P", label: "print this page", match: (e) => e.code === "KeyP" },
+];
+
+function runShortcut(e) {
+  if (e.code.startsWith("Digit")) {
+    const page = OS_PAGES[Number(e.code.slice(5)) - 1];
+    if (page) window.location.hash = page.href.slice(1);
+  } else if (e.code === "KeyW") toggleDashboard();
+  else if (e.code === "Comma") openPreferences("all");
+  else if (e.code === "KeyR") radio.status === "off" ? radioStart() : radioStop();
+  else if (e.code === "KeyS") window.dispatchEvent(new Event("mh-screensaver-start"));
+  else if (e.code === "KeyP") printPage();
+}
+
+function useKeyboardShortcuts() {
+  const [keyboard] = usePrefs(KEYBOARD_PREFS);
+  useEffect(() => {
+    if (!keyboard.shortcuts) return;
+    const onKey = (e) => {
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.repeat) return;
+      if (e.target.closest?.("input, textarea, select, [contenteditable='true']")) return;
+      if (!SHORTCUTS.some((s) => s.match(e))) return;
+      e.preventDefault();
+      runShortcut(e);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [keyboard.shortcuts]);
+}
+
+function KeyboardPane() {
+  const [keyboard, setKeyboard] = usePrefs(KEYBOARD_PREFS);
+  const [pressed, setPressed] = useState(null);
+  return (
+    <div className="p-5">
+      <PaneHeader title="keyboard">Shortcuts for getting around comcen os.</PaneHeader>
+      <PrefSwitch label="use keyboard shortcuts" hint={`Hold ${isMac ? "Option (⌥)" : "Alt"} and press a key.`} checked={keyboard.shortcuts} onChange={(shortcuts) => setKeyboard({ shortcuts })} />
+      <div className={`mt-4 divide-y divide-[var(--os-line)] rounded-xl ring-1 ring-[var(--os-line)] ${keyboard.shortcuts ? "" : "opacity-50"}`}>
+        {SHORTCUTS.map((s) => (
+          <div key={s.keys} className="flex items-center justify-between gap-3 px-3 py-2 text-[13px]">
+            <span>{s.label}</span>
+            <kbd className="kbd">
+              {OPTION_KEY}
+              {s.keys}
+            </kbd>
+          </div>
+        ))}
+      </div>
+      <div className="mt-5 text-[13px]">
+        <div className="mb-1.5">key tester</div>
+        <div
+          tabIndex={0}
+          role="textbox"
+          aria-label="Key tester: press any key"
+          onKeyDown={(e) => {
+            if (e.key === "Tab" || e.key === "Escape") return;
+            e.preventDefault();
+            e.stopPropagation();
+            setPressed({ key: e.key === " " ? "Space" : e.key, code: e.code, mods: [e.metaKey && "⌘", e.ctrlKey && "Ctrl", e.altKey && OPTION_KEY.replace("+", ""), e.shiftKey && "Shift"].filter(Boolean) });
+          }}
+          className="disc-lcd flex min-h-[44px] items-center justify-center rounded-lg px-3 py-2 font-mono text-[13px] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]"
+        >
+          {pressed ? `${[...pressed.mods, pressed.key].join(" + ")}  ·  ${pressed.code}` : "click here, then press any key"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Pointer: classic or large arrows, and 90s mouse trails */
+function PointerTrails() {
+  const [pointer] = usePrefs(POINTER_PREFS);
+  const [points, setPoints] = useState([]);
+  const enabled = pointer.trails && !prefersReducedMotion() && window.matchMedia?.("(pointer: fine)").matches;
+
+  useEffect(() => {
+    if (!enabled) return;
+    let last = null;
+    let trail = [];
+    let id;
+    const onMove = (e) => {
+      if (e.pointerType === "mouse") last = { x: e.clientX, y: e.clientY };
+    };
+    const tick = () => {
+      if (last) trail = [last, ...trail].slice(0, 7);
+      else trail = trail.slice(0, -1);
+      last = null;
+      setPoints(trail);
+      id = requestAnimationFrame(() => setTimeout(tick, 33));
+    };
+    window.addEventListener("pointermove", onMove);
+    id = requestAnimationFrame(tick);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      cancelAnimationFrame(id);
+      setPoints([]);
+    };
+  }, [enabled]);
+
+  if (!enabled) return null;
+  const zoom = pageZoom();
+  return (
+    <div className="no-print pointer-events-none fixed inset-0 z-[96]" aria-hidden="true">
+      {points.slice(1).map((p, i) => (
+        <span key={i} className="pointer-ghost" data-size={pointer.cursor === "large" ? "large" : "normal"} style={{ left: p.x / zoom, top: p.y / zoom, opacity: 0.55 - i * 0.08 }} />
+      ))}
+    </div>
+  );
+}
+
+function PointerPane() {
+  const [pointer, setPointer] = usePrefs(POINTER_PREFS);
+  const fine = window.matchMedia("(pointer: fine)").matches;
+  const hover = window.matchMedia("(hover: hover)").matches;
+  return (
+    <div className="p-5">
+      <PaneHeader title="pointer">The arrow you point with.</PaneHeader>
+      <PrefRows rows={[["pointing device", fine ? (hover ? "mouse or trackpad" : "pen") : "touch screen"]]} />
+      <div className="mt-5 flex flex-col gap-5">
+        <PrefChoice
+          label="pointer"
+          value={pointer.cursor}
+          onChange={(cursor) => setPointer({ cursor })}
+          options={[
+            { id: "system", label: "system" },
+            { id: "classic", label: "classic arrow" },
+            { id: "large", label: "large arrow" },
+          ]}
+        />
+        <PrefSwitch label="pointer trails" hint="Ghost arrows follow the pointer, like a 1990s laptop screen." checked={pointer.trails} onChange={(trails) => setPointer({ trails })} />
+        {!fine && <p className="text-[12px] text-[var(--os-ink-3)]">Touch screens don&rsquo;t show a pointer, so these apply when you use a mouse or trackpad.</p>}
+      </div>
+    </div>
+  );
+}
+
+/* Printing: a clean copy of the window, without the desktop around it */
+function printPage() {
+  window.dispatchEvent(new Event("mh-preferences-close"));
+  window.dispatchEvent(new Event("mh-dashboard-close"));
+  setTimeout(() => window.print(), 150);
+}
+
+function PrintingPane() {
+  const [print, setPrint] = usePrefs(PRINT_PREFS);
+  return (
+    <div className="p-5">
+      <PaneHeader title="printing">Prints the page in the window, without the desktop, dock, or wallpaper. Your browser&rsquo;s print dialog picks the printer, or saves a PDF.</PaneHeader>
+      <div className="flex flex-col gap-5">
+        <PrefSwitch label="black and white" hint="Saves color ink." checked={print.mono} onChange={(mono) => setPrint({ mono })} />
+        <PrefSwitch label="print link addresses" hint="Shows where each link goes, after the link." checked={print.links} onChange={(links) => setPrint({ links })} />
+      </div>
+      <div className="mt-5 flex justify-end">
+        <button type="button" onClick={printPage} className={paneButtonPrimary}>
+          print this page…
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* Voice: the browser's text-to-speech voices */
+function useVoices() {
+  const [voices, setVoices] = useState(() => (window.speechSynthesis ? window.speechSynthesis.getVoices() : []));
+  useEffect(() => {
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    const update = () => setVoices(synth.getVoices());
+    synth.addEventListener?.("voiceschanged", update);
+    return () => synth.removeEventListener?.("voiceschanged", update);
+  }, []);
+  return voices;
+}
+
+function speak(text, prefs = readPrefs(VOICE_PREFS)) {
+  const synth = window.speechSynthesis;
+  if (!synth || !soundState.on) return false;
+  synth.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  const voice = synth.getVoices().find((v) => v.voiceURI === prefs.voice);
+  if (voice) utterance.voice = voice;
+  else utterance.lang = readPrefs(REGION_PREFS).locale;
+  utterance.rate = Math.max(0.5, Math.min(2, prefs.rate));
+  utterance.volume = soundState.volume / 100;
+  synth.speak(utterance);
+  return true;
+}
+
+// "It's 3 o'clock": on the hour, when Voice → announce the time is on
+function useTimeAnnouncements() {
+  const [voice] = usePrefs(VOICE_PREFS);
+  useEffect(() => {
+    if (!voice.announce) return;
+    let lastHour = null;
+    const id = setInterval(() => {
+      const now = new Date();
+      const { h, m } = clockParts(now);
+      if (m !== 0 || lastHour === h) return;
+      lastHour = h;
+      speak(`It's ${formatTime(now)}.`, voice);
+    }, 15000);
+    return () => clearInterval(id);
+  }, [voice]);
+}
+
+function VoicePane() {
+  const [voice, setVoice] = usePrefs(VOICE_PREFS);
+  const voices = useVoices();
+  const sound = useSound();
+  const [speaking, setSpeaking] = useState(false);
+  const supported = !!window.speechSynthesis;
+  const sorted = [...voices].sort((a, b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name));
+
+  const say = (text) => {
+    if (!speak(text, voice)) return;
+    setSpeaking(true);
+    const check = setInterval(() => {
+      if (!window.speechSynthesis.speaking) {
+        setSpeaking(false);
+        clearInterval(check);
+      }
+    }, 300);
+  };
+
+  const readPage = () => {
+    const text = window.getSelection()?.toString().trim() || document.querySelector("main")?.innerText || "";
+    say(text.slice(0, 4000));
+  };
+
+  return (
+    <div className="p-5">
+      <PaneHeader title="voice">comcen os can read to you, using your browser&rsquo;s voices.</PaneHeader>
+      {!supported ? (
+        <p className="text-[13px] text-[var(--os-ink-2)]">This browser doesn&rsquo;t have speech.</p>
+      ) : (
+        <div className="flex flex-col gap-5">
+          <label className="flex flex-col gap-1.5 text-[13px]">
+            <span>voice</span>
+            <select
+              value={voice.voice}
+              onChange={(e) => setVoice({ voice: e.target.value })}
+              className="w-full rounded-lg bg-[var(--os-card)] px-2.5 py-1.5 ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]"
+            >
+              <option value="">automatic (matches your language)</option>
+              {sorted.map((v) => (
+                <option key={v.voiceURI} value={v.voiceURI}>
+                  {v.name} · {v.lang}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-3 text-[13px]">
+            <span className="w-20 shrink-0">speed</span>
+            <span className="text-[12px] text-[var(--os-ink-3)]">slow</span>
+            <input type="range" min="0.5" max="2" step="0.1" value={voice.rate} onChange={(e) => setVoice({ rate: Number(e.target.value) })} className="os-range flex-1" />
+            <span className="text-[12px] text-[var(--os-ink-3)]">fast</span>
+          </label>
+          <PrefSwitch label="announce the time" hint="Says the time every hour, on the hour, while comcen os is open." checked={voice.announce} onChange={(announce) => setVoice({ announce })} />
+          {!sound.on && <p className="text-[12px] text-[var(--os-warn)]">Sound is off, so comcen os stays quiet.</p>}
+          <div className="flex flex-wrap justify-end gap-2">
+            {speaking ? (
+              <button
+                type="button"
+                onClick={() => {
+                  window.speechSynthesis.cancel();
+                  setSpeaking(false);
+                }}
+                className={paneButton}
+              >
+                stop
+              </button>
+            ) : (
+              <>
+                <button type="button" onClick={() => say("Hello. Welcome to comcen os.")} className={paneButton}>
+                  test
+                </button>
+                <button type="button" onClick={readPage} className={paneButtonPrimary}>
+                  read this page
+                </button>
+              </>
+            )}
+          </div>
+          <p className="text-[12px] text-[var(--os-ink-3)]">Select some text first to read just that.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Boot Drive */
+function BootPane() {
+  const [boot, setBoot] = usePrefs(BOOT_PREFS);
+  return (
+    <div className="p-5">
+      <PaneHeader title="boot drive">How comcen os starts up.</PaneHeader>
+      <div className="rounded-xl p-3 ring-1 ring-[var(--os-accent)]">
+        <div className="flex items-center gap-3 text-[13px]">
+          <HardDrive className="h-8 w-8 shrink-0 text-[var(--os-accent)]" strokeWidth={1.4} aria-hidden="true" />
+          <span className="min-w-0">
+            <span className="block font-semibold">COMCEN HD</span>
+            <span className="block truncate text-[12px] text-[var(--os-ink-3)]">comcen os I {OS_VERSION} · Seagate Cheetah 18.2 GB Ultra2 SCSI</span>
+          </span>
+        </div>
+      </div>
+      <div className="mt-5 flex flex-col gap-5">
+        <PrefChoice
+          label="show the startup screen"
+          value={boot.when}
+          onChange={(when) => setBoot({ when })}
+          options={[
+            { id: "first", label: "first visit" },
+            { id: "always", label: "every visit" },
+            { id: "never", label: "never" },
+          ]}
+        />
+        <PrefSwitch label="play the startup sounds" hint="The BIOS beeps, drive sounds, and chime." checked={boot.sound} onChange={(sound) => setBoot({ sound })} />
+      </div>
+      <div className="mt-5 flex justify-end">
+        <button type="button" onClick={() => window.dispatchEvent(new Event("mh-reboot"))} className={paneButton}>
+          restart now…
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* Accessibility */
+function AccessibilityPane() {
+  const [access, setAccess] = usePrefs(ACCESS_PREFS);
+  const deviceReduces = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return (
+    <div className="p-5">
+      <PaneHeader title="accessibility">Make comcen os easier to see and use.</PaneHeader>
+      <div className="flex flex-col gap-5">
+        <PrefSwitch
+          label="reduce motion"
+          hint={deviceReduces ? "Your device already asks for less motion, and comcen os follows it." : "Stops animations, the startup screen, and screen saver movement."}
+          checked={access.reduceMotion}
+          onChange={(reduceMotion) => setAccess({ reduceMotion })}
+        />
+        <PrefSwitch label="increase contrast" hint="Darker text and stronger outlines." checked={access.contrast} onChange={(contrast) => setAccess({ contrast })} />
+        <PrefSwitch label="reduce transparency" hint="Solid menu bar, dock, and panels instead of see-through ones." checked={access.transparency} onChange={(transparency) => setAccess({ transparency })} />
+        <PrefSwitch label="underline links" checked={access.underline} onChange={(underline) => setAccess({ underline })} />
+        <p className="text-[12px] text-[var(--os-ink-3)]">
+          Text size is in{" "}
+          <button type="button" onClick={() => openPreferences("displays")} className="underline underline-offset-2 hover:text-[var(--os-ink)]">
+            Displays
+          </button>
+          , and having pages read aloud is in{" "}
+          <button type="button" onClick={() => openPreferences("voice")} className="underline underline-offset-2 hover:text-[var(--os-ink)]">
+            Voice
+          </button>
+          .
+        </p>
+      </div>
+    </div>
+  );
+}
+
 const PREF_SECTIONS = [
   {
     title: "Desk",
@@ -2696,13 +3561,13 @@ const PREF_SECTIONS = [
   {
     title: "Devices",
     panes: [
-      { id: "bluetooth", label: "Bluetooth", Icon: Bluetooth },
-      { id: "discs", label: "Discs", Icon: Disc },
-      { id: "displays", label: "Displays", Icon: Monitor },
-      { id: "power", label: "Power", Icon: BatteryCharging },
-      { id: "keyboard", label: "Keyboard", Icon: Keyboard },
-      { id: "pointer", label: "Pointer", Icon: Mouse },
-      { id: "printing", label: "Printing", Icon: Printer },
+      { id: "bluetooth", label: "Bluetooth", Icon: Bluetooth, ready: true },
+      { id: "discs", label: "Discs", Icon: Disc, ready: true },
+      { id: "displays", label: "Displays", Icon: Monitor, ready: true },
+      { id: "power", label: "Power", Icon: BatteryCharging, ready: true },
+      { id: "keyboard", label: "Keyboard", Icon: Keyboard, ready: true },
+      { id: "pointer", label: "Pointer", Icon: Mouse, ready: true },
+      { id: "printing", label: "Printing", Icon: Printer, ready: true },
       { id: "sound", label: "Sound", Icon: Volume2, ready: true },
     ],
   },
@@ -2721,9 +3586,9 @@ const PREF_SECTIONS = [
       { id: "users", label: "Users", Icon: Users, ready: true },
       { id: "datetime", label: "Date & Time", Icon: Clock3, ready: true },
       { id: "updates", label: "Updates", Icon: RefreshCw, ready: true },
-      { id: "voice", label: "Voice", Icon: Mic },
-      { id: "boot", label: "Boot Drive", Icon: HardDrive },
-      { id: "access", label: "Accessibility", Icon: Accessibility },
+      { id: "voice", label: "Voice", Icon: Mic, ready: true },
+      { id: "boot", label: "Boot Drive", Icon: HardDrive, ready: true },
+      { id: "access", label: "Accessibility", Icon: Accessibility, ready: true },
     ],
   },
 ];
@@ -2809,10 +3674,13 @@ function SystemPreferences() {
       setPane(e.detail?.pane || "all");
     };
     const onChanged = (e) => setCurrent(e.detail);
+    const onClose = () => setPane(null);
     window.addEventListener("mh-preferences-open", onOpen);
+    window.addEventListener("mh-preferences-close", onClose);
     window.addEventListener("mh-wallpaper-changed", onChanged);
     return () => {
       window.removeEventListener("mh-preferences-open", onOpen);
+      window.removeEventListener("mh-preferences-close", onClose);
       window.removeEventListener("mh-wallpaper-changed", onChanged);
     };
   }, []);
@@ -2980,6 +3848,16 @@ function SystemPreferences() {
           {pane === "network" && <NetworkPane />}
           {pane === "mesh" && <MeshPane />}
           {pane === "sharing" && <SharingPane />}
+          {pane === "bluetooth" && <BluetoothPane />}
+          {pane === "discs" && <DiscsPane />}
+          {pane === "displays" && <DisplaysPane />}
+          {pane === "power" && <PowerPane />}
+          {pane === "keyboard" && <KeyboardPane />}
+          {pane === "pointer" && <PointerPane />}
+          {pane === "printing" && <PrintingPane />}
+          {pane === "voice" && <VoicePane />}
+          {pane === "boot" && <BootPane />}
+          {pane === "access" && <AccessibilityPane />}
           {pane === "privacy" && <PrivacyPane />}
 
           {pane === "wallpaper" && (
@@ -3808,6 +4686,7 @@ function SharedShell({ currentPage, children }) {
   const [region] = usePrefs(REGION_PREFS);
   const [clockPrefs] = usePrefs(TIME_PREFS);
   const [network] = usePrefs(NETWORK_PREFS);
+  const [power] = usePrefs(POWER_PREFS);
   const [win] = usePrefs(WINDOW_PREFS);
   const [maximized, setMaximized] = useState(win.openMaximized);
   const reduceMotion = prefersReducedMotion() || !win.animate;
@@ -3851,7 +4730,11 @@ function SharedShell({ currentPage, children }) {
         <div className="flex items-center gap-0.5">
           <UserMenuButton />
           <SoundToggle />
-          <BatteryIndicator battery={battery} />
+          {battery && (
+            <button type="button" onClick={() => openPreferences("power")} className="rounded-full hover:bg-[var(--os-hover)]" title="Power preferences">
+              <BatteryIndicator battery={battery} percent={power.percent} />
+            </button>
+          )}
           {network.menubar && (
             <button type="button" onClick={() => openPreferences("network")} className="rounded-full hover:bg-[var(--os-hover)]" title="Network preferences">
               <SignalIndicator signal={signal} />
@@ -5941,9 +6824,10 @@ function writeStore(store, key, value) {
 }
 
 function prefersReducedMotion() {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+  if (typeof window === "undefined") return false;
+  // The device's setting, or Accessibility → reduce motion, or Power → low power mode
+  return Boolean(
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || readPrefs(ACCESS_PREFS).reduceMotion || readPrefs(POWER_PREFS).lowPower,
   );
 }
 
@@ -6171,7 +7055,7 @@ function BootScreen({ onDone, mode }) {
     doneRef.current = true;
     timersRef.current.forEach(clearTimeout);
     audioRef.current?.stop();
-    playSound(new Audio("/audio/comcen-boot.mp3"), 0.8).catch(() => {});
+    if (readPrefs(BOOT_PREFS).sound) playSound(new Audio("/audio/comcen-boot.mp3"), 0.8).catch(() => {});
     setLeaving(true);
     setTimeout(onDone, 600);
   };
@@ -6220,7 +7104,8 @@ function BootScreen({ onDone, mode }) {
 
   useEffect(() => {
     if (!powered) return;
-    const audio = createBootAudio();
+    // Boot Drive → startup sounds off: the same sequence, silently
+    const audio = readPrefs(BOOT_PREFS).sound ? createBootAudio() : { start() {}, play() {}, stop() {} };
     audioRef.current = audio;
     audio.start();
 
@@ -7107,6 +7992,7 @@ function radioAudio() {
 }
 
 function radioStart() {
+  discPause(); // one sound source at a time
   const audio = radioAudio();
   audio.src = RADIO_STATIONS[radio.station].stream;
   applyMedia(audio);
@@ -7623,8 +8509,9 @@ function Widgets({ disabled }) {
   // Phones: one centered column you scroll, no dragging
   const stacked = viewport.w < 640;
   const areaTop = 44; // under the menu bar
-  const areaW = viewport.w;
-  const areaH = viewport.h - areaTop;
+  const zoom = pageZoom(); // Displays → interface size scales the page, so measure in its units
+  const areaW = viewport.w / zoom;
+  const areaH = viewport.h / zoom - areaTop;
 
   useEffect(() => {
     const onToggle = () => setDashboard((d) => !d);
@@ -7632,11 +8519,13 @@ function Widgets({ disabled }) {
     const onWindow = (e) => setWindowOpen(e.detail === "open");
     const onRoute = () => setDashboard(false);
     window.addEventListener("mh-dashboard-toggle", onToggle);
+    window.addEventListener("mh-dashboard-close", onRoute);
     window.addEventListener("mh-widgets-desk", onDeskChange);
     window.addEventListener("mh-window-state", onWindow);
     window.addEventListener("hashchange", onRoute);
     return () => {
       window.removeEventListener("mh-dashboard-toggle", onToggle);
+      window.removeEventListener("mh-dashboard-close", onRoute);
       window.removeEventListener("mh-widgets-desk", onDeskChange);
       window.removeEventListener("mh-window-state", onWindow);
       window.removeEventListener("hashchange", onRoute);
@@ -7708,8 +8597,8 @@ function Widgets({ disabled }) {
   const onPointerMove = (e) => {
     const p = press.current;
     if (!p || p.pointerId !== e.pointerId) return;
-    const dx = e.clientX - p.sx;
-    const dy = e.clientY - p.sy;
+    const dx = (e.clientX - p.sx) / zoom;
+    const dy = (e.clientY - p.sy) / zoom;
     if (!p.dragging) {
       if (Math.hypot(dx, dy) < WIDGET_DRAG_SLOP) return;
       clearTimeout(p.timer);
@@ -7842,9 +8731,14 @@ function Widgets({ disabled }) {
 export default function App() {
   const route = useHashRoute();
   useAutoUpdateCheck();
-  const [booting, setBooting] = useState(
-    () => !readStore("localStorage", "mh-booted") && !prefersReducedMotion(),
-  );
+  // Boot Drive decides: the startup screen on the first visit, every visit, or never
+  const [booting, setBooting] = useState(() => {
+    const { when } = readPrefs(BOOT_PREFS);
+    if (when === "never" || prefersReducedMotion()) return false;
+    return when === "always" || !readStore("localStorage", "mh-booted");
+  });
+  useKeyboardShortcuts();
+  useTimeAnnouncements();
   // First visits wait at the power-on screen (browsers need a key or click before sound can play).
   // Reboot starts straight away; Power shows the shut-down screen.
   const [bootMode, setBootMode] = useState("gate");
@@ -7893,6 +8787,8 @@ export default function App() {
       {page}
       <Widgets disabled={booting} />
       <ScreenSaverHost disabled={booting} />
+      <NightShift />
+      <PointerTrails />
       {booting && (
         <BootScreen
           key={bootMode}
