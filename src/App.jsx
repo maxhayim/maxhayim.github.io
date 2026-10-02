@@ -1079,7 +1079,7 @@ const CALENDARS = [
 const DOCK_PREFS = {
   cookie: "comcen_dock",
   event: "mh-dock-changed",
-  defaults: { size: "medium", labels: true, autohide: false, stay: true },
+  defaults: { size: "medium", labels: true, autohide: false, stay: false }, // the dock springs back home unless you choose otherwise
   allowed: { size: ["small", "medium", "large"] },
 };
 const WINDOW_PREFS = {
@@ -6905,64 +6905,16 @@ function ScreenSaverPane() {
   );
 }
 
-function SharedShell({ currentPage, children }) {
-  const currentYear = new Date().getFullYear();
+// The menu bar lives outside the pages, so switching pages never redraws it (no flicker)
+function MenuBar() {
   const now = useClock();
   const battery = useBattery();
   const signal = useSignal();
-  // "open", "minimized" (tucked into the dock), or "closed"
-  const [windowState, setWindowState] = useState("open");
   const [region] = usePrefs(REGION_PREFS);
   const [clockPrefs] = usePrefs(TIME_PREFS);
   const [network] = usePrefs(NETWORK_PREFS);
   const [power] = usePrefs(POWER_PREFS);
-  const [win] = usePrefs(WINDOW_PREFS);
-  const [maximized, setMaximized] = useState(win.openMaximized);
-  const reduceMotion = prefersReducedMotion() || !win.animate;
-  const windowDrag = useDragControls();
-  const windowRef = useRef(null);
-  // The window is part of a scrolling page, so it stays fully on screen side to side, and its top (the title bar)
-  // stays between the menu bar and 120px above the bottom of the screen, measured on the page
-  const windowLimits = (rect) => {
-    const box = screenBox(8);
-    const scroll = window.scrollY;
-    return { left: box.left, right: box.right, top: box.top - scroll, bottom: rect.bottom + (window.innerHeight - 120 - scroll - rect.top) };
-  };
-  const { x: winX, y: winY, settle: settleWindow, reset: resetWindow } = useGridPosition({ storageKey: "comcen_window_pos", limits: windowLimits, ref: windowRef, stay: win.stay });
-  useEffect(() => {
-    window.addEventListener("mh-window-reset", resetWindow);
-    return () => window.removeEventListener("mh-window-reset", resetWindow);
-  }, [resetWindow]);
-  usePageMeta(currentPage);
-
-  const page = OS_PAGES.find((p) => p.page === currentPage) || OS_PAGES[0];
   const time = formatTime(now, { region, time: clockPrefs, seconds: clockPrefs.seconds });
-  const isOpen = windowState === "open";
-
-  const minimize = () => {
-    setWindowState("minimized");
-    window.scrollTo(0, 0);
-  };
-  const close = () => {
-    setWindowState("closed");
-    setMaximized(false);
-    window.scrollTo(0, 0);
-  };
-  const restore = () => setWindowState("open");
-
-  // Desktop widgets step out from behind the window once it's minimized or closed
-  useEffect(() => {
-    window.dispatchEvent(new CustomEvent("mh-window-state", { detail: windowState }));
-  }, [windowState]);
-  const toggleMaximize = () => {
-    setMaximized((m) => !m);
-    window.scrollTo(0, 0);
-  };
-
-  const hiddenPose =
-    windowState === "minimized"
-      ? { opacity: 0, scale: 0.92, y: 60, transitionEnd: { display: "none" } }
-      : { opacity: 0, scale: 0.97, y: 0, transitionEnd: { display: "none" } };
 
   return (
     <>
@@ -7028,6 +6980,63 @@ function SharedShell({ currentPage, children }) {
           </button>
         </div>
       </header>
+    </>
+  );
+}
+
+function SharedShell({ currentPage, children }) {
+  const currentYear = new Date().getFullYear();
+  // "open", "minimized" (tucked into the dock), or "closed"
+  const [windowState, setWindowState] = useState("open");
+  const [win] = usePrefs(WINDOW_PREFS);
+  const [maximized, setMaximized] = useState(win.openMaximized);
+  const reduceMotion = prefersReducedMotion() || !win.animate;
+  const windowDrag = useDragControls();
+  const windowRef = useRef(null);
+  // The window is part of a scrolling page, so it stays fully on screen side to side, and its top (the title bar)
+  // stays between the menu bar and 120px above the bottom of the screen, measured on the page
+  const windowLimits = (rect) => {
+    const box = screenBox(8);
+    const scroll = window.scrollY;
+    return { left: box.left, right: box.right, top: box.top - scroll, bottom: rect.bottom + (window.innerHeight - 120 - scroll - rect.top) };
+  };
+  const { x: winX, y: winY, settle: settleWindow, reset: resetWindow } = useGridPosition({ storageKey: "comcen_window_pos", limits: windowLimits, ref: windowRef, stay: win.stay });
+  useEffect(() => {
+    window.addEventListener("mh-window-reset", resetWindow);
+    return () => window.removeEventListener("mh-window-reset", resetWindow);
+  }, [resetWindow]);
+  usePageMeta(currentPage);
+
+  const page = OS_PAGES.find((p) => p.page === currentPage) || OS_PAGES[0];
+  const isOpen = windowState === "open";
+
+  const minimize = () => {
+    setWindowState("minimized");
+    window.scrollTo(0, 0);
+  };
+  const close = () => {
+    setWindowState("closed");
+    setMaximized(false);
+    window.scrollTo(0, 0);
+  };
+  const restore = () => setWindowState("open");
+
+  // Desktop widgets step out from behind the window once it's minimized or closed
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("mh-window-state", { detail: windowState }));
+  }, [windowState]);
+  const toggleMaximize = () => {
+    setMaximized((m) => !m);
+    window.scrollTo(0, 0);
+  };
+
+  const hiddenPose =
+    windowState === "minimized"
+      ? { opacity: 0, scale: 0.92, y: 60, transitionEnd: { display: "none" } }
+      : { opacity: 0, scale: 0.97, y: 0, transitionEnd: { display: "none" } };
+
+  return (
+    <>
 
       <div
         onContextMenu={(e) => {
@@ -11129,6 +11138,7 @@ export default function App() {
 
   return (
     <>
+      <MenuBar />
       {page}
       <Widgets disabled={booting} />
       <ScreenSaverHost disabled={booting} />
