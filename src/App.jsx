@@ -717,20 +717,28 @@ function SystemMenu() {
 const GRID = 16;
 const SETTLE = { type: "spring", stiffness: 520, damping: 42 };
 
-function useGridPosition({ storageKey, limits, ref: givenRef }) {
+function useGridPosition({ storageKey, limits, ref: givenRef, stay = true }) {
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const ownRef = useRef(null);
   const ref = givenRef || ownRef;
   const limitsRef = useRef(limits);
+  const stayRef = useRef(stay);
   useEffect(() => {
     limitsRef.current = limits;
+    stayRef.current = stay;
   });
 
   const settle = useCallback(
     ({ instant = false, save = true } = {}) => {
       const el = ref.current;
       if (!el || !el.offsetParent) return;
+      // "Spring back" setting: let go and it returns home
+      if (!stayRef.current) {
+        animate(x, 0, SETTLE);
+        animate(y, 0, SETTLE);
+        return;
+      }
       const zoom = pageZoom();
       const rect = el.getBoundingClientRect();
       const box = limitsRef.current(rect);
@@ -765,9 +773,13 @@ function useGridPosition({ storageKey, limits, ref: givenRef }) {
     animate(y, 0, SETTLE);
   }, [x, y, storageKey]);
 
+  useEffect(() => {
+    if (!stay) reset();
+  }, [stay, reset]);
+
   // Start where it was left, and stay on screen when the window changes size
   useEffect(() => {
-    const saved = storageKey ? readJSON(storageKey, null) : null;
+    const saved = storageKey && stayRef.current ? readJSON(storageKey, null) : null;
     if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
       x.set(saved.x);
       y.set(saved.y);
@@ -793,7 +805,7 @@ function Dock({ currentPage, windowState, onMinimize, onRestore }) {
   const controls = useDragControls();
   const boundsRef = useRef(null);
   const [dock] = usePrefs(DOCK_PREFS);
-  const { x: dockX, y: dockY, ref: dockRef, settle: settleDock, reset: resetDock } = useGridPosition({ storageKey: "comcen_dock_pos", limits: () => screenBox(4) });
+  const { x: dockX, y: dockY, ref: dockRef, settle: settleDock, reset: resetDock } = useGridPosition({ storageKey: "comcen_dock_pos", limits: () => screenBox(4), stay: dock.stay });
   useEffect(() => {
     window.addEventListener("mh-dock-reset", resetDock);
     return () => window.removeEventListener("mh-dock-reset", resetDock);
@@ -836,7 +848,7 @@ function Dock({ currentPage, windowState, onMinimize, onRestore }) {
               e.preventDefault();
               controls.start(e);
             }}
-            title="Drag the dock anywhere; it settles onto the grid."
+            title={dock.stay ? "Drag the dock anywhere; it settles onto the grid." : "Drag the dock; it springs back when you let go."}
             aria-hidden="true"
           />
           {OS_PAGES.map(({ page, label, href, Icon }) => {
@@ -1066,13 +1078,13 @@ const CALENDARS = [
 const DOCK_PREFS = {
   cookie: "comcen_dock",
   event: "mh-dock-changed",
-  defaults: { size: "medium", labels: true, autohide: false },
+  defaults: { size: "medium", labels: true, autohide: false, stay: true },
   allowed: { size: ["small", "medium", "large"] },
 };
 const WINDOW_PREFS = {
   cookie: "comcen_windows",
   event: "mh-windows-changed",
-  defaults: { doubleClick: "maximize", openMaximized: false, animate: true },
+  defaults: { doubleClick: "maximize", openMaximized: false, animate: true, stay: true },
   allowed: { doubleClick: ["maximize", "minimize", "none"] },
 };
 const REGION_PREFS = {
@@ -1346,15 +1358,23 @@ function DockPane() {
           checked={dock.autohide}
           onChange={(autohide) => setDock({ autohide })}
         />
-        <div className="flex items-center justify-between gap-3 text-[13px]">
-          <span>
-            <span className="block">dock position</span>
-            <span className="block text-[12px] text-[var(--os-ink-3)]">Drag the dock by its speaker grille; it settles onto an invisible grid and stays on screen.</span>
-          </span>
-          <button type="button" onClick={() => window.dispatchEvent(new Event("mh-dock-reset"))} className="shrink-0 rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
-            put it back
-          </button>
-        </div>
+        <PrefSwitch
+          label="dock stays where you drop it"
+          hint={
+            dock.stay
+              ? "Drag the dock by its speaker grille; it settles onto an invisible grid and stays on screen."
+              : "The dock springs back to the bottom of the screen when you let go."
+          }
+          checked={dock.stay}
+          onChange={(stay) => setDock({ stay })}
+        />
+        {dock.stay && (
+          <div className="flex justify-end">
+            <button type="button" onClick={() => window.dispatchEvent(new Event("mh-dock-reset"))} className="rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
+              put the dock back
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1388,15 +1408,23 @@ function WindowsPane() {
           checked={win.animate}
           onChange={(animate) => setWin({ animate })}
         />
-        <div className="flex items-center justify-between gap-3 text-[13px]">
-          <span>
-            <span className="block">window position</span>
-            <span className="block text-[12px] text-[var(--os-ink-3)]">Drag a window by its title bar; it settles onto an invisible grid and stays on screen.</span>
-          </span>
-          <button type="button" onClick={() => window.dispatchEvent(new Event("mh-window-reset"))} className="shrink-0 rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
-            center
-          </button>
-        </div>
+        <PrefSwitch
+          label="windows stay where you drop them"
+          hint={
+            win.stay
+              ? "Drag a window by its title bar; it settles onto an invisible grid and stays on screen."
+              : "Windows spring back to their usual place when you let go."
+          }
+          checked={win.stay}
+          onChange={(stay) => setWin({ stay })}
+        />
+        {win.stay && (
+          <div className="flex justify-end">
+            <button type="button" onClick={() => window.dispatchEvent(new Event("mh-window-reset"))} className="rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
+              center the window
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -5733,7 +5761,8 @@ function SystemPreferences() {
 
 // The System Preferences window itself: it moves on the grid and stays on screen
 function PrefsWindow({ panelRef, drag, pane, paneInfo, setPane, current }) {
-  const { x, y, settle } = useGridPosition({ limits: () => screenBox(8), ref: panelRef });
+  const [win] = usePrefs(WINDOW_PREFS);
+  const { x, y, settle } = useGridPosition({ limits: () => screenBox(8), ref: panelRef, stay: win.stay });
 
   return (
       <motion.div
@@ -6719,7 +6748,7 @@ function SharedShell({ currentPage, children }) {
     const scroll = window.scrollY;
     return { left: box.left, right: box.right, top: box.top - scroll, bottom: rect.bottom + (window.innerHeight - 120 - scroll - rect.top) };
   };
-  const { x: winX, y: winY, settle: settleWindow, reset: resetWindow } = useGridPosition({ storageKey: "comcen_window_pos", limits: windowLimits, ref: windowRef });
+  const { x: winX, y: winY, settle: settleWindow, reset: resetWindow } = useGridPosition({ storageKey: "comcen_window_pos", limits: windowLimits, ref: windowRef, stay: win.stay });
   useEffect(() => {
     window.addEventListener("mh-window-reset", resetWindow);
     return () => window.removeEventListener("mh-window-reset", resetWindow);
