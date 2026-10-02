@@ -5974,7 +5974,7 @@ function PrefsWindow({ panelRef, drag, pane, paneInfo, setPane, current }) {
       >
         {/* Title bar: drag to move; it settles onto the grid, on screen */}
         <div
-          className="os-titlebar-grab relative flex items-center gap-3 border-b border-[var(--os-line)] px-4 py-2.5"
+          className="os-titlebar-grab relative flex shrink-0 items-center gap-3 border-b border-[var(--os-line)] px-4 py-2.5"
           onPointerDown={(e) => {
             if (e.pointerType === "touch" || e.target.closest("button")) return;
             drag.start(e);
@@ -5989,7 +5989,8 @@ function PrefsWindow({ panelRef, drag, pane, paneInfo, setPane, current }) {
         </div>
 
         {/* Toolbar */}
-        <div className="flex items-center gap-2 overflow-x-auto border-b border-[var(--os-line)] bg-[var(--os-desk)]/40 px-3 py-2">
+        {/* Never squeezed by a long pane: the toolbar keeps its height and scrolls sideways when narrow */}
+        <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--os-line)] bg-[var(--os-desk)]/40 px-3 py-2">
           <button
             type="button"
             onClick={() => setPane("all")}
@@ -6125,7 +6126,7 @@ function PrefsWindow({ panelRef, drag, pane, paneInfo, setPane, current }) {
           )}
         </div>
 
-        <p className="prefs-footer border-t border-[var(--os-line)] px-5 py-2.5 text-[12px] text-[var(--os-ink-3)]">
+        <p className="prefs-footer shrink-0 border-t border-[var(--os-line)] px-5 py-2.5 text-[12px] text-[var(--os-ink-3)]">
           {pane === "modem" ? (
             "These settings are managed by Prodigy."
           ) : pane === "privacy" ? (
