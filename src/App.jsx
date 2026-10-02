@@ -484,8 +484,12 @@ function SignalIndicator({ signal }) {
   );
 }
 
-function formatMenuDate(d, locale = "en-US") {
-  if (locale !== "en-US") return d.toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric" });
+function formatMenuDate(d, { region = readPrefs(REGION_PREFS), time = readPrefs(TIME_PREFS) } = {}) {
+  const locale = region.locale;
+  const timeZone = zoneOf(time);
+  if (locale !== "en-US" || time.calendar !== "gregory" || timeZone) {
+    return d.toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric", calendar: time.calendar, timeZone });
+  }
   const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
   const month = d.toLocaleDateString("en-US", { month: "short" });
   return `${weekday} ${month} ${d.getDate()}`;
@@ -534,15 +538,16 @@ function usePopover() {
   return { open, setOpen, ref };
 }
 
-function AnalogClock({ now }) {
-  const s = now.getSeconds();
-  const m = now.getMinutes() + s / 60;
-  const h = (now.getHours() % 12) + m / 60;
+function AnalogClock({ now, time, className = "h-[18px] w-[18px]" }) {
+  const parts = clockParts(now, time);
+  const s = parts.s;
+  const m = parts.m + s / 60;
+  const h = (parts.h % 12) + m / 60;
   const hand = (deg, len, width, color) => (
     <line x1="12" y1="12" x2="12" y2={12 - len} stroke={color} strokeWidth={width} strokeLinecap="round" transform={`rotate(${deg} 12 12)`} />
   );
   return (
-    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" aria-hidden="true">
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
       <circle cx="12" cy="12" r="11" fill="var(--os-card)" stroke="var(--os-line)" />
       {[0, 90, 180, 270].map((d) => (
         <line key={d} x1="12" y1="2.6" x2="12" y2="4.2" stroke="var(--os-ink-3)" strokeWidth="1" transform={`rotate(${d} 12 12)`} />
@@ -881,6 +886,35 @@ const REGION_LOCALES = [
   { id: "it", label: "Italiano" },
   { id: "pt-BR", label: "Português (Brasil)" },
   { id: "ja", label: "日本語" },
+  { id: "he", label: "עברית" },
+];
+
+const TIME_ZONES = [
+  { id: "auto", label: "automatic" },
+  { id: "America/New_York", label: "Miami · New York" },
+  { id: "America/Chicago", label: "Chicago" },
+  { id: "America/Denver", label: "Denver" },
+  { id: "America/Los_Angeles", label: "Los Angeles" },
+  { id: "Pacific/Honolulu", label: "Honolulu" },
+  { id: "Europe/London", label: "London" },
+  { id: "Europe/Paris", label: "Paris · Berlin · Rome" },
+  { id: "Asia/Jerusalem", label: "Jerusalem · Tel Aviv" },
+  { id: "Asia/Dubai", label: "Dubai" },
+  { id: "Asia/Kolkata", label: "Mumbai · Delhi" },
+  { id: "Asia/Tokyo", label: "Tokyo" },
+  { id: "Australia/Sydney", label: "Sydney" },
+  { id: "UTC", label: "UTC" },
+];
+
+const CALENDARS = [
+  { id: "gregory", label: "Gregorian" },
+  { id: "hebrew", label: "Hebrew" },
+  { id: "islamic-umalqura", label: "Islamic (Umm al-Qura)" },
+  { id: "persian", label: "Persian" },
+  { id: "buddhist", label: "Buddhist" },
+  { id: "japanese", label: "Japanese" },
+  { id: "chinese", label: "Chinese" },
+  { id: "indian", label: "Indian national" },
 ];
 
 const DOCK_PREFS = {
@@ -898,8 +932,14 @@ const WINDOW_PREFS = {
 const REGION_PREFS = {
   cookie: "comcen_region",
   event: "mh-region-changed",
-  defaults: { locale: "en-US", clock: "12", temperature: "f" },
-  allowed: { locale: REGION_LOCALES.map((l) => l.id), clock: ["12", "24"], temperature: ["f", "c"] },
+  defaults: { locale: "en-US", temperature: "f" },
+  allowed: { locale: REGION_LOCALES.map((l) => l.id), temperature: ["f", "c"] },
+};
+const TIME_PREFS = {
+  cookie: "comcen_time",
+  event: "mh-time-changed",
+  defaults: { clock: "12", seconds: false, analog: true, timeZone: "auto", calendar: "gregory" },
+  allowed: { clock: ["12", "24"], timeZone: TIME_ZONES.map((z) => z.id), calendar: CALENDARS.map((c) => c.id) },
 };
 
 function readPrefs({ cookie, defaults, allowed = {} }) {
@@ -936,14 +976,29 @@ function usePrefs(spec) {
   return [prefs, update];
 }
 
-// Times follow the Language pane: its language and 12- or 24-hour clock
-function formatTime(date, region = readPrefs(REGION_PREFS), extra = {}) {
+const zoneOf = (time) => (time.timeZone === "auto" ? undefined : time.timeZone);
+
+// Times follow Language (which language) and Date & Time (12 or 24 hours, time zone)
+function formatTime(date, { region = readPrefs(REGION_PREFS), time = readPrefs(TIME_PREFS), seconds = false, timeZone } = {}) {
   return date.toLocaleTimeString(region.locale, {
     hour: "numeric",
     minute: "2-digit",
-    hourCycle: region.clock === "24" ? "h23" : "h12",
-    ...extra,
+    ...(seconds ? { second: "2-digit" } : {}),
+    hourCycle: time.clock === "24" ? "h23" : "h12",
+    timeZone: timeZone ?? zoneOf(time),
   });
+}
+
+// Hours, minutes, and seconds for clock hands, in the chosen time zone
+function clockParts(date, time = readPrefs(TIME_PREFS)) {
+  const timeZone = zoneOf(time);
+  if (!timeZone) return { h: date.getHours(), m: date.getMinutes(), s: date.getSeconds() };
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", hour: "numeric", minute: "numeric", second: "numeric" })
+      .formatToParts(date)
+      .map((p) => [p.type, p.value]),
+  );
+  return { h: Number(parts.hour) % 24, m: Number(parts.minute), s: Number(parts.second) };
 }
 
 /* Usage statistics: Google Analytics, loaded by index.html only while this is on */
@@ -981,7 +1036,8 @@ const STORED_ITEMS = [
   { label: "sound", key: "comcen_sound" },
   { label: "dock", key: "comcen_dock" },
   { label: "windows", key: "comcen_windows" },
-  { label: "language and clock", key: "comcen_region" },
+  { label: "language", key: "comcen_region" },
+  { label: "date and time", key: "comcen_time" },
   { label: "usage statistics choice", key: "comcen_analytics" },
   { label: "desktop widgets", key: "comcen_widgets" },
   { label: "widget layout", key: "comcen_widget_layout" },
@@ -1155,15 +1211,6 @@ function LanguagePane() {
           columns={2}
         />
         <PrefChoice
-          label="clock"
-          value={region.clock}
-          onChange={(clock) => setRegion({ clock })}
-          options={[
-            { id: "12", label: `12-hour · ${formatTime(now, { ...region, clock: "12" })}` },
-            { id: "24", label: `24-hour · ${formatTime(now, { ...region, clock: "24" })}` },
-          ]}
-        />
-        <PrefChoice
           label="temperature"
           value={region.temperature}
           onChange={(temperature) => setRegion({ temperature })}
@@ -1173,7 +1220,94 @@ function LanguagePane() {
           ]}
         />
         <p className="text-[12px] text-[var(--os-ink-3)]">
-          Today: {formatMenuDate(now, region.locale)}, {formatTime(now, region)}
+          Today: <span dir="auto">{formatMenuDate(now, { region })}</span>, <span dir="auto">{formatTime(now, { region })}</span>. The clock format, time zone, and
+          calendar are in{" "}
+          <button type="button" onClick={() => openPreferences("datetime")} className="underline underline-offset-2 hover:text-[var(--os-ink)]">
+            Date &amp; Time
+          </button>
+          .
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function DateTimePane() {
+  const [time, setTime] = usePrefs(TIME_PREFS);
+  const [region] = usePrefs(REGION_PREFS);
+  const now = useClock();
+  const timeZone = zoneOf(time);
+  const deviceZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const longDate = now.toLocaleDateString(region.locale, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    calendar: time.calendar,
+    timeZone,
+  });
+  const select =
+    "w-full rounded-lg bg-[var(--os-card)] px-2.5 py-1.5 ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]";
+
+  return (
+    <div className="p-5">
+      <PaneHeader title="date & time">For the menu bar, the clock widget, the screen saver, and the Buddy List.</PaneHeader>
+
+      <div className="mb-5 flex items-center gap-4 rounded-xl p-4 ring-1 ring-[var(--os-line)]">
+        <AnalogClock now={now} time={time} className="h-16 w-16 shrink-0" />
+        <div className="min-w-0">
+          <div className="text-[28px] font-semibold leading-tight tracking-tight tabular-nums" dir="auto">
+            {formatTime(now, { region, time, seconds: true })}
+          </div>
+          <div className="truncate text-[13px] text-[var(--os-ink-2)]" dir="auto">
+            {longDate}
+          </div>
+          <div className="truncate text-[12px] text-[var(--os-ink-3)]">{timeZone || `automatic · ${deviceZone}`}</div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-5">
+        <PrefChoice
+          label="clock"
+          value={time.clock}
+          onChange={(clock) => setTime({ clock })}
+          options={[
+            { id: "12", label: `12-hour · ${formatTime(now, { region, time: { ...time, clock: "12" } })}` },
+            { id: "24", label: `24-hour · ${formatTime(now, { region, time: { ...time, clock: "24" } })}` },
+          ]}
+        />
+        <PrefSwitch label="show seconds in the menu bar" checked={time.seconds} onChange={(seconds) => setTime({ seconds })} />
+        <PrefSwitch label="show the analog clock in the menu bar" checked={time.analog} onChange={(analog) => setTime({ analog })} />
+
+        <div className="grid gap-4 text-[13px] sm:grid-cols-2">
+          <label className="flex flex-col gap-1.5">
+            <span>time zone</span>
+            <select value={time.timeZone} onChange={(e) => setTime({ timeZone: e.target.value })} className={select}>
+              {TIME_ZONES.map((z) => (
+                <option key={z.id} value={z.id}>
+                  {z.id === "auto" ? `automatic (${deviceZone})` : z.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span>calendar</span>
+            <select value={time.calendar} onChange={(e) => setTime({ calendar: e.target.value })} className={select}>
+              {CALENDARS.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <p className="text-[12px] text-[var(--os-ink-3)]">
+          The language for dates is set in{" "}
+          <button type="button" onClick={() => openPreferences("language")} className="underline underline-offset-2 hover:text-[var(--os-ink)]">
+            Language
+          </button>
+          .
         </p>
       </div>
     </div>
@@ -1306,7 +1440,7 @@ const PREF_SECTIONS = [
     title: "System",
     panes: [
       { id: "users", label: "Users", Icon: Users },
-      { id: "clock", label: "Clock", Icon: Clock3 },
+      { id: "datetime", label: "Date & Time", Icon: Clock3, ready: true },
       { id: "updates", label: "Updates", Icon: RefreshCw },
       { id: "voice", label: "Voice", Icon: Mic },
       { id: "boot", label: "Boot Drive", Icon: HardDrive },
@@ -1561,6 +1695,7 @@ function SystemPreferences() {
           {pane === "dock" && <DockPane />}
           {pane === "windows" && <WindowsPane />}
           {pane === "language" && <LanguagePane />}
+          {pane === "datetime" && <DateTimePane />}
           {pane === "privacy" && <PrivacyPane />}
 
           {pane === "wallpaper" && (
@@ -2387,6 +2522,7 @@ function SharedShell({ currentPage, children }) {
   // "open", "minimized" (tucked into the dock), or "closed"
   const [windowState, setWindowState] = useState("open");
   const [region] = usePrefs(REGION_PREFS);
+  const [clockPrefs] = usePrefs(TIME_PREFS);
   const [win] = usePrefs(WINDOW_PREFS);
   const [maximized, setMaximized] = useState(win.openMaximized);
   const reduceMotion = prefersReducedMotion() || !win.animate;
@@ -2394,7 +2530,7 @@ function SharedShell({ currentPage, children }) {
   usePageMeta(currentPage);
 
   const page = OS_PAGES.find((p) => p.page === currentPage) || OS_PAGES[0];
-  const time = formatTime(now, region);
+  const time = formatTime(now, { region, time: clockPrefs, seconds: clockPrefs.seconds });
   const isOpen = windowState === "open";
 
   const minimize = () => {
@@ -2431,13 +2567,24 @@ function SharedShell({ currentPage, children }) {
           <SoundToggle />
           <BatteryIndicator battery={battery} />
           <SignalIndicator signal={signal} />
-          <div className="flex h-8 items-center gap-2 px-1 tabular-nums sm:px-2">
-            <span className="whitespace-nowrap">{formatMenuDate(now, region.locale)}</span>
-            <span className="hidden sm:inline-flex">
-              <AnalogClock now={now} />
+          <button
+            type="button"
+            onClick={() => openPreferences("datetime")}
+            title="Date & time preferences"
+            className="flex h-8 items-center gap-2 rounded-full px-1 tabular-nums hover:bg-[var(--os-hover)] sm:px-2"
+          >
+            <span className="whitespace-nowrap" dir="auto">
+              {formatMenuDate(now, { region, time: clockPrefs })}
             </span>
-            <span className="hidden whitespace-nowrap md:inline">{time}</span>
-          </div>
+            {clockPrefs.analog && (
+              <span className="hidden sm:inline-flex">
+                <AnalogClock now={now} time={clockPrefs} />
+              </span>
+            )}
+            <span className="hidden whitespace-nowrap md:inline" dir="auto">
+              {time}
+            </span>
+          </button>
           <button
             type="button"
             onClick={() => window.dispatchEvent(new Event("mh-power-off"))}
@@ -5208,7 +5355,7 @@ function localClock(timeZone, now) {
   const hour = Number(
     new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", hourCycle: "h23" }).format(now)
   );
-  const time = formatTime(now, undefined, { timeZone });
+  const time = formatTime(now, { timeZone });
   const zone =
     new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "long" })
       .formatToParts(now)
@@ -5505,17 +5652,31 @@ function useDashboardOpen() {
 /* Clock: after the Braun ABW 41 wall clock. Flat black hands, yellow sweep hand with a round counterweight. */
 function ClockWidget() {
   const now = useClock();
-  const s = now.getSeconds();
-  const m = now.getMinutes() + s / 60;
-  const h = (now.getHours() % 12) + m / 60;
+  const [time] = usePrefs(TIME_PREFS);
+  const [region] = usePrefs(REGION_PREFS);
+  const parts = clockParts(now, time);
+  const s = parts.s;
+  const m = parts.m + s / 60;
+  const h = (parts.h % 12) + m / 60;
   const hand = (deg, length, tail, width, color) => (
     <line x1="100" y1={100 + tail} x2="100" y2={100 - length} stroke={color} strokeWidth={width} transform={`rotate(${deg} 100 100)`} />
   );
 
   return (
+    // Click (or press Enter) for Date & Time preferences; dragging it still moves it
     <section
-      className="widget widget-clock"
-      aria-label={`Clock: ${formatTime(now)}`}
+      className="widget widget-clock cursor-pointer"
+      role="button"
+      tabIndex={0}
+      aria-label={`Clock: ${formatTime(now, { region, time })}. Open date and time preferences.`}
+      title="Date & time preferences"
+      onClick={() => openPreferences("datetime")}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openPreferences("datetime");
+        }
+      }}
     >
       <svg viewBox="0 0 200 200" className="block h-full w-full" aria-hidden="true">
         <circle cx="100" cy="100" r="90" fill="var(--w-face)" />
@@ -5909,7 +6070,12 @@ function WeatherWidget() {
   const lowest = Math.min(...days.map((d) => d.lo));
   const highest = Math.max(...days.map((d) => d.hi));
   const span = Math.max(1, highest - lowest);
-  const weekday = (date) => new Date(`${date}T12:00:00`).toLocaleDateString(region.locale, { weekday: "short" }).replace(".", "").slice(0, 2);
+  const weekday = (date) => {
+    const d = new Date(`${date}T12:00:00`);
+    const short = d.toLocaleDateString(region.locale, { weekday: "short" }).replace(".", "");
+    // Latin scripts: two letters (Th, Fr). Hebrew, Japanese: the narrow form (ה׳, 木)
+    return /^[A-Za-zÀ-ÿ]/.test(short) ? short.slice(0, 2) : d.toLocaleDateString(region.locale, { weekday: "narrow" });
+  };
 
   return (
     <section className="widget widget-weather px-3.5 pb-3 pt-3" aria-label="Weather">
@@ -6252,6 +6418,11 @@ function Widgets({ disabled }) {
   };
 
   const onClickCapture = (e) => {
+    if (editing && !e.target.closest(".widget-remove")) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (!swallowClick.current) return;
     swallowClick.current = false;
     e.preventDefault();
