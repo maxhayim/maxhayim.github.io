@@ -1101,6 +1101,8 @@ const STORED_ITEMS = [
   { label: "signed-in user", key: "comcen_user" },
   { label: "other users' preferences", key: "comcen_user_prefs" },
   { label: "automatic updates", key: "comcen_updates" },
+  { label: "network", key: "comcen_network" },
+  { label: "mesh radio station", key: "comcen_mesh" },
 ];
 
 const ownKey = (name) => name.startsWith("comcen_") || name.startsWith("mh-");
@@ -2139,6 +2141,544 @@ function UpdatesPane() {
   );
 }
 
+/* ---------- Connections: Network, Mesh Radio, and File Sharing ---------- */
+
+const NETWORK_PREFS = { cookie: "comcen_network", event: "mh-network-changed", defaults: { menubar: true } };
+const PING_URL = "/logo_fullclear_favicon.ico";
+// Same-site files for the speed test: the wallpapers, about 1.2 MB together
+const SPEED_TEST_FILES = ["/wallpaper/system6-fish.jpg", "/wallpaper/system6-wetleaf.jpg", "/wallpaper/system6-calm.jpg", "/wallpaper/system6-abstractgreen.jpg"];
+
+function useOnline() {
+  const [online, setOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+  return online;
+}
+
+// What the browser will say about the connection (Chrome and Android do; Safari and Firefox don't)
+function useConnectionInfo() {
+  const read = () => {
+    const c = navigator.connection;
+    return c ? { type: c.effectiveType, downlink: c.downlink, rtt: c.rtt, saveData: c.saveData } : null;
+  };
+  const [info, setInfo] = useState(read);
+  useEffect(() => {
+    const c = navigator.connection;
+    if (!c?.addEventListener) return;
+    const update = () => setInfo(read());
+    c.addEventListener("change", update);
+    return () => c.removeEventListener("change", update);
+  }, []);
+  return info;
+}
+
+async function measureLatency(samples = 5) {
+  const times = [];
+  for (let i = 0; i < samples; i++) {
+    const start = performance.now();
+    await fetch(`${PING_URL}?ping=${Date.now()}-${i}`, { method: "HEAD", cache: "no-store" });
+    times.push(performance.now() - start);
+  }
+  const avg = times.reduce((a, b) => a + b, 0) / times.length;
+  const jitter = times.slice(1).reduce((sum, t, i) => sum + Math.abs(t - times[i]), 0) / Math.max(1, times.length - 1);
+  return { min: Math.min(...times), avg, jitter };
+}
+
+async function measureSpeed() {
+  const start = performance.now();
+  let bytes = 0;
+  for (const file of SPEED_TEST_FILES) {
+    const response = await fetch(`${file}?speed=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) throw new Error("speed");
+    bytes += (await response.arrayBuffer()).byteLength;
+  }
+  const seconds = (performance.now() - start) / 1000;
+  return { mbps: (bytes * 8) / seconds / 1e6, megabytes: bytes / 1e6, seconds };
+}
+
+function NetworkPane() {
+  const [prefs, setPrefs] = usePrefs(NETWORK_PREFS);
+  const online = useOnline();
+  const info = useConnectionInfo();
+  const [latency, setLatency] = useState(null); // { min, avg, jitter } | "running" | "error"
+  const [speed, setSpeed] = useState(null); // { mbps, megabytes, seconds } | "running" | "error"
+  const secure = window.location.protocol === "https:";
+
+  const run = async (kind) => {
+    const [set, test] = kind === "latency" ? [setLatency, measureLatency] : [setSpeed, measureSpeed];
+    set("running");
+    try {
+      set(await test());
+    } catch {
+      set("error");
+    }
+  };
+
+  const row = "flex items-center justify-between gap-3 px-3 py-2 text-[13px]";
+  const value = "text-right tabular-nums text-[var(--os-ink-2)]";
+  const testButton = (kind, state) => (
+    <button
+      type="button"
+      disabled={state === "running" || !online}
+      onClick={() => run(kind)}
+      className="shrink-0 rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] disabled:opacity-40"
+    >
+      {state === "running" ? "testing…" : state ? "test again" : "test"}
+    </button>
+  );
+
+  return (
+    <div className="p-5">
+      <PaneHeader title="network">How this browser is reaching maxhayim.com right now.</PaneHeader>
+
+      <div className="divide-y divide-[var(--os-line)] rounded-xl ring-1 ring-[var(--os-line)]">
+        <div className={row}>
+          <span>status</span>
+          <span className={`${value} flex items-center gap-1.5`}>
+            <span className={`widget-led ${online ? "widget-led-on" : ""}`} aria-hidden="true" />
+            {online ? "connected" : "offline"}
+          </span>
+        </div>
+        <div className={row}>
+          <span>server</span>
+          <span className={value}>
+            {window.location.hostname} {secure ? "· secure (HTTPS)" : "· not encrypted"}
+          </span>
+        </div>
+        <div className={row}>
+          <span>connection</span>
+          <span className={value}>
+            {info
+              ? [info.type && `${info.type.toUpperCase()}-class`, info.downlink && `about ${info.downlink} Mbps`, info.rtt && `${info.rtt} ms`, info.saveData && "data saver on"]
+                  .filter(Boolean)
+                  .join(" · ") || "unknown"
+              : "This browser doesn't share connection details."}
+          </span>
+        </div>
+        <div className={row}>
+          <span>
+            <span className="block">latency</span>
+            <span className="block text-[12px] text-[var(--os-ink-3)]">
+              {latency === "error"
+                ? "The test couldn't finish."
+                : latency && latency !== "running"
+                  ? `${Math.round(latency.avg)} ms average · ${Math.round(latency.min)} ms best · ${Math.round(latency.jitter)} ms jitter`
+                  : "Five round trips to the server."}
+            </span>
+          </span>
+          {testButton("latency", latency)}
+        </div>
+        <div className={row}>
+          <span>
+            <span className="block">download speed</span>
+            <span className="block text-[12px] text-[var(--os-ink-3)]">
+              {speed === "error"
+                ? "The test couldn't finish."
+                : speed && speed !== "running"
+                  ? `${speed.mbps.toFixed(1)} Mbps · ${speed.megabytes.toFixed(1)} MB in ${speed.seconds < 1 ? `${Math.round(speed.seconds * 1000)} ms` : `${speed.seconds.toFixed(1)} s`}`
+                  : "Downloads about 1 MB of wallpapers from this site."}
+            </span>
+          </span>
+          {testButton("speed", speed)}
+        </div>
+      </div>
+
+      <div className="mt-5">
+        <PrefSwitch
+          label="show Wi-Fi status in the menu bar"
+          hint="The signal bars reflect how quickly this site answers."
+          checked={prefs.menubar}
+          onChange={(menubar) => setPrefs({ menubar })}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* Mesh Radio: Max builds MeshMonitor scripts for Meshtastic and MeshCore. Visitors can set up their own station:
+   a callsign and a Maidenhead grid square, with distance and bearing to Max's station in Miami. */
+const MESH_PREFS = {
+  cookie: "comcen_mesh",
+  event: "mh-mesh-changed",
+  defaults: { callsign: "", grid: "" },
+};
+const MESH_BASE = { name: "Max's station", lat: 25.7617, lon: -80.1918 }; // Miami
+const MESH_REPOS_KEY = "comcen_mesh_repos"; // session cache
+const MESH_REPOS_MS = 30 * 60 * 1000;
+
+// Maidenhead locator to six characters (about 5 by 4 km), the grid hams and mesh users swap
+function toGrid(lat, lon) {
+  let x = lon + 180;
+  let y = lat + 90;
+  const field = String.fromCharCode(65 + Math.floor(x / 20)) + String.fromCharCode(65 + Math.floor(y / 10));
+  x %= 20;
+  y %= 10;
+  const square = `${Math.floor(x / 2)}${Math.floor(y)}`;
+  x -= Math.floor(x / 2) * 2;
+  y -= Math.floor(y);
+  const sub = String.fromCharCode(97 + Math.floor(x * 12)) + String.fromCharCode(97 + Math.floor(y * 24));
+  return field + square + sub;
+}
+
+// The center of a grid square
+function fromGrid(grid) {
+  const g = grid.toUpperCase();
+  if (!/^[A-R]{2}[0-9]{2}([A-X]{2})?$/.test(g)) return null;
+  let lon = (g.charCodeAt(0) - 65) * 20 - 180 + Number(g[2]) * 2;
+  let lat = (g.charCodeAt(1) - 65) * 10 - 90 + Number(g[3]);
+  if (g.length === 6) {
+    lon += (g.charCodeAt(4) - 65) / 12 + 1 / 24;
+    lat += (g.charCodeAt(5) - 65) / 24 + 1 / 48;
+  } else {
+    lon += 1;
+    lat += 0.5;
+  }
+  return { lat, lon };
+}
+
+function pathTo(from, to) {
+  const rad = Math.PI / 180;
+  const dLat = (to.lat - from.lat) * rad;
+  const dLon = (to.lon - from.lon) * rad;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(from.lat * rad) * Math.cos(to.lat * rad) * Math.sin(dLon / 2) ** 2;
+  const km = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const y = Math.sin(dLon) * Math.cos(to.lat * rad);
+  const x = Math.cos(from.lat * rad) * Math.sin(to.lat * rad) - Math.sin(from.lat * rad) * Math.cos(to.lat * rad) * Math.cos(dLon);
+  const bearing = (Math.atan2(y, x) / rad + 360) % 360;
+  const compass = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(bearing / 45) % 8];
+  return { km, bearing, compass };
+}
+
+function useMeshRepos() {
+  const [state, setState] = useState(() => {
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(MESH_REPOS_KEY) || "null");
+      if (cached && Date.now() - cached.at < MESH_REPOS_MS) return { repos: cached.repos, status: "ok" };
+    } catch {
+      /* no cache */
+    }
+    return { repos: [], status: "loading" };
+  });
+  const fresh = state.status === "ok";
+
+  useEffect(() => {
+    if (fresh) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch("https://api.github.com/users/maxhayim/repos?per_page=100&sort=updated");
+        if (!response.ok) throw new Error("repos");
+        const repos = (await response.json())
+          .filter((r) => !r.fork && /mesh/i.test(`${r.name} ${r.description || ""}`))
+          .map((r) => ({ name: r.name, description: r.description || "", url: r.html_url, stars: r.stargazers_count, pushed: r.pushed_at }));
+        try {
+          sessionStorage.setItem(MESH_REPOS_KEY, JSON.stringify({ at: Date.now(), repos }));
+        } catch {
+          /* fine without a cache */
+        }
+        if (!cancelled) setState({ repos, status: "ok" });
+      } catch {
+        if (!cancelled) setState({ repos: [], status: "error" });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fresh]);
+  return state;
+}
+
+// The project's own name from its description ("Sky and Sea Alert is a MeshMonitor Script…"),
+// or else from the repo name ("meshmonitor-mx-weather-alerts" → "MX Weather Alerts")
+const repoTitle = (name, description = "") =>
+  description.match(/^(.{2,40}?)\s+is\s/)?.[1] ||
+  name
+    .replace(/^meshmonitor-/, "")
+    .split("-")
+    .map((w) => (w.length <= 2 ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1)))
+    .join(" ");
+
+function MeshPane() {
+  const [mesh, setMesh] = usePrefs(MESH_PREFS);
+  const [region] = usePrefs(REGION_PREFS);
+  const [locating, setLocating] = useState(false);
+  const [gridDraft, setGridDraft] = useState(null); // while typing a grid by hand
+  const { repos, status } = useMeshRepos();
+  const baseGrid = toGrid(MESH_BASE.lat, MESH_BASE.lon);
+  const here = mesh.grid ? fromGrid(mesh.grid) : null;
+  const path = here ? pathTo(here, MESH_BASE) : null;
+  const miles = region.temperature === "f"; // people on °F usually think in miles too
+  const distance = path ? (miles ? `${Math.round(path.km * 0.621371).toLocaleString()} mi` : `${Math.round(path.km).toLocaleString()} km`) : "";
+
+  const locate = () => {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        setMesh({ grid: toGrid(pos.coords.latitude, pos.coords.longitude) }); // only the grid is kept, not the coordinates
+        setGridDraft(null);
+      },
+      () => setLocating(false),
+      { maximumAge: 30 * 60 * 1000, timeout: 10000 },
+    );
+  };
+
+  const input = "w-full rounded-lg bg-[var(--os-card)] px-2.5 py-1.5 font-mono uppercase tracking-[0.08em] ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]";
+  const draft = gridDraft ?? mesh.grid;
+  const draftValid = !draft || fromGrid(draft);
+
+  return (
+    <div className="p-5">
+      <PaneHeader title="mesh radio">
+        Off-grid text messaging over Meshtastic and MeshCore radios. Max builds MeshMonitor scripts for both, from his station in grid {baseGrid.slice(0, 4)}.
+      </PaneHeader>
+
+      <div className="rounded-xl p-4 ring-1 ring-[var(--os-line)]">
+        <div className="mb-3 text-[13px] font-semibold">your station</div>
+        <div className="grid gap-3 text-[13px] sm:grid-cols-2">
+          <label className="flex flex-col gap-1.5">
+            <span>callsign or handle</span>
+            <input
+              value={mesh.callsign}
+              onChange={(e) => setMesh({ callsign: e.target.value.toUpperCase().replace(/[^A-Z0-9/-]/g, "").slice(0, 12) })}
+              placeholder="KD4ABC"
+              autoComplete="off"
+              className={input}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span>grid square</span>
+            <span className="flex gap-2">
+              <input
+                value={draft}
+                onChange={(e) => {
+                  const next = e.target.value.replace(/[^A-Za-z0-9]/g, "").slice(0, 6);
+                  setGridDraft(next);
+                  if (!next || fromGrid(next)) setMesh({ grid: next.length > 4 ? next.slice(0, 4).toUpperCase() + next.slice(4).toLowerCase() : next.toUpperCase() });
+                }}
+                placeholder="EL95"
+                aria-invalid={!draftValid}
+                autoComplete="off"
+                className={`${input} ${draftValid ? "" : "ring-[var(--os-warn)]"}`}
+              />
+              <button
+                type="button"
+                onClick={locate}
+                disabled={locating}
+                title="Work out my grid from my location"
+                aria-label="Work out my grid from my location"
+                className="widget-mini-btn h-auto w-9 shrink-0 ring-1 ring-[var(--os-line)]"
+              >
+                <LocateFixed className={`h-4 w-4 ${locating ? "animate-pulse" : ""}`} strokeWidth={2} />
+              </button>
+            </span>
+          </label>
+        </div>
+        <p className="mt-3 text-[12px] text-[var(--os-ink-3)]">
+          {path
+            ? `${mesh.callsign || "You"} in ${mesh.grid} → ${MESH_BASE.name} in ${baseGrid.slice(0, 4)}: ${distance}, bearing ${Math.round(path.bearing)}° ${path.compass}.`
+            : "Enter a grid square, or use the locate button. Only the grid square is kept, on this browser."}
+        </p>
+      </div>
+
+      <div className="mt-6 flex items-center justify-between gap-3">
+        <h4 className="text-[13px] font-semibold">MeshMonitor scripts by Max</h4>
+        <a href="https://github.com/maxhayim?tab=repositories&q=mesh" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] underline underline-offset-2 hover:text-[var(--os-ink)]">
+          on GitHub <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        </a>
+      </div>
+      {repos.length ? (
+        <ul className="mt-2 divide-y divide-[var(--os-line)] rounded-xl ring-1 ring-[var(--os-line)]">
+          {repos.map((r) => (
+            <li key={r.name}>
+              <a href={r.url} target="_blank" rel="noreferrer" className="flex items-start gap-3 px-3 py-2.5 text-[13px] hover:bg-[var(--os-hover)]">
+                <Radio className="mt-0.5 h-4 w-4 shrink-0 text-[var(--os-accent)]" strokeWidth={1.8} aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">{repoTitle(r.name, r.description)}</span>
+                  <span className="line-clamp-2 block text-[12px] text-[var(--os-ink-3)]">{r.description}</span>
+                </span>
+                <span className="shrink-0 text-[12px] tabular-nums text-[var(--os-ink-3)]">★ {r.stars}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-[12px] text-[var(--os-ink-3)]">{status === "error" ? "Couldn't reach GitHub right now." : "Tuning in to GitHub…"}</p>
+      )}
+    </div>
+  );
+}
+
+/* File Sharing: share the site, and move your settings between browsers as a file */
+const SETTINGS_FORMAT = "comcen-os-settings";
+
+function exportSettings(user) {
+  const file = {
+    format: SETTINGS_FORMAT,
+    version: 1,
+    exported: new Date().toISOString(),
+    from: `comcen os ${OS_VERSION}`,
+    user: user.owner ? { name: user.name } : { name: user.name, color: user.color, photo: user.photo },
+    prefs: collectUserPrefs(),
+  };
+  const blob = new Blob([JSON.stringify(file, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `comcen-settings-${user.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "user"}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Only comcen os preferences that belong to a user; nothing else from the file is used
+function readSettingsFile(text) {
+  const data = JSON.parse(text);
+  if (data?.format !== SETTINGS_FORMAT || !data.prefs) throw new Error("That isn't a comcen os settings file.");
+  const allowed = (key) => typeof key === "string" && key.startsWith("comcen_") && !MACHINE_KEYS.has(key);
+  const pick = (obj) => Object.fromEntries(Object.entries(obj || {}).filter(([k, v]) => allowed(k) && typeof v === "string" && v.length < 200000));
+  const user = data.user && typeof data.user.name === "string" ? data.user : null;
+  return { prefs: { cookies: pick(data.prefs.cookies), local: pick(data.prefs.local) }, user };
+}
+
+function SharingPane() {
+  const { current } = useUsers();
+  const [message, setMessage] = useState("");
+  const [pending, setPending] = useState(null); // a settings file waiting for confirmation
+  const fileRef = useRef(null);
+  const link = window.location.href.split("#")[0] + window.location.hash;
+  const canShare = typeof navigator.share === "function";
+
+  const share = async () => {
+    setMessage("");
+    try {
+      if (canShare) {
+        await navigator.share({ title: "comcen os — maxhayim.com", text: "Max Hayim's site, built as a late-1990s operating system.", url: link });
+      } else {
+        await navigator.clipboard.writeText(link);
+        setMessage("Link copied.");
+      }
+    } catch (e) {
+      if (e?.name !== "AbortError") setMessage("Couldn't share from this browser.");
+    }
+  };
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setMessage("Link copied.");
+    } catch {
+      setMessage("Couldn't copy from this browser.");
+    }
+  };
+
+  const pick = async (file) => {
+    setMessage("");
+    if (!file) return;
+    if (file.size > 1024 * 1024) {
+      setMessage("That file is too large to be a settings file.");
+      return;
+    }
+    try {
+      setPending({ name: file.name, ...readSettingsFile(await file.text()) });
+    } catch (e) {
+      setMessage(e instanceof SyntaxError ? "That file couldn't be read." : e.message);
+    }
+  };
+
+  const apply = () => {
+    clearUserPrefs();
+    applyUserPrefs(pending.prefs);
+    if (!current.owner && pending.user) {
+      updateUser(current.id, {
+        color: USER_COLORS.includes(pending.user.color) ? pending.user.color : current.color,
+        photo: typeof pending.user.photo === "string" && pending.user.photo.startsWith("data:image/") ? pending.user.photo : current.photo,
+      });
+    }
+    window.location.reload();
+  };
+
+  const button = "rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]";
+  const count = pending ? Object.keys(pending.prefs.cookies).length + Object.keys(pending.prefs.local).length : 0;
+
+  return (
+    <div className="p-5">
+      <PaneHeader title="file sharing">Share comcen os, or take your settings to another browser.</PaneHeader>
+
+      <div className="rounded-xl p-4 ring-1 ring-[var(--os-line)]">
+        <div className="text-[13px] font-semibold">share this page</div>
+        <div className="mt-2 truncate rounded-lg bg-[var(--os-card)] px-2.5 py-1.5 font-mono text-[12px] ring-1 ring-[var(--os-line)]">{link}</div>
+        <div className="mt-3 flex flex-wrap justify-end gap-2">
+          <button type="button" onClick={copy} className={button}>
+            copy link
+          </button>
+          {canShare && (
+            <button type="button" onClick={share} className="rounded-full bg-[var(--os-accent)] px-3 py-1 text-[13px] font-semibold text-white hover:brightness-105">
+              share…
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-xl p-4 ring-1 ring-[var(--os-line)]">
+        <div className="text-[13px] font-semibold">your settings</div>
+        <p className="mt-1 text-[12px] text-[var(--os-ink-3)]">
+          Save {current.name}&rsquo;s theme, wallpaper, widgets, and other preferences as a file, then open it on another browser to pick up where you left off.
+        </p>
+        {pending ? (
+          <div className="mt-3 flex flex-wrap items-center justify-end gap-2 text-[13px]">
+            <span className="mr-auto text-[12px] text-[var(--os-ink-2)]">
+              Replace {current.name}&rsquo;s preferences with {count} from {pending.name}
+              {pending.user ? ` (saved by ${pending.user.name})` : ""}, then restart?
+            </span>
+            <button type="button" onClick={() => setPending(null)} className={button}>
+              cancel
+            </button>
+            <button type="button" onClick={apply} className="rounded-full bg-[var(--os-accent)] px-3 py-1 font-semibold text-white hover:brightness-105">
+              import
+            </button>
+          </div>
+        ) : (
+          <div className="mt-3 flex flex-wrap justify-end gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json,.json"
+              className="sr-only"
+              tabIndex={-1}
+              onChange={(e) => {
+                pick(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+            <button type="button" onClick={() => fileRef.current?.click()} className={button}>
+              import…
+            </button>
+            <button type="button" onClick={() => exportSettings(current)} className={button}>
+              export
+            </button>
+          </div>
+        )}
+      </div>
+
+      {message && (
+        <p className="mt-3 text-[12px] text-[var(--os-ink-2)]" aria-live="polite">
+          {message}
+        </p>
+      )}
+    </div>
+  );
+}
+
 const PREF_SECTIONS = [
   {
     title: "Desk",
@@ -2169,10 +2709,10 @@ const PREF_SECTIONS = [
   {
     title: "Connections",
     panes: [
-      { id: "network", label: "Network", Icon: Network },
+      { id: "network", label: "Network", Icon: Network, ready: true },
       { id: "modem", label: "Modem", Icon: Phone, ready: true },
-      { id: "mesh", label: "Mesh Radio", Icon: Radio },
-      { id: "sharing", label: "File Sharing", Icon: Share2 },
+      { id: "mesh", label: "Mesh Radio", Icon: Radio, ready: true },
+      { id: "sharing", label: "File Sharing", Icon: Share2, ready: true },
     ],
   },
   {
@@ -2437,6 +2977,9 @@ function SystemPreferences() {
           {pane === "datetime" && <DateTimePane />}
           {pane === "users" && <UsersPane />}
           {pane === "updates" && <UpdatesPane />}
+          {pane === "network" && <NetworkPane />}
+          {pane === "mesh" && <MeshPane />}
+          {pane === "sharing" && <SharingPane />}
           {pane === "privacy" && <PrivacyPane />}
 
           {pane === "wallpaper" && (
@@ -3264,6 +3807,7 @@ function SharedShell({ currentPage, children }) {
   const [windowState, setWindowState] = useState("open");
   const [region] = usePrefs(REGION_PREFS);
   const [clockPrefs] = usePrefs(TIME_PREFS);
+  const [network] = usePrefs(NETWORK_PREFS);
   const [win] = usePrefs(WINDOW_PREFS);
   const [maximized, setMaximized] = useState(win.openMaximized);
   const reduceMotion = prefersReducedMotion() || !win.animate;
@@ -3308,7 +3852,11 @@ function SharedShell({ currentPage, children }) {
           <UserMenuButton />
           <SoundToggle />
           <BatteryIndicator battery={battery} />
-          <SignalIndicator signal={signal} />
+          {network.menubar && (
+            <button type="button" onClick={() => openPreferences("network")} className="rounded-full hover:bg-[var(--os-hover)]" title="Network preferences">
+              <SignalIndicator signal={signal} />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => openPreferences("datetime")}
