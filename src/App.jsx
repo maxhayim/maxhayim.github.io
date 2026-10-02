@@ -7017,7 +7017,7 @@ function ClockWidget() {
 }
 
 /* Radio: after the Braun T3 pocket radio. Perforated grille on top, a tuning wheel you turn to change stations.
-   All six are listener-supported or public stations that welcome listening from other sites. */
+   Public and listener-supported stations from around the world, plus Galgalatz and two Miami favorites. */
 const RADIO_STATIONS = [
   { id: "rp", name: "Radio Paradise", genre: "eclectic mix · California", stream: "https://stream.radioparadise.com/mp3-128", site: "https://radioparadise.com/" },
   { id: "rp-mellow", name: "RP Mellow", genre: "mellow mix · California", stream: "https://stream.radioparadise.com/mellow-128", site: "https://radioparadise.com/" },
@@ -7044,6 +7044,27 @@ const RADIO_STATIONS = [
       const live = (await (await fetch("https://www.nts.live/api/v2/live")).json()).results?.find((c) => c.channel_name === "1");
       return live?.now?.broadcast_title || null;
     },
+  },
+  {
+    id: "galgalatz",
+    name: "Galgalatz",
+    genre: "Israeli and international pop · Tel Aviv",
+    stream: "https://glzicylv01.bynetcdn.com/glglz_mp3",
+    site: "https://glz.co.il/",
+  },
+  {
+    id: "kiss-country",
+    name: "Kiss Country 99.9",
+    genre: "country · Miami",
+    stream: "https://live.amperwave.net/direct/audacy-wkisfmaac-imc",
+    site: "https://www.audacy.com/stations/kisscountry999",
+  },
+  {
+    id: "revolution",
+    name: "Revolution 93.5",
+    genre: "dance and electronic · Miami",
+    stream: "https://centova87.shoutcastservices.com/proxy/revolution935/stream",
+    site: "https://www.revolution935.com/",
   },
 ];
 const RADIO_KEY = "comcen_radio_station";
@@ -7091,7 +7112,8 @@ function radioStart() {
   applyMedia(audio);
   liveMedia.add(audio);
   setRadio({ status: "tuning" });
-  audio.play().catch(() => radio.status !== "off" && setRadio({ status: "error" }));
+  // Tuning again before a station answers interrupts this play request; that's not a lost signal
+  audio.play().catch((e) => e?.name !== "AbortError" && radio.status !== "off" && setRadio({ status: "error" }));
 }
 
 function radioStop() {
