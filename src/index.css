@@ -574,6 +574,12 @@
   border-radius: 999px;
   background: var(--w-line);
 }
+.update-led {
+  background: var(--os-accent);
+  box-shadow: 0 0 0 2.5px color-mix(in oklab, var(--os-accent) 22%, transparent);
+}
+.release summary::-webkit-details-marker { display: none; }
+.release-notes code { font-size: 12px; padding: 0 4px; border-radius: 4px; background: var(--os-hover); }
 .widget-led-on {
   background: var(--os-ok);
   box-shadow: 0 0 0 2.5px color-mix(in oklab, var(--os-ok) 20%, transparent);

@@ -563,6 +563,8 @@ function AnalogClock({ now, time, className = "h-[18px] w-[18px]" }) {
 function SystemMenu() {
   const { open, setOpen, ref } = usePopover();
   const fullscreen = useFullscreen();
+  const { available } = useUpdates();
+  const { current } = useUsers();
   const [showAbout, setShowAbout] = useState(false);
   const item = "block w-full rounded-lg px-3 py-1.5 text-left hover:bg-[var(--os-hover)]";
 
@@ -581,6 +583,7 @@ function SystemMenu() {
         <img src="/logo_fullclear.png" alt="" className="os-logo h-4 w-auto" />
         <span className="font-semibold tracking-tight">comcen os</span>
         <span className="text-[var(--os-ink-3)]">system</span>
+        {available && <span className="update-led h-1.5 w-1.5 rounded-full" title="Update available" aria-label="Update available" />}
       </button>
 
       {open && (
@@ -600,6 +603,33 @@ function SystemMenu() {
                 }}
               >
                 system preferences…
+              </button>
+              <button
+                role="menuitem"
+                type="button"
+                className={`${item} flex items-center justify-between`}
+                onClick={() => {
+                  setOpen(false);
+                  openPreferences("updates");
+                }}
+              >
+                software update…
+                {available && <span className="text-[12px] text-[var(--os-accent)]">{available.tag} available</span>}
+              </button>
+              <button
+                role="menuitem"
+                type="button"
+                className={`${item} flex items-center justify-between gap-3`}
+                onClick={() => {
+                  setOpen(false);
+                  openPreferences("users");
+                }}
+              >
+                users…
+                <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-[var(--os-ink-3)]">
+                  <UserAvatar user={current} className="h-4 w-4 rounded-full text-[7px]" />
+                  <span className="truncate">{current.name}</span>
+                </span>
               </button>
               {fullscreen.supported && (
                 <button
@@ -652,6 +682,18 @@ function SystemMenu() {
                   </React.Fragment>
                 ))}
               </dl>
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    openPreferences("updates");
+                  }}
+                  className="rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
+                >
+                  {available ? `update to ${available.tag}…` : "software update…"}
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1046,6 +1088,10 @@ const STORED_ITEMS = [
   { label: "internet trial", key: "comcen_trial_end" },
   { label: "registration", key: "comcen_license" },
   { label: "startup screen seen", key: "mh-booted" },
+  { label: "users", key: "comcen_users" },
+  { label: "signed-in user", key: "comcen_user" },
+  { label: "other users' preferences", key: "comcen_user_prefs" },
+  { label: "automatic updates", key: "comcen_updates" },
 ];
 
 const ownKey = (name) => name.startsWith("comcen_") || name.startsWith("mh-");
@@ -1376,7 +1422,7 @@ function PrivacyPane() {
         <div className="flex flex-wrap items-center justify-end gap-2 text-[13px]">
           {confirming ? (
             <>
-              <span className="mr-auto text-[12px] text-[var(--os-ink-2)]">Delete every preference, the widget layout, and registration, then restart? Usage statistics stay off if you turned them off.</span>
+              <span className="mr-auto text-[12px] text-[var(--os-ink-2)]">Delete every preference, the widget layout, users, and registration, then restart? Usage statistics stay off if you turned them off.</span>
               <button type="button" onClick={() => setConfirming(false)} className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
                 cancel
               </button>
@@ -1396,6 +1442,690 @@ function PrivacyPane() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ---------- Users: Max Hayim owns this computer; visitors can add their own user on their browser ----------
+   No passwords. Each user's preferences (theme, wallpaper, widgets, and the rest) are set aside when someone
+   else signs in and brought back when they return. Photos are shrunk to a small square and kept locally. */
+
+const OWNER = { id: "max", name: "Max Hayim", handle: "maxhayim", photo: "/avatar.jpg", owner: true };
+const USERS_KEY = "comcen_users"; // the visitors' accounts
+const USER_COOKIE = "comcen_user"; // who's signed in
+const USER_PREFS_KEY = "comcen_user_prefs"; // everyone else's preferences, while they're signed out
+const USER_COLORS = ["#e8591a", "#c8371a", "#b8860b", "#3f7f33", "#46687a", "#2f5d8a", "#6b5b95", "#55534e"];
+const USER_NAME_MAX = 24;
+const USER_PHOTO_PX = 160;
+// Belong to the computer, not to one user
+const MACHINE_KEYS = new Set([USERS_KEY, USER_COOKIE, USER_PREFS_KEY, "comcen_analytics", "comcen_trial_end", "comcen_license", "mh-booted"]);
+
+function readJSON(key, fallback) {
+  try {
+    return JSON.parse(readStore("localStorage", key)) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function readUsers() {
+  const saved = readJSON(USERS_KEY, []);
+  const visitors = (Array.isArray(saved) ? saved : [])
+    .filter((u) => u && typeof u.id === "string" && typeof u.name === "string" && u.id !== OWNER.id)
+    .map((u) => ({
+      id: u.id,
+      name: u.name.slice(0, USER_NAME_MAX),
+      color: USER_COLORS.includes(u.color) ? u.color : USER_COLORS[0],
+      photo: typeof u.photo === "string" && u.photo.startsWith("data:image/") ? u.photo : null,
+    }));
+  return [OWNER, ...visitors];
+}
+
+function writeVisitors(users) {
+  writeStore("localStorage", USERS_KEY, JSON.stringify(users.filter((u) => !u.owner).map(({ id, name, color, photo }) => ({ id, name, color, photo }))));
+  window.dispatchEvent(new Event("mh-users-changed"));
+}
+
+function currentUserId(users = readUsers()) {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${USER_COOKIE}=([^;]*)`));
+  const id = match ? decodeURIComponent(match[1]) : OWNER.id;
+  return users.some((u) => u.id === id) ? id : OWNER.id;
+}
+
+function useUsers() {
+  const [users, setUsers] = useState(readUsers);
+  useEffect(() => {
+    const onChanged = () => setUsers(readUsers());
+    window.addEventListener("mh-users-changed", onChanged);
+    return () => window.removeEventListener("mh-users-changed", onChanged);
+  }, []);
+  const current = users.find((u) => u.id === currentUserId(users)) || OWNER;
+  return { users, current };
+}
+
+// One user's preferences: their comcen_ cookies and browser storage, minus what belongs to the computer
+const userCookieNames = () =>
+  document.cookie
+    .split("; ")
+    .map((c) => c.split("=")[0])
+    .filter((name) => name.startsWith("comcen_") && !MACHINE_KEYS.has(name));
+const userStorageKeys = () => {
+  try {
+    return Object.keys(localStorage).filter((key) => key.startsWith("comcen_") && !MACHINE_KEYS.has(key));
+  } catch {
+    return [];
+  }
+};
+
+function collectUserPrefs() {
+  const cookies = {};
+  document.cookie.split("; ").forEach((c) => {
+    const i = c.indexOf("=");
+    const name = c.slice(0, i);
+    if (userCookieNames().includes(name)) cookies[name] = c.slice(i + 1);
+  });
+  const local = Object.fromEntries(userStorageKeys().map((key) => [key, readStore("localStorage", key)]));
+  return { cookies, local };
+}
+
+function clearUserPrefs() {
+  userCookieNames().forEach((name) => {
+    document.cookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax`;
+  });
+  userStorageKeys().forEach((key) => {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+function applyUserPrefs(bundle) {
+  if (!bundle) return;
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  Object.entries(bundle.cookies || {}).forEach(([name, value]) => {
+    document.cookie = `${name}=${value}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;
+  });
+  Object.entries(bundle.local || {}).forEach(([key, value]) => writeStore("localStorage", key, value));
+}
+
+function setUserCookie(id) {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${USER_COOKIE}=${encodeURIComponent(id)}; Max-Age=31536000; Path=/; SameSite=Lax${secure}`;
+}
+
+// Sign in as someone else: put the current user's preferences away, bring theirs back, and restart
+function switchUser(id, { saveCurrent = true } = {}) {
+  const from = currentUserId();
+  if (id === from) return;
+  radioStop();
+  const saved = readJSON(USER_PREFS_KEY, {});
+  if (saveCurrent) saved[from] = collectUserPrefs();
+  clearUserPrefs();
+  applyUserPrefs(saved[id]);
+  delete saved[id];
+  writeStore("localStorage", USER_PREFS_KEY, JSON.stringify(saved));
+  setUserCookie(id);
+  window.location.reload();
+}
+
+function addUser({ name, color, photo }) {
+  const user = { id: `u${Date.now().toString(36)}`, name, color, photo };
+  writeVisitors([...readUsers(), user]);
+  return user.id;
+}
+
+function updateUser(id, patch) {
+  writeVisitors(readUsers().map((u) => (u.id === id && !u.owner ? { ...u, ...patch } : u)));
+}
+
+function removeUser(id) {
+  if (id === OWNER.id) return;
+  const saved = readJSON(USER_PREFS_KEY, {});
+  delete saved[id];
+  writeStore("localStorage", USER_PREFS_KEY, JSON.stringify(saved));
+  const wasCurrent = currentUserId() === id;
+  writeVisitors(readUsers().filter((u) => u.id !== id));
+  if (wasCurrent) switchUser(OWNER.id, { saveCurrent: false });
+}
+
+// Crop to a centered square and shrink, so a phone photo becomes a few kilobytes
+function shrinkPhoto(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith("image/")) {
+      reject(new Error("That file isn't a picture."));
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      reject(new Error("That picture is too large (20 MB at most)."));
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const side = Math.min(img.naturalWidth, img.naturalHeight);
+      const canvas = document.createElement("canvas");
+      canvas.width = USER_PHOTO_PX;
+      canvas.height = USER_PHOTO_PX;
+      const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, USER_PHOTO_PX, USER_PHOTO_PX);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("That picture couldn't be opened."));
+    };
+    img.src = url;
+  });
+}
+
+const initials = (name) =>
+  name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => [...w][0] || "")
+    .join("")
+    .toUpperCase();
+
+function UserAvatar({ user, className = "h-10 w-10 rounded-lg text-[14px]" }) {
+  if (user.photo) return <img src={user.photo} alt="" className={`${className} shrink-0 object-cover`} />;
+  return (
+    <span className={`${className} inline-flex shrink-0 items-center justify-center font-semibold text-white`} style={{ background: user.color }} aria-hidden="true">
+      {initials(user.name) || "?"}
+    </span>
+  );
+}
+
+// Menu bar: who's signed in; click for Users
+function UserMenuButton() {
+  const { current } = useUsers();
+  return (
+    <button
+      type="button"
+      onClick={() => openPreferences("users")}
+      title={`Signed in as ${current.name}. Users & switching`}
+      aria-label={`Signed in as ${current.name}. Open users.`}
+      className="flex h-8 items-center gap-1.5 rounded-full px-1.5 hover:bg-[var(--os-hover)] sm:px-2"
+    >
+      <UserAvatar user={current} className="h-5 w-5 rounded-full text-[9px]" />
+      <span className="hidden max-w-[9rem] truncate lg:inline">{current.name}</span>
+    </button>
+  );
+}
+
+function UserForm({ initial, onCancel, onSave, saveLabels }) {
+  const [name, setName] = useState(initial?.name || "");
+  const [color, setColor] = useState(() => initial?.color || USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)]);
+  const [photo, setPhoto] = useState(initial?.photo || null);
+  const [error, setError] = useState("");
+  const fileRef = useRef(null);
+  const { users } = useUsers();
+  const trimmed = name.trim();
+  const taken = users.some((u) => u.id !== initial?.id && u.name.toLowerCase() === trimmed.toLowerCase());
+  const problem = !trimmed ? "" : taken ? "Someone already has that name." : "";
+
+  const pick = async (file) => {
+    setError("");
+    try {
+      setPhoto(await shrinkPhoto(file));
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const submit = (signIn) => {
+    if (!trimmed || problem) return;
+    onSave({ name: trimmed, color, photo }, signIn);
+  };
+
+  return (
+    <form
+      className="rounded-xl p-4 ring-1 ring-[var(--os-line)]"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit(false);
+      }}
+    >
+      <div className="flex items-start gap-4">
+        <div className="flex flex-col items-center gap-2">
+          <UserAvatar user={{ name: trimmed || "?", color, photo }} className="h-16 w-16 rounded-xl text-[22px]" />
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            tabIndex={-1}
+            onChange={(e) => {
+              pick(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+          <button type="button" onClick={() => fileRef.current?.click()} className="text-[12px] underline underline-offset-2 hover:text-[var(--os-ink)]">
+            {photo ? "change photo" : "upload photo"}
+          </button>
+          {photo && (
+            <button type="button" onClick={() => setPhoto(null)} className="text-[12px] text-[var(--os-ink-3)] underline underline-offset-2 hover:text-[var(--os-ink)]">
+              remove photo
+            </button>
+          )}
+        </div>
+        <div className="min-w-0 flex-1 text-[13px]">
+          <label className="flex flex-col gap-1.5">
+            <span>name</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value.slice(0, USER_NAME_MAX))}
+              maxLength={USER_NAME_MAX}
+              autoComplete="off"
+              autoFocus
+              placeholder="Your name"
+              className="w-full rounded-lg bg-[var(--os-card)] px-2.5 py-1.5 ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]"
+            />
+          </label>
+          <div className="mt-3">
+            <div className="mb-1.5">{photo ? "color (used if you remove the photo)" : "color"}</div>
+            <div role="radiogroup" aria-label="Color" className="flex flex-wrap gap-2">
+              {USER_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  role="radio"
+                  aria-checked={c === color}
+                  aria-label={c}
+                  onClick={() => setColor(c)}
+                  className={`h-6 w-6 rounded-full ${c === color ? "ring-2 ring-[var(--os-accent)] ring-offset-2 ring-offset-[var(--os-case)]" : ""}`}
+                  style={{ background: c }}
+                />
+              ))}
+            </div>
+          </div>
+          {(problem || error) && <p className="mt-2 text-[12px] text-[var(--os-warn)]">{problem || error}</p>}
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap justify-end gap-2 text-[13px]">
+        <button type="button" onClick={onCancel} className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
+          cancel
+        </button>
+        <button type="submit" disabled={!trimmed || !!problem} className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] disabled:opacity-40">
+          {saveLabels[0]}
+        </button>
+        {saveLabels[1] && (
+          <button
+            type="button"
+            disabled={!trimmed || !!problem}
+            onClick={() => submit(true)}
+            className="rounded-full bg-[var(--os-accent)] px-3 py-1 font-semibold text-white hover:brightness-105 disabled:opacity-40"
+          >
+            {saveLabels[1]}
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}
+
+function UsersPane() {
+  const { users, current } = useUsers();
+  const [form, setForm] = useState(null); // null, "new", or a user id being edited
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const editing = users.find((u) => u.id === form);
+
+  return (
+    <div className="p-5">
+      <PaneHeader title="users">
+        People who use comcen os on this browser. Each user has their own theme, wallpaper, widgets, and other preferences. There are no
+        passwords: anyone using this browser can switch users.
+      </PaneHeader>
+
+      <ul className="divide-y divide-[var(--os-line)] rounded-xl ring-1 ring-[var(--os-line)]">
+        {users.map((u) => {
+          const signedIn = u.id === current.id;
+          return (
+            <li key={u.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5 text-[13px]">
+              <UserAvatar user={u} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-semibold">{u.name}</span>
+                <span className="flex items-center gap-1.5 text-[12px] text-[var(--os-ink-3)]">
+                  {signedIn && <span className="widget-led widget-led-on" aria-hidden="true" />}
+                  {[u.owner ? "owner" : "visitor", signedIn ? "signed in" : null].filter(Boolean).join(" · ")}
+                </span>
+              </span>
+              {confirmDelete === u.id ? (
+                <span className="flex items-center gap-2">
+                  <span className="text-[12px] text-[var(--os-ink-2)]">Delete {u.name} and their preferences?</span>
+                  <button type="button" onClick={() => setConfirmDelete(null)} className="rounded-full px-2.5 py-0.5 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
+                    cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirmDelete(null);
+                      removeUser(u.id);
+                    }}
+                    className="rounded-full bg-[var(--os-warn)] px-2.5 py-0.5 font-semibold text-white"
+                  >
+                    delete
+                  </button>
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  {!u.owner && (
+                    <>
+                      <button type="button" onClick={() => setForm(u.id)} className="rounded-full px-2.5 py-0.5 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
+                        edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(u.id)}
+                        className="rounded-full px-2.5 py-0.5 text-[var(--os-warn)] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
+                      >
+                        delete
+                      </button>
+                    </>
+                  )}
+                  {!signedIn && (
+                    <button type="button" onClick={() => switchUser(u.id)} className="rounded-full bg-[var(--os-accent)] px-2.5 py-0.5 font-semibold text-white hover:brightness-105">
+                      sign in
+                    </button>
+                  )}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="mt-4">
+        {form === "new" ? (
+          <UserForm
+            key="new"
+            saveLabels={["add", "add and sign in"]}
+            onCancel={() => setForm(null)}
+            onSave={(details, signIn) => {
+              const id = addUser(details);
+              setForm(null);
+              if (signIn) switchUser(id);
+            }}
+          />
+        ) : editing ? (
+          <UserForm
+            key={editing.id}
+            initial={editing}
+            saveLabels={["save"]}
+            onCancel={() => setForm(null)}
+            onSave={(details) => {
+              updateUser(editing.id, details);
+              setForm(null);
+            }}
+          />
+        ) : (
+          <div className="flex justify-end text-[13px]">
+            <button type="button" onClick={() => setForm("new")} className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
+              add user…
+            </button>
+          </div>
+        )}
+      </div>
+
+      <p className="mt-4 text-[12px] text-[var(--os-ink-3)]">Names and photos stay on this browser. Nothing is uploaded.</p>
+    </div>
+  );
+}
+
+/* ---------- Updates: releases come from this site's GitHub repository ---------- */
+
+const RELEASES_API = "https://api.github.com/repos/maxhayim/maxhayim.github.io/releases?per_page=30";
+const RELEASES_PAGE = "https://github.com/maxhayim/maxhayim.github.io/releases";
+const RELEASES_CACHE_KEY = "comcen_releases"; // session only, to stay well inside GitHub's rate limit
+const RELEASES_CACHE_MS = 10 * 60 * 1000;
+const UPDATE_CHECK_MS = 30 * 60 * 1000;
+const UPDATES_PREFS = { cookie: "comcen_updates", event: "mh-updates-changed", defaults: { auto: true } };
+
+function compareVersions(a, b) {
+  const parse = (v) => String(v).replace(/^v/, "").split(".").map((n) => Number.parseInt(n, 10) || 0);
+  const [x, y] = [parse(a), parse(b)];
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0) ? 1 : -1;
+  }
+  return 0;
+}
+
+const updates = { status: "idle", releases: [], checkedAt: null, listeners: new Set() }; // status: idle | checking | ok | error
+
+function setUpdates(patch) {
+  Object.assign(updates, patch);
+  updates.listeners.forEach((listener) => listener());
+}
+
+async function checkForUpdates({ force = false } = {}) {
+  if (updates.status === "checking") return;
+  if (!force) {
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(RELEASES_CACHE_KEY) || "null");
+      if (cached && Date.now() - cached.at < RELEASES_CACHE_MS) {
+        setUpdates({ status: "ok", releases: cached.releases, checkedAt: cached.at });
+        return;
+      }
+    } catch {
+      /* no cache */
+    }
+  }
+  setUpdates({ status: "checking" });
+  try {
+    const response = await fetch(RELEASES_API, { headers: { Accept: "application/vnd.github+json" } });
+    if (!response.ok) throw new Error("releases");
+    const releases = (await response.json())
+      .filter((r) => !r.draft && !r.prerelease)
+      .map((r) => ({ tag: r.tag_name, name: r.name || r.tag_name, date: r.published_at, body: r.body || "", url: r.html_url }))
+      .sort((a, b) => compareVersions(b.tag, a.tag));
+    const at = Date.now();
+    try {
+      sessionStorage.setItem(RELEASES_CACHE_KEY, JSON.stringify({ at, releases }));
+    } catch {
+      /* fine without a cache */
+    }
+    setUpdates({ status: "ok", releases, checkedAt: at });
+  } catch {
+    setUpdates({ status: "error", checkedAt: Date.now() });
+  }
+}
+
+function useUpdates() {
+  const [, rerender] = useState(0);
+  useEffect(() => {
+    const listener = () => rerender((n) => n + 1);
+    updates.listeners.add(listener);
+    return () => updates.listeners.delete(listener);
+  }, []);
+  const latest = updates.releases[0];
+  return { ...updates, latest, available: latest && compareVersions(latest.tag, OS_VERSION) > 0 ? latest : null };
+}
+
+// Checks on start and every half hour while automatic updates are on
+function useAutoUpdateCheck() {
+  const [prefs] = usePrefs(UPDATES_PREFS);
+  useEffect(() => {
+    if (!prefs.auto) return;
+    checkForUpdates();
+    const id = setInterval(() => checkForUpdates({ force: true }), UPDATE_CHECK_MS);
+    return () => clearInterval(id);
+  }, [prefs.auto]);
+}
+
+// Release notes are Markdown; this covers what they use: headings, bullets (one level of nesting), bold, links, code
+function renderInline(text) {
+  return text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)\s]+\)|`[^`]+`)/g).map((part, i) => {
+    if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={i}>{part.slice(2, -2)}</strong>;
+    const link = part.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
+    if (link) {
+      return (
+        <a key={i} href={link[2]} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+          {link[1]}
+        </a>
+      );
+    }
+    if (/^`[^`]+`$/.test(part)) return <code key={i}>{part.slice(1, -1)}</code>;
+    return part;
+  });
+}
+
+function ReleaseNotes({ body }) {
+  const blocks = [];
+  let list = null;
+  body
+    .replace(/\r/g, "")
+    .split("\n")
+    .forEach((line) => {
+      const bullet = line.match(/^(\s*)[-*] (.*)$/);
+      if (bullet) {
+        if (!list) {
+          list = [];
+          blocks.push({ type: "list", items: list });
+        }
+        if (bullet[1].length >= 2 && list.length) {
+          const parent = list[list.length - 1];
+          parent.children = [...(parent.children || []), bullet[2]];
+        } else {
+          list.push({ text: bullet[2] });
+        }
+        return;
+      }
+      list = null;
+      const heading = line.match(/^#{1,6}\s+(.*)$/);
+      if (heading) blocks.push({ type: "h", text: heading[1] });
+      else if (line.trim()) blocks.push({ type: "p", text: line.trim() });
+    });
+
+  return (
+    <div className="release-notes text-[13px] leading-6 text-[var(--os-ink-2)]">
+      {blocks.map((b, i) =>
+        b.type === "h" ? (
+          <h5 key={i} className="mt-3 font-semibold text-[var(--os-ink)]">
+            {renderInline(b.text)}
+          </h5>
+        ) : b.type === "p" ? (
+          <p key={i} className="mt-2">
+            {renderInline(b.text)}
+          </p>
+        ) : (
+          <ul key={i} className="mt-1 list-disc pl-5">
+            {b.items.map((item, j) => (
+              <li key={j}>
+                {renderInline(item.text)}
+                {item.children && (
+                  <ul className="list-[circle] pl-5">
+                    {item.children.map((child, k) => (
+                      <li key={k}>{renderInline(child)}</li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        ),
+      )}
+    </div>
+  );
+}
+
+function UpdatesPane() {
+  const state = useUpdates();
+  const [prefs, setPrefs] = usePrefs(UPDATES_PREFS);
+  const [region] = usePrefs(REGION_PREFS);
+
+  useEffect(() => {
+    checkForUpdates();
+  }, []);
+
+  const day = (iso) => new Date(iso).toLocaleDateString(region.locale, { year: "numeric", month: "short", day: "numeric" });
+  const status =
+    state.status === "checking"
+      ? "Checking GitHub for updates…"
+      : state.status === "error"
+        ? "Couldn't reach GitHub. Try again in a little while."
+        : state.available
+          ? `${state.available.name} is available.`
+          : state.status === "ok"
+            ? "comcen os is up to date."
+            : "";
+
+  return (
+    <div className="p-5">
+      <PaneHeader title="updates">
+        New versions are published as releases on GitHub. The site updates itself when it&rsquo;s published; restarting picks it up.
+      </PaneHeader>
+
+      <div className="mb-5 flex flex-wrap items-center gap-4 rounded-xl p-4 ring-1 ring-[var(--os-line)]">
+        <img src="/logo_fullclear.png" alt="" className="os-logo h-10 w-auto" />
+        <div className="min-w-0 flex-1">
+          <div className="text-[17px] font-semibold tracking-tight">comcen os I</div>
+          <div className="text-[13px] text-[var(--os-ink-2)]">version {OS_VERSION}</div>
+          <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-[var(--os-ink-3)]" aria-live="polite">
+            <span className={`widget-led ${state.available ? "update-led" : state.status === "ok" ? "widget-led-on" : ""}`} aria-hidden="true" />
+            {status}
+            {state.checkedAt && state.status !== "checking" && <span>· checked {formatTime(new Date(state.checkedAt), { region })}</span>}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 text-[13px]">
+          {state.available ? (
+            <button type="button" onClick={() => window.location.reload()} className="rounded-full bg-[var(--os-accent)] px-3 py-1 font-semibold text-white hover:brightness-105">
+              restart to update
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={state.status === "checking"}
+              onClick={() => checkForUpdates({ force: true })}
+              className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] disabled:opacity-40"
+            >
+              check now
+            </button>
+          )}
+        </div>
+      </div>
+
+      <PrefSwitch
+        label="check for updates automatically"
+        hint="Looks for a new release on GitHub every half hour while comcen os is open, and lets you know in the system menu."
+        checked={prefs.auto}
+        onChange={(auto) => setPrefs({ auto })}
+      />
+
+      <div className="mt-6 flex items-center justify-between gap-3">
+        <h4 className="text-[13px] font-semibold">release history</h4>
+        <a href={RELEASES_PAGE} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] underline underline-offset-2 hover:text-[var(--os-ink)]">
+          on GitHub <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        </a>
+      </div>
+      {state.releases.length ? (
+        <div className="mt-2 divide-y divide-[var(--os-line)] rounded-xl ring-1 ring-[var(--os-line)]">
+          {state.releases.map((r, i) => {
+            const installed = compareVersions(r.tag, OS_VERSION) === 0;
+            return (
+              <details key={r.tag} open={i === 0} className="release group px-3 py-2">
+                <summary className="flex cursor-pointer list-none items-center gap-2 text-[13px]">
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--os-ink-3)] transition-transform group-open:rotate-90" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate font-semibold">{r.name}</span>
+                  {installed && <span className="rounded-full px-2 py-0.5 text-[11px] ring-1 ring-[var(--os-accent)]">installed</span>}
+                  <span className="shrink-0 text-[12px] text-[var(--os-ink-3)]">{day(r.date)}</span>
+                </summary>
+                <div className="pb-2 pl-5">
+                  <ReleaseNotes body={r.body} />
+                  <a href={r.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-[12px] text-[var(--os-ink-3)] underline underline-offset-2 hover:text-[var(--os-ink)]">
+                    view {r.tag} on GitHub
+                  </a>
+                </div>
+              </details>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="mt-2 text-[12px] text-[var(--os-ink-3)]">{state.status === "checking" ? "Loading releases…" : "No releases to show yet."}</p>
+      )}
     </div>
   );
 }
@@ -1439,9 +2169,9 @@ const PREF_SECTIONS = [
   {
     title: "System",
     panes: [
-      { id: "users", label: "Users", Icon: Users },
+      { id: "users", label: "Users", Icon: Users, ready: true },
       { id: "datetime", label: "Date & Time", Icon: Clock3, ready: true },
-      { id: "updates", label: "Updates", Icon: RefreshCw },
+      { id: "updates", label: "Updates", Icon: RefreshCw, ready: true },
       { id: "voice", label: "Voice", Icon: Mic },
       { id: "boot", label: "Boot Drive", Icon: HardDrive },
       { id: "access", label: "Accessibility", Icon: Accessibility },
@@ -1696,6 +2426,8 @@ function SystemPreferences() {
           {pane === "windows" && <WindowsPane />}
           {pane === "language" && <LanguagePane />}
           {pane === "datetime" && <DateTimePane />}
+          {pane === "users" && <UsersPane />}
+          {pane === "updates" && <UpdatesPane />}
           {pane === "privacy" && <PrivacyPane />}
 
           {pane === "wallpaper" && (
@@ -2564,6 +3296,7 @@ function SharedShell({ currentPage, children }) {
       <header className="mh-fixed os-ui os-menubar fixed inset-x-0 top-0 z-40 flex h-11 items-center justify-between pl-2 pr-1.5 sm:pl-3 sm:pr-2">
         <SystemMenu />
         <div className="flex items-center gap-0.5">
+          <UserMenuButton />
           <SoundToggle />
           <BatteryIndicator battery={battery} />
           <SignalIndicator signal={signal} />
@@ -2681,7 +3414,13 @@ function SharedShell({ currentPage, children }) {
                 <img src="/logo_fullclear.png" alt="maxhayim logo" className="os-logo h-4 w-auto" />
                 <span>&copy; 2009 - {currentYear} MAXHAYIM.COM. All Rights Reserved.</span>
               </div>
-              <span>comcen os I v{OS_VERSION} on the COMCEN Model 2000</span>
+              <span>
+                comcen os I{" "}
+                <button type="button" onClick={() => openPreferences("updates")} title="Software update" className="underline-offset-2 hover:text-[var(--os-ink)] hover:underline">
+                  v{OS_VERSION}
+                </button>{" "}
+                on the COMCEN Model 2000
+              </span>
             </footer>
           </div>
         </motion.div>
@@ -5390,6 +6129,7 @@ function Quote({ buddy }) {
 
 function BuddyList() {
   const now = useMinuteClock();
+  const { current: me } = useUsers();
   const [selected, setSelected] = useState(0);
   const [openGroups, setOpenGroups] = useState({ legends: true, offline: true });
   const listRef = useRef(null);
@@ -5451,15 +6191,20 @@ function BuddyList() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
-          <img src="/avatar.jpg" alt="" className="h-10 w-10 rounded-lg border border-zinc-800 object-cover" />
+        <button
+          type="button"
+          onClick={() => openPreferences("users")}
+          title="Users"
+          className="flex w-full items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 text-left hover:bg-[var(--os-hover)]"
+        >
+          <UserAvatar user={me} className="h-10 w-10 rounded-lg border border-zinc-800 text-[14px]" />
           <div className="min-w-0">
-            <div className="truncate font-semibold text-zinc-100">maxhayim</div>
+            <div className="truncate font-semibold text-zinc-100">{me.handle || me.name}</div>
             <div className="flex items-center gap-1.5 text-xs text-emerald-300">
               <span className="h-2 w-2 rounded-full bg-emerald-300" aria-hidden="true" /> Available
             </div>
           </div>
-        </div>
+        </button>
 
         <div
           ref={listRef}
@@ -6517,6 +7262,7 @@ function Widgets({ disabled }) {
 
 export default function App() {
   const route = useHashRoute();
+  useAutoUpdateCheck();
   const [booting, setBooting] = useState(
     () => !readStore("localStorage", "mh-booted") && !prefersReducedMotion(),
   );
