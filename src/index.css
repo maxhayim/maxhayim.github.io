@@ -686,11 +686,16 @@
 .widget-calendar { min-height: 196px; }
 
 /* Notes: lined paper */
-.widget-notes { height: 196px; background: color-mix(in oklab, var(--w-yellow) 14%, var(--os-card)); }
+.widget-notes { display: flex; height: 216px; flex-direction: column; background: color-mix(in oklab, var(--note, #f2c94c) 22%, var(--os-card)); }
+.widget-notes-bar { display: flex; align-items: center; gap: 6px; padding: 6px 10px 9px; font-size: 11px; color: var(--os-ink-3); border-top: 1px solid color-mix(in oklab, var(--os-ink) 10%, transparent); }
+.widget-notes-btn { display: inline-flex; width: 18px; height: 18px; align-items: center; justify-content: center; border-radius: 999px; font-size: 14px; line-height: 1; color: var(--os-ink-2); }
+.widget-notes-btn:hover:not(:disabled) { background: var(--os-hover); color: var(--os-ink); }
+.widget-notes-btn:disabled { opacity: 0.3; }
 .widget-notes-text {
   display: block;
   width: 100%;
-  height: 100%;
+  min-height: 0;
+  flex: 1;
   padding: 16px 16px 12px;
   resize: none;
   border: 0;
@@ -712,6 +717,13 @@
 .widget-photos-dots span.on { background: #fff; }
 
 .widget-add { background: var(--os-case); color: var(--os-ink); box-shadow: 0 0 0 1px var(--os-line), 0 6px 16px -6px rgba(0, 0, 0, 0.4); }
+
+/* Stocks and Flight Tracker */
+.stock-up { color: var(--os-ok); background: color-mix(in oklab, var(--os-ok) 14%, transparent); }
+.stock-down { color: var(--os-warn); background: color-mix(in oklab, var(--os-warn) 14%, transparent); }
+.widget-flight-path { position: relative; display: flex; flex: 1; align-items: center; justify-content: center; height: 16px; }
+.widget-flight-path::before { content: ""; position: absolute; inset: 50% 4px auto; border-top: 1.5px dashed var(--w-line); }
+.widget-flight-path svg { position: relative; background: var(--w-case); }
 
 /* Widget gallery */
 .gallery-card { padding: 10px; border-radius: 16px; box-shadow: inset 0 0 0 1px var(--os-line); }

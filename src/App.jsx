@@ -1129,6 +1129,12 @@ const STORED_ITEMS = [
   { label: "mesh radio station", key: "comcen_mesh" },
   { label: "MeshMonitor connection", key: "comcen_meshmonitor" },
   { label: "note", key: "comcen_note" },
+  { label: "sticky notes", key: "comcen_notes" },
+  { label: "converter", key: "comcen_convert" },
+  { label: "translator languages", key: "comcen_translate" },
+  { label: "tracked flight", key: "comcen_flight" },
+  { label: "stock watchlist", key: "comcen_stocks" },
+  { label: "Finnhub key", key: "comcen_finnhub" },
   { label: "world clock", key: "comcen_worldclock" },
   { label: "displays", key: "comcen_display" },
   { label: "power", key: "comcen_power" },
@@ -2577,7 +2583,8 @@ function exportSettings(user) {
     user: user.owner ? { name: user.name } : { name: user.name, color: user.color, photo: user.photo },
     prefs: (() => {
       const prefs = collectUserPrefs();
-      delete prefs.local[MESHMONITOR_KEY]; // the MeshMonitor token never leaves this browser
+      delete prefs.local[MESHMONITOR_KEY]; // API keys never leave this browser
+      delete prefs.local[FINNHUB_KEY];
       return prefs;
     })(),
   };
@@ -2596,7 +2603,7 @@ function exportSettings(user) {
 function readSettingsFile(text) {
   const data = JSON.parse(text);
   if (data?.format !== SETTINGS_FORMAT || !data.prefs) throw new Error("That isn't a comcen os settings file.");
-  const allowed = (key) => typeof key === "string" && key.startsWith("comcen_") && !MACHINE_KEYS.has(key) && key !== MESHMONITOR_KEY;
+  const allowed = (key) => typeof key === "string" && key.startsWith("comcen_") && !MACHINE_KEYS.has(key) && key !== MESHMONITOR_KEY && key !== FINNHUB_KEY;
   const pick = (obj) => Object.fromEntries(Object.entries(obj || {}).filter(([k, v]) => allowed(k) && typeof v === "string" && v.length < 200000));
   const user = data.user && typeof data.user.name === "string" ? data.user : null;
   return { prefs: { cookies: pick(data.prefs.cookies), local: pick(data.prefs.local) }, user };
@@ -4333,26 +4340,6 @@ function CalendarWidget() {
 /* Notes: a sticky note that saves as you type */
 const NOTE_KEY = "comcen_note";
 
-function NotesWidget() {
-  const [text, setText] = useState(() => readStore("localStorage", NOTE_KEY) || "");
-  return (
-    <section className="widget widget-notes" aria-label="Note">
-      <textarea
-        value={text}
-        maxLength={2000}
-        onChange={(e) => {
-          setText(e.target.value);
-          writeStore("localStorage", NOTE_KEY, e.target.value);
-        }}
-        placeholder="Write a note…"
-        aria-label="Note"
-        spellCheck
-        dir="auto"
-        className="widget-notes-text"
-      />
-    </section>
-  );
-}
 
 /* World Clock: three cities, set in Widgets preferences */
 const WORLD_PREFS = {
@@ -4790,6 +4777,670 @@ function PhotoGalleryViewer() {
         }}
       />
     </div>
+  );
+}
+
+/* ---------- Convert, Sticky Notes, Translator, Flight Tracker, Stocks ---------- */
+
+const widgetSelect =
+  "min-w-0 rounded-md bg-[var(--os-card)] px-1.5 py-1 text-[12px] ring-1 ring-[var(--w-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]";
+const widgetInput =
+  "w-full min-w-0 rounded-md bg-[var(--os-card)] px-2 py-1 text-[13px] ring-1 ring-[var(--w-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]";
+
+function useStoredJSON(key, fallback) {
+  const [value, setValue] = useState(() => readJSON(key, fallback));
+  const update = (next) => {
+    setValue((current) => {
+      const merged = typeof next === "function" ? next(current) : next;
+      writeStore("localStorage", key, JSON.stringify(merged));
+      return merged;
+    });
+  };
+  return [value, update];
+}
+
+/* Convert: units on the device; currencies from Frankfurter (European Central Bank reference rates) */
+const UNIT_GROUPS = {
+  length: { label: "length", units: { mm: 0.001, cm: 0.01, m: 1, km: 1000, in: 0.0254, ft: 0.3048, yd: 0.9144, mi: 1609.344, "nmi": 1852 }, from: "mi", to: "km" },
+  weight: { label: "weight", units: { mg: 1e-6, g: 0.001, kg: 1, t: 1000, oz: 0.028349523125, lb: 0.45359237, st: 6.35029318 }, from: "lb", to: "kg" },
+  volume: {
+    label: "volume",
+    units: { ml: 0.001, l: 1, "US cup": 0.2365882365, "US fl oz": 0.0295735295625, "US qt": 0.946352946, "US gal": 3.785411784, "UK gal": 4.54609 },
+    from: "US gal",
+    to: "l",
+  },
+  speed: { label: "speed", units: { "m/s": 1, "km/h": 1 / 3.6, mph: 0.44704, kn: 1852 / 3600 }, from: "mph", to: "km/h" },
+  area: { label: "area", units: { "m²": 1, "km²": 1e6, ha: 1e4, "ft²": 0.09290304, acre: 4046.8564224, "mi²": 2589988.110336 }, from: "acre", to: "m²" },
+  temperature: { label: "temperature", units: { "°F": null, "°C": null, K: null }, from: "°F", to: "°C" },
+  currency: { label: "currency", units: null, from: "USD", to: "EUR" },
+};
+
+function convertTemperature(value, from, to) {
+  const celsius = from === "°C" ? value : from === "°F" ? ((value - 32) * 5) / 9 : value - 273.15;
+  return to === "°C" ? celsius : to === "°F" ? (celsius * 9) / 5 + 32 : celsius + 273.15;
+}
+
+const currencyCache = { names: null, rates: new Map() }; // rates: "USD>EUR" -> { rate, date, at }
+
+async function loadCurrencies() {
+  if (currencyCache.names) return currencyCache.names;
+  const response = await fetch("https://api.frankfurter.dev/v1/currencies");
+  if (!response.ok) throw new Error("rates");
+  currencyCache.names = await response.json();
+  return currencyCache.names;
+}
+
+async function loadRate(from, to) {
+  const key = `${from}>${to}`;
+  const cached = currencyCache.rates.get(key);
+  if (cached && Date.now() - cached.at < 60 * 60 * 1000) return cached;
+  const response = await fetch(`https://api.frankfurter.dev/v1/latest?base=${from}&symbols=${to}`);
+  if (!response.ok) throw new Error("rates");
+  const json = await response.json();
+  const entry = { rate: json.rates[to], date: json.date, at: Date.now() };
+  currencyCache.rates.set(key, entry);
+  return entry;
+}
+
+const formatNumber = (n, locale) =>
+  Number.isFinite(n) ? n.toLocaleString(locale, { maximumSignificantDigits: Math.abs(n) >= 1 ? 10 : 6, maximumFractionDigits: 6 }) : "—";
+
+function ConvertWidget() {
+  const [region] = usePrefs(REGION_PREFS);
+  const [saved, setSaved] = useStoredJSON("comcen_convert", { group: "currency", value: "1", from: "USD", to: "EUR" });
+  const [currencies, setCurrencies] = useState(currencyCache.names);
+  const [rate, setRate] = useState(null); // { key, rate, date } | { key, error }
+  const group = UNIT_GROUPS[saved.group] ? saved.group : "currency";
+  const isCurrency = group === "currency";
+  const options = isCurrency ? Object.keys(currencies || { USD: "", EUR: "", ILS: "", GBP: "" }) : Object.keys(UNIT_GROUPS[group].units);
+  const from = options.includes(saved.from) ? saved.from : UNIT_GROUPS[group].from;
+  const to = options.includes(saved.to) ? saved.to : UNIT_GROUPS[group].to;
+  const value = Number.parseFloat(String(saved.value).replace(",", "."));
+  const rateKey = `${from}>${to}`;
+
+  useEffect(() => {
+    if (!isCurrency || currencies) return;
+    let cancelled = false;
+    loadCurrencies()
+      .then((names) => !cancelled && setCurrencies(names))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isCurrency, currencies]);
+
+  useEffect(() => {
+    if (!isCurrency || from === to) return;
+    let cancelled = false;
+    loadRate(from, to)
+      .then((r) => !cancelled && setRate({ key: rateKey, rate: r.rate, date: r.date }))
+      .catch(() => !cancelled && setRate({ key: rateKey, error: true }));
+    return () => {
+      cancelled = true;
+    };
+  }, [isCurrency, from, to, rateKey]);
+
+  let result = Number.NaN;
+  let footnote = "";
+  if (Number.isFinite(value)) {
+    if (isCurrency) {
+      if (from === to) result = value;
+      else if (rate?.key === rateKey && !rate.error) {
+        result = value * rate.rate;
+        footnote = `ECB rate, ${rate.date}`;
+      } else footnote = rate?.key === rateKey ? "Rates aren't available right now." : "Getting today's rate…";
+    } else if (group === "temperature") result = convertTemperature(value, from, to);
+    else result = (value * UNIT_GROUPS[group].units[from]) / UNIT_GROUPS[group].units[to];
+  }
+
+  const set = (patch) => setSaved((s) => ({ ...s, ...patch }));
+  // Pickers show codes to stay compact; currency names are spelled out under the result
+  const names = isCurrency && currencies?.[from] && currencies?.[to] ? `${currencies[from]} → ${currencies[to]}` : "";
+
+  return (
+    <section className="widget widget-convert px-3.5 pb-3.5 pt-3" aria-label="Convert">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--os-ink-3)]">convert</span>
+        <select
+          value={group}
+          onChange={(e) => set({ group: e.target.value, from: UNIT_GROUPS[e.target.value].from, to: UNIT_GROUPS[e.target.value].to })}
+          className={widgetSelect}
+          aria-label="What to convert"
+        >
+          {Object.entries(UNIT_GROUPS).map(([id, g]) => (
+            <option key={id} value={id}>
+              {g.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <input
+        value={saved.value}
+        onChange={(e) => set({ value: e.target.value.slice(0, 18) })}
+        inputMode="decimal"
+        aria-label="Amount"
+        className={`${widgetInput} mt-2.5 text-[15px] tabular-nums`}
+      />
+      <div className="mt-2 flex items-center gap-1">
+        <select value={from} onChange={(e) => set({ from: e.target.value })} className={`${widgetSelect} flex-1`} aria-label="From">
+          {options.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+        <button type="button" onClick={() => set({ from: to, to: from })} className="widget-mini-btn shrink-0" aria-label="Swap" title="Swap">
+          ⇄
+        </button>
+        <select value={to} onChange={(e) => set({ to: e.target.value })} className={`${widgetSelect} flex-1`} aria-label="To">
+          {options.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="mt-3 truncate text-[26px] font-light leading-none tracking-tight tabular-nums" aria-live="polite">
+        {formatNumber(result, region.locale)}
+        <span className="ml-1 text-[13px] font-medium text-[var(--os-ink-3)]">{to}</span>
+      </div>
+      <div className="mt-1.5 truncate text-[10.5px] text-[var(--os-ink-2)]">{names}</div>
+      <div className="h-[14px] truncate text-[10.5px] text-[var(--os-ink-3)]">{footnote}</div>
+    </section>
+  );
+}
+
+/* Sticky Notes: several notes in five colors, saved as you type */
+const NOTES_KEY = "comcen_notes";
+const NOTE_COLORS = { yellow: "#f2c94c", orange: "#f08a5d", green: "#8fb07a", blue: "#7fa6c4", grey: "#c9c4b8" };
+
+function readNotes() {
+  const saved = readJSON(NOTES_KEY, null);
+  if (Array.isArray(saved) && saved.length) {
+    return saved.filter((n) => n && typeof n.text === "string").map((n) => ({ id: String(n.id), text: n.text.slice(0, 2000), color: NOTE_COLORS[n.color] ? n.color : "yellow" }));
+  }
+  // The single note from before Sticky Notes becomes the first one
+  return [{ id: "n1", text: readStore("localStorage", NOTE_KEY) || "", color: "yellow" }];
+}
+
+function NotesWidget() {
+  const [notes, setNotesState] = useState(readNotes);
+  const [index, setIndex] = useState(0);
+  const current = notes[Math.min(index, notes.length - 1)];
+  const save = (next) => {
+    setNotesState(next);
+    writeStore("localStorage", NOTES_KEY, JSON.stringify(next));
+  };
+  const update = (patch) => save(notes.map((n) => (n.id === current.id ? { ...n, ...patch } : n)));
+  const add = () => {
+    const next = [...notes, { id: `n${Date.now().toString(36)}`, text: "", color: Object.keys(NOTE_COLORS)[notes.length % 5] }];
+    save(next);
+    setIndex(next.length - 1);
+  };
+  const remove = () => {
+    const next = notes.filter((n) => n.id !== current.id);
+    save(next.length ? next : [{ id: `n${Date.now().toString(36)}`, text: "", color: "yellow" }]);
+    setIndex((i) => Math.max(0, Math.min(i, next.length - 1)));
+  };
+
+  return (
+    <section className="widget widget-notes" aria-label="Sticky notes" style={{ "--note": NOTE_COLORS[current.color] }}>
+      <textarea
+        value={current.text}
+        maxLength={2000}
+        onChange={(e) => update({ text: e.target.value })}
+        placeholder="Write a note…"
+        aria-label={`Note ${index + 1} of ${notes.length}`}
+        spellCheck
+        dir="auto"
+        className="widget-notes-text"
+      />
+      <div className="widget-notes-bar">
+        <button type="button" disabled={index === 0} onClick={() => setIndex((i) => i - 1)} className="widget-notes-btn" aria-label="Previous note">
+          ‹
+        </button>
+        <span className="tabular-nums">
+          {Math.min(index, notes.length - 1) + 1}/{notes.length}
+        </span>
+        <button type="button" disabled={index >= notes.length - 1} onClick={() => setIndex((i) => i + 1)} className="widget-notes-btn" aria-label="Next note">
+          ›
+        </button>
+        <span className="ml-auto flex gap-1" role="radiogroup" aria-label="Note color">
+          {Object.entries(NOTE_COLORS).map(([name, color]) => (
+            <button
+              key={name}
+              type="button"
+              role="radio"
+              aria-checked={current.color === name}
+              aria-label={name}
+              onClick={() => update({ color: name })}
+              className={`h-3 w-3 rounded-full ${current.color === name ? "ring-2 ring-[var(--os-ink)] ring-offset-1 ring-offset-transparent" : ""}`}
+              style={{ background: color }}
+            />
+          ))}
+        </span>
+        <button type="button" onClick={add} className="widget-notes-btn" aria-label="New note" title="New note">
+          +
+        </button>
+        <button type="button" onClick={remove} className="widget-notes-btn" aria-label="Delete this note" title="Delete this note">
+          ×
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/* Translator: Chrome's on-device translator when it's there (nothing leaves your computer), otherwise MyMemory */
+const TRANSLATE_LANGS = [
+  ["en", "English"],
+  ["he", "עברית"],
+  ["es", "Español"],
+  ["fr", "Français"],
+  ["de", "Deutsch"],
+  ["it", "Italiano"],
+  ["pt", "Português"],
+  ["ru", "Русский"],
+  ["ar", "العربية"],
+  ["zh", "中文"],
+  ["ja", "日本語"],
+];
+const TRANSLATE_MAX = 450; // MyMemory's free limit is 500 bytes a request
+
+const decodeEntities = (text) => new DOMParser().parseFromString(`<!doctype html><body>${text}`, "text/html").body.textContent || "";
+
+async function translateText(text, from, to) {
+  if (typeof self !== "undefined" && "Translator" in self) {
+    try {
+      const availability = await self.Translator.availability({ sourceLanguage: from, targetLanguage: to });
+      if (availability === "available") {
+        const translator = await self.Translator.create({ sourceLanguage: from, targetLanguage: to });
+        return { text: await translator.translate(text), via: "on this device" };
+      }
+    } catch {
+      /* fall through to MyMemory */
+    }
+  }
+  const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${from}|${to}`);
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.responseData || json.quotaFinished) throw new Error("translate");
+  return { text: decodeEntities(json.responseData.translatedText), via: "MyMemory" };
+}
+
+function TranslatorWidget() {
+  const [langs, setLangs] = useStoredJSON("comcen_translate", { from: "en", to: "he" });
+  const [text, setText] = useState("");
+  const [result, setResult] = useState(null); // { text, via } | { error } | "working"
+
+  const run = async () => {
+    const input = text.trim();
+    if (!input) return;
+    setResult("working");
+    try {
+      setResult(await translateText(input, langs.from, langs.to));
+    } catch {
+      setResult({ error: "Couldn't translate right now. Try again in a little while." });
+    }
+  };
+
+  return (
+    <section className="widget widget-translate px-3.5 pb-3 pt-3" aria-label="Translator">
+      <div className="flex items-center gap-1">
+        <select value={langs.from} onChange={(e) => setLangs((l) => ({ ...l, from: e.target.value }))} className={`${widgetSelect} flex-1`} aria-label="From language">
+          {TRANSLATE_LANGS.map(([code, name]) => (
+            <option key={code} value={code}>
+              {name}
+            </option>
+          ))}
+        </select>
+        <button type="button" onClick={() => setLangs((l) => ({ from: l.to, to: l.from }))} className="widget-mini-btn shrink-0" aria-label="Swap languages" title="Swap">
+          ⇄
+        </button>
+        <select value={langs.to} onChange={(e) => setLangs((l) => ({ ...l, to: e.target.value }))} className={`${widgetSelect} flex-1`} aria-label="To language">
+          {TRANSLATE_LANGS.map(([code, name]) => (
+            <option key={code} value={code}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value.slice(0, TRANSLATE_MAX))}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            run();
+          }
+        }}
+        placeholder="Type, then press Enter"
+        aria-label="Text to translate"
+        dir="auto"
+        rows={3}
+        className={`${widgetInput} mt-2 resize-none leading-snug`}
+      />
+      <div className="mt-2 min-h-[54px] rounded-md bg-[var(--os-hover)] px-2 py-1.5 text-[13px] leading-snug" aria-live="polite" dir="auto">
+        {result === "working" ? (
+          <span className="text-[var(--os-ink-3)]">Translating…</span>
+        ) : result?.error ? (
+          <span className="text-[12px] text-[var(--os-warn)]">{result.error}</span>
+        ) : result ? (
+          result.text
+        ) : (
+          <span className="text-[var(--os-ink-3)]">The translation appears here.</span>
+        )}
+      </div>
+      <div className="mt-1.5 flex items-center justify-between text-[10px] text-[var(--os-ink-3)]">
+        <span>{result?.via ? `translated ${result.via === "MyMemory" ? "by MyMemory" : result.via}` : "Chrome translates on-device; others use MyMemory"}</span>
+        <button type="button" onClick={run} disabled={!text.trim() || result === "working"} className="rounded-full px-2 py-0.5 text-[11px] ring-1 ring-[var(--w-line)] hover:bg-[var(--os-hover)] disabled:opacity-40">
+          translate
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/* Flight Tracker: a flight's airline and route from adsbdb, a photo from Planespotters, and a live map at ADS-B Exchange */
+// Two-letter airline codes the route database doesn't take on their own (it wants the three-letter ones)
+const AIRLINE_ICAO = {
+  AA: "AAL", UA: "UAL", DL: "DAL", WN: "SWA", B6: "JBU", AS: "ASA", NK: "NKS", F9: "FFT", HA: "HAL", LY: "ELY", BA: "BAW", VS: "VIR",
+  LH: "DLH", AF: "AFR", KL: "KLM", IB: "IBE", AY: "FIN", SK: "SAS", LX: "SWR", OS: "AUA", TK: "THY", EK: "UAE", QR: "QTR", EY: "ETD",
+  FR: "RYR", U2: "EZY", AC: "ACA", AM: "AMX", AV: "AVA", CM: "CMP", LA: "LAN", SQ: "SIA", CX: "CPA", NH: "ANA", JL: "JAL", QF: "QFA",
+};
+
+function flightCandidates(raw) {
+  const flight = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const match = flight.match(/^([A-Z0-9]{2})(\d{1,4})$/);
+  const icao = match && AIRLINE_ICAO[match[1]] ? `${AIRLINE_ICAO[match[1]]}${match[2]}` : null;
+  return [...new Set([flight, icao].filter(Boolean))];
+}
+
+async function lookupFlight(raw) {
+  for (const callsign of flightCandidates(raw)) {
+    const response = await fetch(`https://api.adsbdb.com/v0/callsign/${callsign}`).catch(() => null);
+    if (!response) throw new Error("offline");
+    if (response.status === 404 || response.status === 400) continue;
+    const route = (await response.json())?.response?.flightroute;
+    if (route) return route;
+  }
+  throw new Error("unknown");
+}
+
+function FlightWidget() {
+  const [saved, setSaved] = useStoredJSON("comcen_flight", { flight: "LY1" });
+  const [draft, setDraft] = useState(saved.flight);
+  const [state, setState] = useState({ flight: null, route: null, error: null });
+  const flight = saved.flight;
+  const [region] = usePrefs(REGION_PREFS);
+
+  useEffect(() => {
+    if (!flight) return;
+    let cancelled = false;
+    lookupFlight(flight)
+      .then((route) => !cancelled && setState({ flight, route, error: null }))
+      .catch((e) => !cancelled && setState({ flight, route: null, error: e.message }));
+    return () => {
+      cancelled = true;
+    };
+  }, [flight]);
+
+  const current = state.flight === flight ? state : { route: null, error: null };
+  const route = current.route;
+  const km = route ? pathTo({ lat: route.origin.latitude, lon: route.origin.longitude }, { lat: route.destination.latitude, lon: route.destination.longitude }).km : 0;
+  const distance = region.temperature === "f" ? `${Math.round(km * 0.621371).toLocaleString(region.locale)} mi` : `${Math.round(km).toLocaleString(region.locale)} km`;
+  const callsign = route?.callsign_icao || flight;
+
+  return (
+    <section className="widget widget-flight px-3.5 pb-3.5 pt-3" aria-label="Flight tracker">
+      <form
+        className="flex items-center gap-1.5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const next = draft.trim().toUpperCase();
+          if (next) setSaved({ flight: next });
+        }}
+      >
+        <Plane className="h-3.5 w-3.5 shrink-0 text-[var(--os-ink-3)]" aria-hidden="true" />
+        <input value={draft} onChange={(e) => setDraft(e.target.value.slice(0, 10))} placeholder="Flight, e.g. LY1" aria-label="Flight number" className={`${widgetInput} font-mono uppercase`} />
+        <button type="submit" className="widget-mini-btn shrink-0 ring-1 ring-[var(--w-line)]" aria-label="Look up flight" title="Look up">
+          ↵
+        </button>
+      </form>
+
+      {route ? (
+        <>
+          <div className="mt-2.5 truncate text-[12px] font-semibold">{route.airline?.name || "Flight"}</div>
+          <div className="text-[10.5px] text-[var(--os-ink-3)]">
+            {[route.callsign_iata, route.callsign_icao].filter(Boolean).join(" · ")}
+          </div>
+          <div className="mt-2.5 flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-[22px] font-semibold leading-none tracking-tight">{route.origin.iata_code}</div>
+              <div className="truncate text-[10.5px] text-[var(--os-ink-3)]">{route.origin.municipality}</div>
+            </div>
+            <div className="widget-flight-path" aria-hidden="true">
+              <Plane className="h-3.5 w-3.5 rotate-45 text-[var(--os-accent)]" />
+            </div>
+            <div className="min-w-0 text-right">
+              <div className="text-[22px] font-semibold leading-none tracking-tight">{route.destination.iata_code}</div>
+              <div className="truncate text-[10.5px] text-[var(--os-ink-3)]">{route.destination.municipality}</div>
+            </div>
+          </div>
+          <div className="mt-2 text-center text-[10.5px] text-[var(--os-ink-3)]">{distance} great-circle</div>
+          <a
+            href={`https://globe.adsbexchange.com/?callsign=${encodeURIComponent(callsign)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 flex items-center justify-center gap-1 rounded-full py-1 text-[11.5px] ring-1 ring-[var(--w-line)] hover:bg-[var(--os-hover)]"
+          >
+            track live <ExternalLink className="h-3 w-3" aria-hidden="true" />
+          </a>
+        </>
+      ) : (
+        <div className="flex h-[150px] items-center justify-center px-2 text-center text-[12px] text-[var(--os-ink-3)]">
+          {current.error === "unknown"
+            ? `No route found for ${flight}. Try the airline's code, like LY1 or ELY1.`
+            : current.error
+              ? "Couldn't reach the flight database."
+              : "Looking up the route…"}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* Stocks: crypto from CoinGecko (no key needed); stocks from Finnhub with your own free key */
+const STOCKS_KEY = "comcen_stocks"; // { symbols }
+const FINNHUB_KEY = "comcen_finnhub"; // your Finnhub API key, kept in this browser and left out of exports
+const CRYPTO_IDS = { BTC: "bitcoin", ETH: "ethereum", SOL: "solana", XRP: "ripple", DOGE: "dogecoin", ADA: "cardano", LTC: "litecoin", BNB: "binancecoin" };
+const STOCKS_DEFAULT = "AAPL, MSFT, NVDA, TSLA, BTC, ETH";
+const STOCKS_REFRESH_MS = 60 * 1000;
+
+const readWatchlist = () =>
+  String(readJSON(STOCKS_KEY, { symbols: STOCKS_DEFAULT }).symbols || STOCKS_DEFAULT)
+    .toUpperCase()
+    .split(/[\s,]+/)
+    .filter((s) => /^[A-Z0-9.^-]{1,10}$/.test(s))
+    .slice(0, 8);
+
+const stocksCache = { data: null, at: 0, key: "" };
+
+async function loadQuotes(symbols, apiKey) {
+  const crypto = symbols.filter((s) => CRYPTO_IDS[s]);
+  const stocks = symbols.filter((s) => !CRYPTO_IDS[s]);
+  const quotes = {};
+  if (crypto.length) {
+    const ids = crypto.map((s) => CRYPTO_IDS[s]).join(",");
+    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`).catch(() => null);
+    const json = response?.ok ? await response.json() : {};
+    crypto.forEach((s) => {
+      const q = json[CRYPTO_IDS[s]];
+      if (q) quotes[s] = { price: q.usd, change: q.usd_24h_change };
+    });
+  }
+  if (stocks.length && apiKey) {
+    await Promise.all(
+      stocks.map(async (s) => {
+        const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(s)}&token=${encodeURIComponent(apiKey)}`).catch(() => null);
+        if (response?.status === 401) quotes[s] = { error: "key" };
+        else if (response?.ok) {
+          const q = await response.json();
+          if (q && q.c) quotes[s] = { price: q.c, change: q.dp };
+        }
+      }),
+    );
+  }
+  return quotes;
+}
+
+function useStockSettings() {
+  const [settings, setSettings] = useState(() => ({ symbols: readWatchlist(), key: readStore("localStorage", FINNHUB_KEY) || "" }));
+  useEffect(() => {
+    const onChanged = () => setSettings({ symbols: readWatchlist(), key: readStore("localStorage", FINNHUB_KEY) || "" });
+    window.addEventListener("mh-stocks-changed", onChanged);
+    return () => window.removeEventListener("mh-stocks-changed", onChanged);
+  }, []);
+  return settings;
+}
+
+function StocksWidget() {
+  const { symbols, key } = useStockSettings();
+  const cacheKey = `${symbols.join(",")}|${key ? "k" : ""}`;
+  const [state, setState] = useState(() => (stocksCache.key === cacheKey ? { key: cacheKey, data: stocksCache.data } : { key: cacheKey, data: null }));
+  const [region] = usePrefs(REGION_PREFS);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      loadQuotes(symbols, key).then((data) => {
+        Object.assign(stocksCache, { data, at: Date.now(), key: cacheKey });
+        if (!cancelled) setState({ key: cacheKey, data });
+      });
+    const age = stocksCache.key === cacheKey ? Date.now() - stocksCache.at : Infinity;
+    let id;
+    const first = setTimeout(
+      () => {
+        load();
+        id = setInterval(load, STOCKS_REFRESH_MS);
+      },
+      Math.max(0, STOCKS_REFRESH_MS - age),
+    );
+    return () => {
+      cancelled = true;
+      clearTimeout(first);
+      clearInterval(id);
+    };
+  }, [cacheKey, symbols, key]);
+
+  const data = state.key === cacheKey ? state.data : null;
+  const needsKey = !key && symbols.some((s) => !CRYPTO_IDS[s]);
+  const money = (n) => n.toLocaleString(region.locale, { style: "currency", currency: "USD", maximumFractionDigits: n >= 1000 ? 0 : 2 });
+
+  return (
+    <section className="widget widget-stocks px-3.5 pb-3 pt-3" aria-label="Stocks">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-[var(--os-ink-3)]">
+        <span>stocks</span>
+        <button type="button" onClick={() => openPreferences("widgets")} className="normal-case tracking-normal underline-offset-2 hover:underline">
+          edit
+        </button>
+      </div>
+      <ul className="mt-1.5 divide-y divide-[var(--w-line)]">
+        {symbols.map((s) => {
+          const q = data?.[s];
+          const up = q?.change >= 0;
+          return (
+            <li key={s} className="flex items-center justify-between gap-2 py-[5px] text-[12.5px] tabular-nums">
+              <span className="w-12 shrink-0 font-semibold">{s}</span>
+              <span className="min-w-0 flex-1 truncate text-right">{q?.price ? money(q.price) : q?.error ? "key?" : "—"}</span>
+              <span className={`w-[52px] shrink-0 rounded px-1 text-right text-[11px] ${q?.price ? (up ? "stock-up" : "stock-down") : "text-[var(--os-ink-3)]"}`}>
+                {q?.price && Number.isFinite(q.change) ? `${up ? "+" : ""}${q.change.toFixed(2)}%` : ""}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-1.5 text-[10px] leading-snug text-[var(--os-ink-3)]">
+        {needsKey ? "Add a free Finnhub key in Widgets settings for stock prices." : "Prices may be delayed."}
+      </p>
+    </section>
+  );
+}
+
+// Widgets pane: the stock watchlist and Finnhub key
+function StocksSettings() {
+  const [symbols, setSymbols] = useState(() => String(readJSON(STOCKS_KEY, { symbols: STOCKS_DEFAULT }).symbols || STOCKS_DEFAULT));
+  const [key, setKey] = useState(() => readStore("localStorage", FINNHUB_KEY) || "");
+  const [saved, setSaved] = useState(false);
+  const input = "w-full rounded-lg bg-[var(--os-card)] px-2.5 py-1.5 ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]";
+
+  const save = () => {
+    writeStore("localStorage", STOCKS_KEY, JSON.stringify({ symbols }));
+    if (key.trim()) writeStore("localStorage", FINNHUB_KEY, key.trim());
+    else {
+      try {
+        localStorage.removeItem(FINNHUB_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
+    window.dispatchEvent(new Event("mh-stocks-changed"));
+    setSaved(true);
+  };
+
+  return (
+    <>
+      <div className="mt-6 text-[13px] font-semibold">stocks</div>
+      <form
+        className="mt-2 grid gap-3 text-[13px] sm:grid-cols-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+      >
+        <label className="flex flex-col gap-1.5">
+          <span>watchlist (up to 8)</span>
+          <input
+            value={symbols}
+            onChange={(e) => {
+              setSymbols(e.target.value.toUpperCase());
+              setSaved(false);
+            }}
+            placeholder={STOCKS_DEFAULT}
+            autoComplete="off"
+            spellCheck={false}
+            className={`${input} font-mono`}
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span>Finnhub API key</span>
+          <input
+            type="password"
+            value={key}
+            onChange={(e) => {
+              setKey(e.target.value);
+              setSaved(false);
+            }}
+            placeholder="for stock prices"
+            autoComplete="off"
+            spellCheck={false}
+            className={`${input} font-mono`}
+          />
+        </label>
+        <div className="flex items-center justify-between gap-2 sm:col-span-2">
+          <span className="text-[12px] text-[var(--os-ink-3)]">
+            {saved ? "Saved." : "Crypto (BTC, ETH, SOL…) works without a key. "}
+            {!saved && (
+              <a href="https://finnhub.io/register" target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-[var(--os-ink)]">
+                Get a free Finnhub key
+              </a>
+            )}
+          </span>
+          <button type="submit" className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
+            save
+          </button>
+        </div>
+      </form>
+      <p className="mt-2 text-[12px] text-[var(--os-ink-3)]">The key stays in this browser and is left out of exported settings.</p>
+    </>
   );
 }
 
@@ -9647,9 +10298,13 @@ const WIDGET_KINDS = [
   // More in the widget gallery
   { id: "calculator", label: "Calculator", note: "after the Braun ET66 by Dieter Rams", Icon: Calculator, Component: CalculatorWidget, defaultShown: false },
   { id: "calendar", label: "Calendar", note: "this month, in your language", Icon: CalendarDays, Component: CalendarWidget, defaultShown: false, settings: "datetime" },
-  { id: "notes", label: "Notes", note: "a sticky note that saves as you type", Icon: StickyNote, Component: NotesWidget, defaultShown: false },
+  { id: "notes", label: "Sticky Notes", note: "notes in five colors that save as you type", Icon: StickyNote, Component: NotesWidget, defaultShown: false },
   { id: "worldclock", label: "World Clock", note: "three cities at a glance", Icon: Globe, Component: WorldClockWidget, defaultShown: false, settings: "widgets" },
   { id: "photos", label: "Photo Gallery", note: "your own photos, in a frame", Icon: ImageIcon, Component: PhotosWidget, defaultShown: false, settings: "widgets" },
+  { id: "convert", label: "Convert", note: "units and currencies", Icon: RefreshCw, Component: ConvertWidget, defaultShown: false },
+  { id: "translator", label: "Translator", note: "eleven languages, including Hebrew", Icon: Globe, Component: TranslatorWidget, defaultShown: false },
+  { id: "flight", label: "Flight Tracker", note: "any flight's airline and route", Icon: Plane, Component: FlightWidget, defaultShown: false },
+  { id: "stocks", label: "Stocks", note: "your watchlist, with crypto", Icon: Activity, Component: StocksWidget, defaultShown: false, settings: "widgets" },
 ];
 const WIDGET_WIDTH = 196;
 const WIDGET_GAP = 16;
@@ -9766,6 +10421,7 @@ function WidgetsPane() {
       </label>
 
       <WidgetExtrasSettings />
+      <StocksSettings />
 
       <div className="mt-5 flex flex-wrap items-center justify-end gap-2 text-[13px]">
         <button type="button" onClick={openWidgetGallery} className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
