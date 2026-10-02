@@ -74,6 +74,9 @@ import {
   SkipBack,
   SkipForward,
   RadioTower,
+  Check,
+  Calculator,
+  CalendarDays,
 } from "lucide-react";
 import { version as OS_VERSION } from "../package.json";
 
@@ -820,10 +823,15 @@ const WALLPAPER_COOKIE = "comcen_wallpaper";
 function readWallpaperCookie() {
   const match = document.cookie.match(new RegExp(`(?:^|; )${WALLPAPER_COOKIE}=([^;]*)`));
   const id = match ? decodeURIComponent(match[1]) : "calm";
-  return WALLPAPERS.some((w) => w.id === id) ? id : "calm";
+  return WALLPAPERS.some((w) => w.id === id) || /^custom-[a-z0-9]+$/i.test(id) ? id : "calm";
 }
 
 function applyWallpaper(id) {
+  // Your own pictures load from the browser's picture library once the page is running
+  if (id.startsWith("custom-")) {
+    setTimeout(() => applyCustomWallpaper(id), 0);
+    return;
+  }
   const wallpaper = WALLPAPERS.find((w) => w.id === id) || WALLPAPERS[0];
   const root = document.documentElement;
   root.style.setProperty("--os-wallpaper-image", `url("${wallpaper.src}")`);
@@ -875,7 +883,7 @@ function DesktopMenu() {
 
   if (!menu) return null;
   const width = 230;
-  const height = 282;
+  const height = 314;
   const zoom = pageZoom();
   const left = Math.max(8, Math.min(menu.x / zoom, window.innerWidth / zoom - width - 8));
   const top = Math.max(52, Math.min(menu.y / zoom, window.innerHeight / zoom - height - 8));
@@ -911,6 +919,17 @@ function DesktopMenu() {
         }}
       >
         {readWidgetsOnDesk() ? "hide desktop widgets" : "show desktop widgets"}
+      </button>
+      <button
+        role="menuitem"
+        type="button"
+        className={on}
+        onClick={() => {
+          setMenu(null);
+          openWidgetGallery();
+        }}
+      >
+        widget gallery…
       </button>
       {divider}
       <button role="menuitem" type="button" aria-disabled="true" className={off}>
@@ -1109,6 +1128,8 @@ const STORED_ITEMS = [
   { label: "network", key: "comcen_network" },
   { label: "mesh radio station", key: "comcen_mesh" },
   { label: "MeshMonitor connection", key: "comcen_meshmonitor" },
+  { label: "note", key: "comcen_note" },
+  { label: "world clock", key: "comcen_worldclock" },
   { label: "displays", key: "comcen_display" },
   { label: "power", key: "comcen_power" },
   { label: "keyboard", key: "comcen_keyboard" },
@@ -1141,7 +1162,17 @@ function deleteEverything() {
     /* storage blocked: nothing was saved there */
   }
   if (statsOff) saveAnalyticsOn(false);
-  window.location.reload();
+  // Your pictures live in IndexedDB; give the browser a moment to drop them, then restart
+  const restart = () => window.location.reload();
+  try {
+    const request = indexedDB.deleteDatabase(PICTURES_DB);
+    request.onsuccess = restart;
+    request.onerror = restart;
+    request.onblocked = restart;
+    setTimeout(restart, 1500);
+  } catch {
+    restart();
+  }
 }
 
 /* Pane building blocks */
@@ -1447,7 +1478,7 @@ function PrivacyPane() {
         <div className="flex flex-wrap items-center justify-end gap-2 text-[13px]">
           {confirming ? (
             <>
-              <span className="mr-auto text-[12px] text-[var(--os-ink-2)]">Delete every preference, the widget layout, users, and registration, then restart? Usage statistics stay off if you turned them off.</span>
+              <span className="mr-auto text-[12px] text-[var(--os-ink-2)]">Delete every preference, the widget layout, users, your pictures, and registration, then restart? Usage statistics stay off if you turned them off.</span>
               <button type="button" onClick={() => setConfirming(false)} className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
                 cancel
               </button>
@@ -1605,8 +1636,9 @@ function updateUser(id, patch) {
   writeVisitors(readUsers().map((u) => (u.id === id && !u.owner ? { ...u, ...patch } : u)));
 }
 
-function removeUser(id) {
+async function removeUser(id) {
   if (id === OWNER.id) return;
+  await deletePicturesOf(id).catch(() => {}); // their wallpapers and photos go with them
   const saved = readJSON(USER_PREFS_KEY, {});
   delete saved[id];
   writeStore("localStorage", USER_PREFS_KEY, JSON.stringify(saved));
@@ -3922,6 +3954,808 @@ function MeshMonitorSettings() {
   );
 }
 
+/* ---------- Your pictures: custom wallpapers and Photos widget pictures ----------
+   Kept in this browser's IndexedDB (cookies and local storage are far too small for pictures), shrunk first,
+   and tagged with the user who added them so each user sees their own. Nothing is uploaded anywhere. */
+
+const PICTURES_DB = "comcen";
+const PICTURES_STORE = "pictures";
+
+function openPictures() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      reject(new Error("This browser can't keep pictures."));
+      return;
+    }
+    const request = indexedDB.open(PICTURES_DB, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(PICTURES_STORE)) request.result.createObjectStore(PICTURES_STORE, { keyPath: "id" });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("This browser can't keep pictures."));
+  });
+}
+
+async function picturesRequest(mode, makeRequest) {
+  const db = await openPictures();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(PICTURES_STORE, mode);
+    const request = makeRequest(tx.objectStore(PICTURES_STORE));
+    tx.oncomplete = () => {
+      db.close();
+      resolve(request?.result);
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
+  });
+}
+
+const picturesChanged = () => window.dispatchEvent(new Event("mh-pictures-changed"));
+
+async function listPictures(kind) {
+  const all = (await picturesRequest("readonly", (store) => store.getAll())) || [];
+  const user = currentUserId();
+  return all.filter((p) => p.kind === kind && p.user === user).sort((a, b) => a.added - b.added);
+}
+
+const getPicture = (id) => picturesRequest("readonly", (store) => store.get(id));
+
+async function addPicture(record) {
+  await picturesRequest("readwrite", (store) => store.put(record));
+  picturesChanged();
+}
+
+async function deletePicture(id) {
+  await picturesRequest("readwrite", (store) => store.delete(id));
+  if (readWallpaperCookie() === `custom-${id}`) saveWallpaper("calm");
+  picturesChanged();
+}
+
+async function deletePicturesOf(user) {
+  const all = (await picturesRequest("readonly", (store) => store.getAll()).catch(() => [])) || [];
+  await Promise.all(all.filter((p) => p.user === user).map((p) => picturesRequest("readwrite", (store) => store.delete(p.id))));
+}
+
+function usePictures(kind) {
+  const [pictures, setPictures] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      listPictures(kind)
+        .then((list) => !cancelled && setPictures(list))
+        .catch(() => !cancelled && setPictures([]));
+    load();
+    window.addEventListener("mh-pictures-changed", load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("mh-pictures-changed", load);
+    };
+  }, [kind]);
+  return pictures;
+}
+
+// Shrink a picture so it fits comfortably in the browser: longest side at most `maxSide`
+function shrinkImage(file, maxSide, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    if (!file?.type?.startsWith("image/")) {
+      reject(new Error("That file isn't a picture."));
+      return;
+    }
+    if (file.size > 40 * 1024 * 1024) {
+      reject(new Error("That picture is too large (40 MB at most)."));
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.naturalWidth * scale);
+      canvas.height = Math.round(img.naturalHeight * scale);
+      const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("That picture couldn't be read."))), "image/jpeg", quality);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("That picture couldn't be opened."));
+    };
+    img.src = url;
+  });
+}
+
+const blobToDataUrl = (blob) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+
+async function savePictureFile(file, kind) {
+  const [blob, thumbBlob] = await Promise.all([shrinkImage(file, kind === "wallpaper" ? 2560 : 1200), shrinkImage(file, 360, 0.75)]);
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  await addPicture({ id, kind, user: currentUserId(), blob, thumb: await blobToDataUrl(thumbBlob), name: file.name, added: Date.now() });
+  return id;
+}
+
+// Object URLs for stored pictures, released when no longer shown
+function useObjectUrl(blob) {
+  const url = useMemo(() => (blob ? URL.createObjectURL(blob) : null), [blob]);
+  useEffect(() => () => url && URL.revokeObjectURL(url), [url]);
+  return url;
+}
+
+// Custom wallpapers load from IndexedDB after the page starts
+let customWallpaperUrl = null;
+async function applyCustomWallpaper(id) {
+  const picture = await getPicture(id.slice("custom-".length)).catch(() => null);
+  if (readWallpaperCookie() !== id) return; // changed while loading
+  if (!picture?.blob) {
+    applyWallpaper("calm");
+    return;
+  }
+  if (customWallpaperUrl) URL.revokeObjectURL(customWallpaperUrl);
+  customWallpaperUrl = URL.createObjectURL(picture.blob);
+  const root = document.documentElement;
+  root.style.setProperty("--os-wallpaper-image", `url("${customWallpaperUrl}")`);
+  root.style.setProperty("--os-wallpaper-position", "center");
+  root.dataset.wallpaper = "custom";
+}
+
+// Wallpaper pane: your own pictures, after the built-in ones
+function CustomWallpapers({ current }) {
+  const pictures = usePictures("wallpaper");
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const add = async (files) => {
+    setMessage("");
+    setBusy(true);
+    try {
+      let last = null;
+      for (const file of files) last = await savePictureFile(file, "wallpaper");
+      if (last) saveWallpaper(`custom-${last}`);
+    } catch (e) {
+      setMessage(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="mb-2 mt-5 text-[13px] font-semibold">your pictures</div>
+      <div role="radiogroup" aria-label="Your wallpapers" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {pictures.map((p) => {
+          const id = `custom-${p.id}`;
+          const active = id === current;
+          return (
+            <div key={p.id} className="relative">
+              <button type="button" role="radio" aria-checked={active} onClick={() => saveWallpaper(id)} className="prefs-option flex w-full flex-col items-center gap-2 rounded-xl p-1.5 text-[13px]">
+                <img src={p.thumb} alt="" className={`aspect-video w-full rounded-lg object-cover ${active ? "wallpaper-thumb-active" : "wallpaper-thumb"}`} />
+                <span className="flex max-w-full items-center gap-1.5">
+                  <span className={`os-dot shrink-0 ${active ? "os-dot-on" : ""}`} aria-hidden="true" />
+                  <span className="truncate">{p.name.replace(/\.[^.]+$/, "")}</span>
+                </span>
+              </button>
+              <button type="button" onClick={() => deletePicture(p.id)} className="widget-remove" aria-label={`Remove ${p.name}`} title="Remove">
+                <X className="h-3 w-3" strokeWidth={2.6} />
+              </button>
+            </div>
+          );
+        })}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => fileRef.current?.click()}
+          className="prefs-option flex aspect-video flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-[var(--os-line)] text-[12px] text-[var(--os-ink-2)]"
+        >
+          <ImageIcon className="h-5 w-5" strokeWidth={1.6} aria-hidden="true" />
+          {busy ? "adding…" : "add your own…"}
+        </button>
+      </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="sr-only"
+        tabIndex={-1}
+        onChange={(e) => {
+          add([...(e.target.files || [])]);
+          e.target.value = "";
+        }}
+      />
+      {message && <p className="mt-2 text-[12px] text-[var(--os-warn)]">{message}</p>}
+      <p className="mt-3 text-[12px] text-[var(--os-ink-3)]">Your pictures are resized and kept in this browser. Nothing is uploaded.</p>
+    </>
+  );
+}
+
+/* ---------- More widgets: Calculator, Calendar, Notes, World Clock, Photos ---------- */
+
+/* Calculator: after the Braun ET66 by Dieter Rams and Dietrich Lubs, 1987 */
+const CALC_MAX_DIGITS = 9;
+
+function formatCalc(n) {
+  if (!Number.isFinite(n)) return "Error";
+  if (Math.abs(n) >= 1e9 || (Math.abs(n) < 1e-7 && n !== 0)) return n.toExponential(3).replace("e+", "e");
+  return String(Number.parseFloat(n.toPrecision(CALC_MAX_DIGITS)));
+}
+
+function calcStep(state, key) {
+  const value = Number.parseFloat(state.display);
+  const apply = (a, op, b) => (op === "+" ? a + b : op === "−" ? a - b : op === "×" ? a * b : b === 0 ? Number.NaN : a / b);
+  if (state.display === "Error" && key !== "C") return state;
+  if (/^[0-9]$/.test(key)) {
+    if (state.fresh) return { ...state, display: key, fresh: false };
+    if (state.display.replace(/[-.]/g, "").length >= CALC_MAX_DIGITS) return state;
+    return { ...state, display: state.display === "0" ? key : state.display + key };
+  }
+  if (key === ".") {
+    if (state.fresh) return { ...state, display: "0.", fresh: false };
+    return state.display.includes(".") ? state : { ...state, display: `${state.display}.` };
+  }
+  if (key === "C") return { display: "0", acc: null, op: null, fresh: true };
+  if (key === "±") return { ...state, display: formatCalc(-value) };
+  // Percent finishes the sum like a pocket calculator: 50 × 10 % = 5, 200 + 10 % = 220, 200 − 10 % = 180
+  if (key === "%") {
+    if (state.acc === null || !state.op) return { ...state, display: formatCalc(value / 100), fresh: true };
+    const part = (state.acc * value) / 100;
+    const result = state.op === "×" ? part : state.op === "÷" ? (value === 0 ? Number.NaN : (state.acc * 100) / value) : state.op === "+" ? state.acc + part : state.acc - part;
+    return { display: formatCalc(result), acc: null, op: null, fresh: true };
+  }
+  if (["+", "−", "×", "÷"].includes(key)) {
+    const acc = state.acc !== null && state.op && !state.fresh ? apply(state.acc, state.op, value) : value;
+    return { display: formatCalc(acc), acc, op: key, fresh: true };
+  }
+  if (key === "=") {
+    if (state.acc === null || !state.op) return { ...state, fresh: true };
+    return { display: formatCalc(apply(state.acc, state.op, value)), acc: null, op: null, fresh: true };
+  }
+  return state;
+}
+
+const CALC_KEYS = ["C", "±", "%", "÷", "7", "8", "9", "×", "4", "5", "6", "−", "1", "2", "3", "+", "0", ".", "="];
+
+function CalculatorWidget() {
+  const [state, setState] = useState({ display: "0", acc: null, op: null, fresh: true });
+  const press = (key) => setState((s) => calcStep(s, key));
+  const keyMap = { "*": "×", x: "×", "/": "÷", "-": "−", "+": "+", Enter: "=", "=": "=", Escape: "C", c: "C", C: "C", ",": ".", ".": ".", "%": "%" };
+
+  return (
+    <section
+      className="widget widget-calc"
+      aria-label="Calculator"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        const key = /^[0-9]$/.test(e.key) ? e.key : keyMap[e.key];
+        // Keys the calculator uses stay with it (Escape clears instead of closing the dashboard)
+        if (e.key === "Backspace") {
+          e.preventDefault();
+          e.stopPropagation();
+          setState((s) => (s.fresh ? s : { ...s, display: s.display.length > 1 ? s.display.slice(0, -1) : "0" }));
+        } else if (key && !e.altKey && !e.metaKey && !e.ctrlKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          press(key);
+        }
+      }}
+    >
+      <div className="widget-calc-lcd" aria-live="polite">
+        <span className="widget-calc-op">{state.op || ""}</span>
+        {state.display}
+      </div>
+      <div className="widget-calc-keys">
+        {CALC_KEYS.map((key) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => press(key)}
+            className={`widget-calc-key ${key === "=" ? "widget-calc-equals" : ""} ${key === "C" ? "widget-calc-clear" : ""} ${key === "0" ? "col-span-2" : ""} ${["÷", "×", "−", "+"].includes(key) ? "widget-calc-fn" : ""}`}
+            aria-label={{ "÷": "divide", "×": "multiply", "−": "minus", "+": "plus", "±": "change sign", "%": "percent", C: "clear", "=": "equals", ".": "point" }[key] || key}
+          >
+            {key}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* Calendar: this month, in your language, starting on your week's first day */
+function weekStartsOn(locale) {
+  try {
+    const info = new Intl.Locale(locale);
+    const first = info.getWeekInfo?.().firstDay ?? info.weekInfo?.firstDay;
+    if (first) return first % 7; // 7 = Sunday
+  } catch {
+    /* older browsers */
+  }
+  return ["en-US", "he", "ja", "pt-BR"].includes(locale) ? 0 : 1;
+}
+
+function CalendarWidget() {
+  const now = useMinuteClock();
+  const [region] = usePrefs(REGION_PREFS);
+  const start = weekStartsOn(region.locale);
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const firstWeekday = (new Date(year, month, 1).getDay() - start + 7) % 7;
+  const days = new Date(year, month + 1, 0).getDate();
+  const cells = [...Array(firstWeekday).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)];
+  const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 7 + ((start + i) % 7)).toLocaleDateString(region.locale, { weekday: "narrow" }));
+  const open = () => openPreferences("datetime");
+
+  return (
+    <section
+      className="widget widget-calendar cursor-pointer px-3.5 pb-3.5 pt-3"
+      role="button"
+      tabIndex={0}
+      aria-label={`Calendar: ${now.toLocaleDateString(region.locale, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}. Open date and time preferences.`}
+      title="Date & time preferences"
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          open();
+        }
+      }}
+    >
+      <div className="flex items-baseline justify-between text-[10px] uppercase tracking-[0.16em]">
+        <span className="font-semibold text-[var(--os-accent)]" dir="auto">
+          {now.toLocaleDateString(region.locale, { month: "long" })}
+        </span>
+        <span className="text-[var(--os-ink-3)]">{year}</span>
+      </div>
+      <div className="mt-2 grid grid-cols-7 text-center text-[9.5px] text-[var(--os-ink-3)]" aria-hidden="true">
+        {weekdays.map((d, i) => (
+          <span key={i}>{d}</span>
+        ))}
+      </div>
+      <div className="mt-1 grid grid-cols-7 gap-y-0.5 text-center text-[11px] tabular-nums" aria-hidden="true">
+        {cells.map((day, i) => (
+          <span key={i} className={`mx-auto flex h-[21px] w-[21px] items-center justify-center rounded-full ${day === now.getDate() ? "bg-[var(--os-accent)] font-semibold text-white" : ""}`}>
+            {day || ""}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* Notes: a sticky note that saves as you type */
+const NOTE_KEY = "comcen_note";
+
+function NotesWidget() {
+  const [text, setText] = useState(() => readStore("localStorage", NOTE_KEY) || "");
+  return (
+    <section className="widget widget-notes" aria-label="Note">
+      <textarea
+        value={text}
+        maxLength={2000}
+        onChange={(e) => {
+          setText(e.target.value);
+          writeStore("localStorage", NOTE_KEY, e.target.value);
+        }}
+        placeholder="Write a note…"
+        aria-label="Note"
+        spellCheck
+        dir="auto"
+        className="widget-notes-text"
+      />
+    </section>
+  );
+}
+
+/* World Clock: three cities, set in Widgets preferences */
+const WORLD_PREFS = {
+  cookie: "comcen_worldclock",
+  event: "mh-worldclock-changed",
+  defaults: { a: "Asia/Jerusalem", b: "Europe/London", c: "Asia/Tokyo" },
+  allowed: Object.fromEntries(["a", "b", "c"].map((k) => [k, TIME_ZONES.filter((z) => z.id !== "auto").map((z) => z.id)])),
+};
+const cityName = (zone) => (TIME_ZONES.find((z) => z.id === zone)?.label || zone).split(" · ").pop();
+
+function dayOffset(now, zone) {
+  const local = new Date(now.toLocaleString("en-US"));
+  const there = new Date(now.toLocaleString("en-US", { timeZone: zone }));
+  const days = Math.round((new Date(there.toDateString()) - new Date(local.toDateString())) / 86400000);
+  return days > 0 ? "tomorrow" : days < 0 ? "yesterday" : "today";
+}
+
+function WorldClockWidget() {
+  const now = useClock();
+  const [world] = usePrefs(WORLD_PREFS);
+  const [region] = usePrefs(REGION_PREFS);
+  const [time] = usePrefs(TIME_PREFS);
+  const zones = [world.a, world.b, world.c];
+  return (
+    <section className="widget widget-world px-3 pb-3.5 pt-3" aria-label={`World clock: ${zones.map((z) => `${cityName(z)} ${formatTime(now, { region, time, timeZone: z })}`).join(", ")}`}>
+      <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--os-ink-3)]">world clock</div>
+      <div className="mt-2 grid grid-cols-3 gap-1 text-center">
+        {zones.map((zone, i) => (
+          <div key={`${zone}-${i}`} className="flex min-w-0 flex-col items-center">
+            <AnalogClock now={now} time={{ timeZone: zone }} className="h-[50px] w-[50px]" />
+            <span className="mt-1.5 w-full truncate text-[11px] font-semibold">{cityName(zone)}</span>
+            <span className="text-[10.5px] tabular-nums text-[var(--os-ink-2)]" dir="auto">
+              {formatTime(now, { region, time, timeZone: zone })}
+            </span>
+            <span className="text-[9.5px] text-[var(--os-ink-3)]">{dayOffset(now, zone)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* Photo Gallery: your own photos as a slideshow in a frame, a new one every 20 seconds.
+   Click it for the full gallery. */
+const PHOTO_INTERVAL_MS = 20000;
+
+function PhotosWidget() {
+  const photos = usePictures("photo");
+  const [index, setIndex] = useState(0);
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const count = photos.length;
+  const current = count ? photos[index % count] : null;
+  const url = useObjectUrl(current?.blob);
+
+  useEffect(() => {
+    if (count < 2) return;
+    const id = setInterval(() => setIndex((i) => i + 1), PHOTO_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [count]);
+
+  const add = async (files) => {
+    setBusy(true);
+    try {
+      for (const file of files) await savePictureFile(file, "photo");
+    } catch {
+      /* a file that isn't a picture is skipped */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="widget widget-photos" aria-label={current ? `Photo Gallery: ${current.name}` : "Photo Gallery"}>
+      {current ? (
+        <button
+          type="button"
+          onClick={() => openPhotoGallery(index % count)}
+          className="widget-photos-frame"
+          title="Open the photo gallery"
+          aria-label={`${current.name}. Open the photo gallery.`}
+        >
+          {url && <img src={url} alt="" className="h-full w-full object-cover" />}
+        </button>
+      ) : (
+        <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
+          <ImageIcon className="h-8 w-8 text-[var(--os-ink-3)]" strokeWidth={1.4} aria-hidden="true" />
+          <p className="text-[12px] text-[var(--os-ink-2)]">Your photos, in a frame.</p>
+          <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} className="rounded-full px-3 py-1 text-[12px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
+            {busy ? "adding…" : "add photos…"}
+          </button>
+        </div>
+      )}
+      {count > 1 && (
+        <div className="widget-photos-dots" aria-hidden="true">
+          {photos.slice(0, 8).map((p, i) => (
+            <span key={p.id} className={i === index % count ? "on" : ""} />
+          ))}
+        </div>
+      )}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="sr-only"
+        tabIndex={-1}
+        onChange={(e) => {
+          add([...(e.target.files || [])]);
+          e.target.value = "";
+        }}
+      />
+    </section>
+  );
+}
+
+// Widgets pane: the Photos widget's pictures and the World Clock's cities
+function WidgetExtrasSettings() {
+  const photos = usePictures("photo");
+  const [world, setWorld] = usePrefs(WORLD_PREFS);
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const select = "w-full rounded-lg bg-[var(--os-card)] px-2 py-1.5 ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]";
+
+  const add = async (files) => {
+    setBusy(true);
+    setMessage("");
+    try {
+      for (const file of files) await savePictureFile(file, "photo");
+    } catch (e) {
+      setMessage(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="mt-6 text-[13px] font-semibold">photos</div>
+      <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6">
+        {photos.map((p) => (
+          <div key={p.id} className="relative">
+            <img src={p.thumb} alt={p.name} className="aspect-square w-full rounded-lg object-cover ring-1 ring-[var(--os-line)]" />
+            <button type="button" onClick={() => deletePicture(p.id)} className="widget-remove" aria-label={`Remove ${p.name}`} title="Remove">
+              <X className="h-3 w-3" strokeWidth={2.6} />
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => fileRef.current?.click()}
+          className="prefs-option flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-[var(--os-line)] text-[11px] text-[var(--os-ink-2)]"
+        >
+          <ImageIcon className="h-4 w-4" strokeWidth={1.6} aria-hidden="true" />
+          {busy ? "adding…" : "add…"}
+        </button>
+      </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="sr-only"
+        tabIndex={-1}
+        onChange={(e) => {
+          add([...(e.target.files || [])]);
+          e.target.value = "";
+        }}
+      />
+      {message && <p className="mt-2 text-[12px] text-[var(--os-warn)]">{message}</p>}
+      <p className="mt-2 text-[12px] text-[var(--os-ink-3)]">Shown in the Photos widget. Resized and kept in this browser; nothing is uploaded.</p>
+
+      <div className="mt-6 text-[13px] font-semibold">world clock cities</div>
+      <div className="mt-2 grid gap-2 text-[13px] sm:grid-cols-3">
+        {["a", "b", "c"].map((slot) => (
+          <select key={slot} value={world[slot]} onChange={(e) => setWorld({ [slot]: e.target.value })} className={select} aria-label={`World clock city ${slot.toUpperCase()}`}>
+            {TIME_ZONES.filter((z) => z.id !== "auto").map((z) => (
+              <option key={z.id} value={z.id}>
+                {z.label}
+              </option>
+            ))}
+          </select>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/* Widget gallery: every widget with a live preview, to add or remove */
+const openWidgetGallery = () => window.dispatchEvent(new Event("mh-widget-gallery-open"));
+
+function WidgetGallery() {
+  const [open, setOpen] = useState(false);
+  const layout = useWidgetLayout();
+
+  useEffect(() => {
+    const onOpen = () => setOpen(true);
+    window.addEventListener("mh-widget-gallery-open", onOpen);
+    return () => window.removeEventListener("mh-widget-gallery-open", onOpen);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.stopImmediatePropagation(); // close just the gallery, not what's behind it
+        setOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [open]);
+
+  if (!open) return null;
+  const out = WIDGET_KINDS.filter((w) => layout.shown[w.id]).length;
+
+  return (
+    <div className="os-ui no-print fixed inset-0 z-[72] flex items-center justify-center bg-black/30 p-3 sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
+      <div role="dialog" aria-modal="true" aria-labelledby="gallery-title" className="os-window prefs-window flex max-h-[calc(100vh-24px)] w-full max-w-[880px] flex-col overflow-hidden">
+        <div className="relative flex items-center gap-3 border-b border-[var(--os-line)] px-4 py-2.5">
+          <button type="button" onClick={() => setOpen(false)} aria-label="Close widget gallery" title="Close" className="os-round-btn os-win-close">
+            <X className="h-3.5 w-3.5" strokeWidth={2.2} />
+          </button>
+          <h2 id="gallery-title" className="pointer-events-none absolute inset-x-0 text-center font-semibold tracking-tight">
+            widget gallery
+          </h2>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+          <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">
+            {out} of {WIDGET_KINDS.length} out. Add one and it appears on your desktop and in the dashboard; drag it wherever you like.
+          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {WIDGET_KINDS.map((kind) => {
+              const { id, label, note } = kind;
+              const Preview = kind.Component;
+              const shown = layout.shown[id];
+              return (
+                <div key={id} className={`gallery-card ${shown ? "gallery-card-on" : ""}`}>
+                  <div className="gallery-preview" aria-hidden="true" inert>
+                    <div className="gallery-preview-scale">
+                      <Preview />
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-start justify-between gap-2">
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-semibold">{label}</span>
+                      <span className="line-clamp-2 block text-[11.5px] leading-snug text-[var(--os-ink-3)]">{note}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setWidgetShown(id, !shown)}
+                      aria-label={`${shown ? "Remove" : "Add"} the ${label.toLowerCase()} widget`}
+                      className={shown ? "gallery-toggle gallery-toggle-on" : "gallery-toggle"}
+                    >
+                      {shown ? <Check className="h-3.5 w-3.5" strokeWidth={2.6} /> : <span aria-hidden="true">+</span>}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Photo gallery viewer: every photo large, with a thumbnail strip, arrows, and arrow keys */
+const openPhotoGallery = (index = 0) => window.dispatchEvent(new CustomEvent("mh-photo-gallery-open", { detail: index }));
+
+function PhotoGalleryViewer() {
+  const photos = usePictures("photo");
+  const [index, setIndex] = useState(null); // null = closed
+  const fileRef = useRef(null);
+  const stripRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const count = photos.length;
+  const current = index !== null && count ? photos[Math.min(index, count - 1)] : null;
+  const url = useObjectUrl(current?.blob);
+  const go = (step) => setIndex((i) => (count ? (i + step + count) % count : 0));
+
+  useEffect(() => {
+    const onOpen = (e) => setIndex(Number(e.detail) || 0);
+    window.addEventListener("mh-photo-gallery-open", onOpen);
+    return () => window.removeEventListener("mh-photo-gallery-open", onOpen);
+  }, []);
+
+  useEffect(() => {
+    if (index === null) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.stopImmediatePropagation(); // close just the viewer
+        setIndex(null);
+      } else if (e.key === "ArrowRight") go(1);
+      else if (e.key === "ArrowLeft") go(-1);
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  });
+
+  // Keep the current thumbnail in view
+  useEffect(() => {
+    stripRef.current?.querySelector("[aria-current='true']")?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [index]);
+
+  if (index === null) return null;
+
+  const add = async (files) => {
+    setBusy(true);
+    try {
+      for (const file of files) await savePictureFile(file, "photo");
+    } catch {
+      /* a file that isn't a picture is skipped */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="os-ui no-print photo-viewer fixed inset-0 z-[73] flex flex-col" role="dialog" aria-modal="true" aria-label="Photo gallery">
+      <div className="flex items-center gap-3 px-4 py-3 text-[13px] text-white/80">
+        <button type="button" onClick={() => setIndex(null)} aria-label="Close the photo gallery" title="Close" className="os-round-btn os-win-close">
+          <X className="h-3.5 w-3.5" strokeWidth={2.2} />
+        </button>
+        <span className="min-w-0 flex-1 truncate font-semibold text-white">{current ? current.name.replace(/\.[^.]+$/, "") : "photo gallery"}</span>
+        {count > 0 && (
+          <span className="tabular-nums">
+            {Math.min(index, count - 1) + 1} / {count}
+          </span>
+        )}
+        <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} className="photo-viewer-btn">
+          {busy ? "adding…" : "add photos…"}
+        </button>
+        {current && (
+          <button
+            type="button"
+            onClick={() => {
+              deletePicture(current.id);
+              setIndex((i) => Math.max(0, Math.min(i, count - 2)));
+            }}
+            className="photo-viewer-btn"
+          >
+            remove
+          </button>
+        )}
+      </div>
+
+      <div className="relative flex min-h-0 flex-1 items-center justify-center px-4" onMouseDown={(e) => e.target === e.currentTarget && setIndex(null)}>
+        {current ? (
+          url && <img src={url} alt={current.name} className="max-h-full max-w-full rounded-lg object-contain shadow-2xl" />
+        ) : (
+          <div className="text-center text-white/80">
+            <ImageIcon className="mx-auto h-10 w-10" strokeWidth={1.3} aria-hidden="true" />
+            <p className="mt-2 text-[14px]">No photos yet.</p>
+          </div>
+        )}
+        {count > 1 && (
+          <>
+            <button type="button" onClick={() => go(-1)} className="photo-viewer-arrow left-3" aria-label="Previous photo">
+              <ChevronRight className="h-5 w-5 rotate-180" />
+            </button>
+            <button type="button" onClick={() => go(1)} className="photo-viewer-arrow right-3" aria-label="Next photo">
+              <ChevronRight className="h-5 w-5" />
+            </button>
+          </>
+        )}
+      </div>
+
+      {count > 0 && (
+        <div ref={stripRef} className="flex gap-2 overflow-x-auto px-4 py-3" role="list" aria-label="Photos">
+          {photos.map((p, i) => (
+            <button
+              key={p.id}
+              type="button"
+              role="listitem"
+              aria-current={i === Math.min(index, count - 1)}
+              aria-label={p.name}
+              onClick={() => setIndex(i)}
+              className={`photo-viewer-thumb ${i === Math.min(index, count - 1) ? "photo-viewer-thumb-on" : ""}`}
+            >
+              <img src={p.thumb} alt="" className="h-full w-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="sr-only"
+        tabIndex={-1}
+        onChange={(e) => {
+          add([...(e.target.files || [])]);
+          e.target.value = "";
+        }}
+      />
+    </div>
+  );
+}
+
 const PREF_SECTIONS = [
   {
     title: "Desk",
@@ -4244,7 +5078,7 @@ function SystemPreferences() {
                 <span className="h-[7px] w-[7px] rounded-full bg-[var(--os-accent)]" aria-hidden="true" />
                 wallpaper
               </div>
-              <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">Choose the picture on your desktop.</p>
+              <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">Choose the picture on your desktop, or add your own.</p>
               <div role="radiogroup" aria-label="Wallpaper" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {WALLPAPERS.map((w) => {
                   const active = w.id === current;
@@ -4270,6 +5104,7 @@ function SystemPreferences() {
                   );
                 })}
               </div>
+              <CustomWallpapers current={current} />
             </div>
           )}
         </div>
@@ -5106,6 +5941,15 @@ function SharedShell({ currentPage, children }) {
       <header className="mh-fixed os-ui os-menubar fixed inset-x-0 top-0 z-40 flex h-11 items-center justify-between pl-2 pr-1.5 sm:pl-3 sm:pr-2">
         <SystemMenu />
         <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={toggleDashboard}
+            title="Widgets"
+            aria-label="Show widgets"
+            className="flex h-8 items-center rounded-full px-1.5 hover:bg-[var(--os-hover)] sm:px-2"
+          >
+            <LayoutDashboard className="h-4 w-4" strokeWidth={2} />
+          </button>
           <UserMenuButton />
           <SoundToggle />
           {battery && (
@@ -5561,6 +6405,15 @@ function HomePage() {
                 Contact
                 <ExternalLink className="h-4 w-4" />
               </a>
+
+              <button
+                type="button"
+                onClick={toggleDashboard}
+                className="flex w-full items-center justify-between rounded-xl border border-zinc-800 bg-black/40 px-4 py-3 text-left text-sm text-zinc-300 transition hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-200"
+              >
+                Widgets
+                <LayoutDashboard className="h-4 w-4" />
+              </button>
             </div>
           </div>
         </div>
@@ -8744,6 +9597,12 @@ const WIDGET_KINDS = [
   { id: "weather", label: "Weather", note: "Miami, or wherever you are", Icon: CloudSun, Component: WeatherWidget },
   // Off until you connect a MeshMonitor in Mesh Radio
   { id: "mesh", label: "Mesh", note: "live from your MeshMonitor", Icon: RadioTower, Component: MeshWidget, defaultShown: false },
+  // More in the widget gallery
+  { id: "calculator", label: "Calculator", note: "after the Braun ET66 by Dieter Rams", Icon: Calculator, Component: CalculatorWidget, defaultShown: false },
+  { id: "calendar", label: "Calendar", note: "this month, in your language", Icon: CalendarDays, Component: CalendarWidget, defaultShown: false },
+  { id: "notes", label: "Notes", note: "a sticky note that saves as you type", Icon: StickyNote, Component: NotesWidget, defaultShown: false },
+  { id: "worldclock", label: "World Clock", note: "three cities at a glance", Icon: Globe, Component: WorldClockWidget, defaultShown: false },
+  { id: "photos", label: "Photo Gallery", note: "your own photos, in a frame", Icon: ImageIcon, Component: PhotosWidget, defaultShown: false },
 ];
 const WIDGET_WIDTH = 196;
 const WIDGET_GAP = 16;
@@ -8859,7 +9718,12 @@ function WidgetsPane() {
         </button>
       </label>
 
+      <WidgetExtrasSettings />
+
       <div className="mt-5 flex flex-wrap items-center justify-end gap-2 text-[13px]">
+        <button type="button" onClick={openWidgetGallery} className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
+          widget gallery…
+        </button>
         <button
           type="button"
           disabled={!moved}
@@ -8978,7 +9842,7 @@ function Widgets({ disabled }) {
   const onPointerDown = (e, id, index) => {
     if (e.button !== 0 || e.target.closest(".widget-remove")) return;
     const start = place(id, index);
-    const interactive = !!e.target.closest("button, a, input, select");
+    const interactive = !!e.target.closest("button, a, input, select, textarea");
     const p = { id, pointerId: e.pointerId, sx: e.clientX, sy: e.clientY, ox: start.x, oy: start.y, dragging: false, interactive };
     p.timer = setTimeout(() => {
       if (press.current !== p || p.dragging) return;
@@ -9072,10 +9936,16 @@ function Widgets({ disabled }) {
     );
   });
 
-  const done = editing && (
+  const done = editing ? (
     <button type="button" className="widget-done" onClick={() => setEditing(false)}>
       done
     </button>
+  ) : (
+    dashboard && (
+      <button type="button" className="widget-done widget-add" onClick={openWidgetGallery}>
+        + add widgets
+      </button>
+    )
   );
 
   const empty = (
@@ -9184,6 +10054,8 @@ export default function App() {
       <ScreenSaverHost disabled={booting} />
       <NightShift />
       <PointerTrails />
+      <WidgetGallery />
+      <PhotoGalleryViewer />
       {booting && (
         <BootScreen
           key={bootMode}
