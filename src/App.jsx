@@ -590,7 +590,7 @@ function SystemMenu() {
       >
         <img src="/logo_fullclear.png" alt="" className="os-logo h-4 w-auto" />
         <span className="font-semibold tracking-tight">comcen os</span>
-        <span className="text-[var(--os-ink-3)]">system</span>
+        <span className="hidden text-[var(--os-ink-3)] sm:inline">system</span>
         {available && <span className="update-led h-1.5 w-1.5 rounded-full" title="Update available" aria-label="Update available" />}
       </button>
 
@@ -5585,7 +5585,7 @@ const MENUBAR_ITEMS = [
   { id: "clock", label: "date and time", Icon: Clock3 },
 ];
 const MENUBAR_DEFAULT = MENUBAR_ITEMS.map((i) => i.id).join(",");
-const MENUBAR_PREFS = { cookie: "comcen_menubar", event: "mh-menubar-changed", defaults: { order: MENUBAR_DEFAULT } };
+const MENUBAR_PREFS = { cookie: "comcen_menubar", event: "mh-menubar-changed", defaults: { order: MENUBAR_DEFAULT, hidden: "" } };
 
 // The saved order, cleaned up: unknown items dropped, new ones added at the end
 function menuBarOrder(order) {
@@ -5599,7 +5599,8 @@ function MenuBarItems({ items }) {
   const [prefs, setPrefs] = usePrefs(MENUBAR_PREFS);
   const dragged = useRef(false);
   const order = menuBarOrder(prefs.order);
-  const visible = order.filter((id) => items[id]);
+  const hidden = prefs.hidden.split(",");
+  const visible = order.filter((id) => items[id] && !hidden.includes(id));
 
   return (
     <Reorder.Group
@@ -5636,17 +5637,26 @@ function MenuBarItems({ items }) {
 
 function MenuBarPane() {
   const [prefs, setPrefs] = usePrefs(MENUBAR_PREFS);
+  const [network, setNetwork] = usePrefs(NETWORK_PREFS); // Wi-Fi's switch is shared with Network preferences
   const order = menuBarOrder(prefs.order);
+  const hidden = prefs.hidden.split(",").filter(Boolean);
+  const isShown = (id) => (id === "network" ? network.menubar : !hidden.includes(id));
+  const setShown = (id, on) => {
+    if (id === "network") setNetwork({ menubar: on });
+    else setPrefs({ hidden: (on ? hidden.filter((h) => h !== id) : [...hidden, id]).join(",") });
+  };
   const move = (index, step) => {
     const next = [...order];
     [next[index], next[index + step]] = [next[index + step], next[index]];
     setPrefs({ order: next.join(",") });
   };
-  const isDefault = order.join(",") === MENUBAR_DEFAULT;
+  const isDefault = order.join(",") === MENUBAR_DEFAULT && !hidden.length && network.menubar;
 
   return (
     <div className="p-5">
-      <PaneHeader title="menu bar">The items at the top right of the screen, from left to right. You can also drag them in the menu bar.</PaneHeader>
+      <PaneHeader title="menu bar">
+        The items at the top right of the screen, from left to right. Switch any off to hide it, or drag them in the menu bar to rearrange them.
+      </PaneHeader>
       <ol className="divide-y divide-[var(--os-line)] rounded-xl ring-1 ring-[var(--os-line)]">
         {order.map((id, i) => {
           const item = MENUBAR_ITEMS.find((m) => m.id === id);
@@ -5654,7 +5664,16 @@ function MenuBarPane() {
             <li key={id} className="flex items-center gap-3 px-3 py-2 text-[13px]">
               <span className="w-5 shrink-0 tabular-nums text-[var(--os-ink-3)]">{i + 1}</span>
               <item.Icon className="h-4 w-4 shrink-0 text-[var(--os-accent)]" strokeWidth={1.8} aria-hidden="true" />
-              <span className="min-w-0 flex-1">{item.label}</span>
+              <span className={`min-w-0 flex-1 ${isShown(id) ? "" : "text-[var(--os-ink-3)]"}`}>{item.label}</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isShown(id)}
+                aria-label={`Show ${item.label} in the menu bar`}
+                title={isShown(id) ? "Shown" : "Hidden"}
+                onClick={() => setShown(id, !isShown(id))}
+                className={`os-switch ${isShown(id) ? "os-switch-on" : ""} mr-1 shrink-0 cursor-pointer`}
+              />
               <button type="button" disabled={i === 0} onClick={() => move(i, -1)} className="widget-mini-btn ring-1 ring-[var(--os-line)] disabled:opacity-30" aria-label={`Move ${item.label} left`} title="Move left">
                 <ChevronRight className="h-3.5 w-3.5 rotate-180" />
               </button>
@@ -5670,24 +5689,77 @@ function MenuBarPane() {
           <span className="flex-1">shut down (always last)</span>
         </li>
       </ol>
-      <p className="mt-3 text-[12px] text-[var(--os-ink-3)]">
-        Battery and Wi-Fi show when your device reports them; turn Wi-Fi off in{" "}
-        <button type="button" onClick={() => openPreferences("network")} className="underline underline-offset-2 hover:text-[var(--os-ink)]">
-          Network
-        </button>
-        .
-      </p>
+      <p className="mt-3 text-[12px] text-[var(--os-ink-3)]">Battery shows only when your device reports it. Hidden items are still in the system menu and System Preferences.</p>
       <div className="mt-4 flex justify-end">
         <button
           type="button"
           disabled={isDefault}
-          onClick={() => setPrefs({ order: MENUBAR_DEFAULT })}
+          onClick={() => {
+            setPrefs({ order: MENUBAR_DEFAULT, hidden: "" });
+            setNetwork({ menubar: true });
+          }}
           className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] disabled:opacity-40"
         >
           <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
           reset to default
         </button>
       </div>
+    </div>
+  );
+}
+
+/* All settings: each section's icons spread evenly over as few rows as fit, so no row is left with a lone icon */
+function balancedColumns(count, maxCols) {
+  if (count <= maxCols) return count;
+  for (let rows = Math.ceil(count / maxCols); rows <= count; rows++) {
+    const cols = Math.ceil(count / rows);
+    if (cols <= maxCols && (count % cols === 0 || count % cols > 1)) return cols;
+  }
+  return maxCols;
+}
+
+function PrefsGrid({ onOpen }) {
+  const ref = useRef(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  // About 80px a tile. Until the grid is measured, estimate from the screen (the window is at most 760px wide).
+  const estimate = Math.min(window.innerWidth - 24, 760) - 32;
+  const maxCols = Math.max(3, Math.floor((width || estimate) / 80));
+
+  return (
+    <div ref={ref}>
+      {PREF_SECTIONS.map((section, si) => {
+        const cols = balancedColumns(section.panes.length, maxCols);
+        return (
+          <section key={section.title} className={`px-4 pb-3 pt-2.5 ${si % 2 ? "bg-[var(--os-desk)]/35" : ""}`}>
+            <h3 className="mb-1.5 text-[13px] font-semibold">{section.title}</h3>
+            <div className="grid gap-y-1.5" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, maxWidth: cols * 96 }}>
+              {section.panes.map(({ id, label, Icon, ready }) => (
+                <button
+                  key={id}
+                  type="button"
+                  data-pane={id}
+                  aria-disabled={ready ? undefined : "true"}
+                  title={ready ? label : `${label} is coming soon`}
+                  onClick={() => ready && onOpen(id)}
+                  className={`prefs-pane flex flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-center text-[12px] leading-tight ${ready ? "prefs-pane-ready" : "prefs-pane-off"}`}
+                >
+                  <span className="prefs-icon">
+                    <Icon className="h-5 w-5" strokeWidth={1.6} />
+                  </span>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -5973,35 +6045,20 @@ function PrefsWindow({ panelRef, drag, pane, paneInfo, setPane, current }) {
             <LayoutDashboard className="h-5 w-5" strokeWidth={1.6} />
             widgets
           </button>
+          <button
+            type="button"
+            onClick={() => setPane("menubar")}
+            aria-pressed={pane === "menubar"}
+            className={`prefs-tool flex shrink-0 flex-col items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] ${pane === "menubar" ? "prefs-tool-active" : ""}`}
+          >
+            <PanelTop className="h-5 w-5" strokeWidth={1.6} />
+            menu bar
+          </button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {pane === "all" && (
-            <div>
-              {PREF_SECTIONS.map((section, si) => (
-                <section key={section.title} className={`px-4 pb-4 pt-3 ${si % 2 ? "bg-[var(--os-desk)]/35" : ""}`}>
-                  <h3 className="mb-2 text-[13px] font-semibold">{section.title}</h3>
-                  <div className="grid grid-cols-3 gap-y-3 sm:grid-cols-5 md:grid-cols-8">
-                    {section.panes.map(({ id, label, Icon, ready }) => (
-                      <button
-                        key={id}
-                        type="button"
-                        data-pane={id}
-                        aria-disabled={ready ? undefined : "true"}
-                        title={ready ? label : `${label} is coming soon`}
-                        onClick={() => ready && setPane(id)}
-                        className={`prefs-pane flex flex-col items-center gap-1.5 rounded-xl px-1 py-2 text-center text-[12px] leading-tight ${ready ? "prefs-pane-ready" : "prefs-pane-off"}`}
-                      >
-                        <span className="prefs-icon">
-                          <Icon className="h-5 w-5" strokeWidth={1.6} />
-                        </span>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
+            <PrefsGrid onOpen={setPane} />
           )}
 
           {pane === "screensaver" && <ScreenSaverPane />}
