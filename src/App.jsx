@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { motion, useDragControls } from "framer-motion";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motion, useDragControls, useMotionValue, animate } from "framer-motion";
 import {
   Radar,
   Star,
@@ -712,7 +712,80 @@ function SystemMenu() {
 
 
 /* Dock: a hi-fi front panel you can pick up by its speaker grille; let go and it springs back home */
-const SNAP_BACK = { bounceStiffness: 420, bounceDamping: 28 };
+/* The invisible grid for windows and the dock: wherever you drop them, they settle onto a 16px grid,
+   fully on screen (a tall window keeps its title bar on screen). Positions can be remembered. */
+const GRID = 16;
+const SETTLE = { type: "spring", stiffness: 520, damping: 42 };
+
+function useGridPosition({ storageKey, limits, ref: givenRef }) {
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const ownRef = useRef(null);
+  const ref = givenRef || ownRef;
+  const limitsRef = useRef(limits);
+  useEffect(() => {
+    limitsRef.current = limits;
+  });
+
+  const settle = useCallback(
+    ({ instant = false, save = true } = {}) => {
+      const el = ref.current;
+      if (!el || !el.offsetParent) return;
+      const zoom = pageZoom();
+      const rect = el.getBoundingClientRect();
+      const box = limitsRef.current(rect);
+      // How far the element may move, in screen pixels, turned into page pixels and onto the grid
+      const axis = (value, min, max) => {
+        const lo = Math.ceil((value + min / zoom) / GRID) * GRID;
+        const hi = Math.floor((value + max / zoom) / GRID) * GRID;
+        const snapped = Math.round(value / GRID) * GRID;
+        return lo > hi ? value + (min / zoom + max / zoom) / 2 : Math.max(lo, Math.min(hi, snapped));
+      };
+      const tx = axis(x.get(), box.left - rect.left, box.right - rect.right);
+      const ty = axis(y.get(), box.top - rect.top, box.bottom - rect.bottom);
+      if (instant) {
+        x.set(tx);
+        y.set(ty);
+      } else {
+        animate(x, tx, SETTLE);
+        animate(y, ty, SETTLE);
+      }
+      if (save && storageKey) writeStore("localStorage", storageKey, JSON.stringify({ x: tx, y: ty }));
+    },
+    [x, y, storageKey, ref],
+  );
+
+  const reset = useCallback(() => {
+    try {
+      if (storageKey) localStorage.removeItem(storageKey);
+    } catch {
+      /* ignore */
+    }
+    animate(x, 0, SETTLE);
+    animate(y, 0, SETTLE);
+  }, [x, y, storageKey]);
+
+  // Start where it was left, and stay on screen when the window changes size
+  useEffect(() => {
+    const saved = storageKey ? readJSON(storageKey, null) : null;
+    if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+      x.set(saved.x);
+      y.set(saved.y);
+    }
+    const id = requestAnimationFrame(() => settle({ instant: true, save: false }));
+    const onResize = () => settle({ instant: true });
+    window.addEventListener("resize", onResize);
+    return () => {
+      cancelAnimationFrame(id);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [storageKey, settle, x, y]);
+
+  return { x, y, ref, settle, reset };
+}
+
+// The usable screen: under the menu bar, with a little margin
+const screenBox = (margin = 8) => ({ left: margin, right: window.innerWidth - margin, top: 44 + margin, bottom: window.innerHeight - margin });
 
 function Dock({ currentPage, windowState, onMinimize, onRestore }) {
   const minimized = windowState !== "open";
@@ -720,6 +793,11 @@ function Dock({ currentPage, windowState, onMinimize, onRestore }) {
   const controls = useDragControls();
   const boundsRef = useRef(null);
   const [dock] = usePrefs(DOCK_PREFS);
+  const { x: dockX, y: dockY, ref: dockRef, settle: settleDock, reset: resetDock } = useGridPosition({ storageKey: "comcen_dock_pos", limits: () => screenBox(4) });
+  useEffect(() => {
+    window.addEventListener("mh-dock-reset", resetDock);
+    return () => window.removeEventListener("mh-dock-reset", resetDock);
+  }, [resetDock]);
   const [revealed, setRevealed] = useState(false);
   // Auto-hide needs a pointer that can reach the bottom edge; touch screens keep the dock out
   const autohide = dock.autohide && window.matchMedia?.("(pointer: fine)").matches;
@@ -741,13 +819,15 @@ function Dock({ currentPage, windowState, onMinimize, onRestore }) {
         } ${autohide && !revealed ? "os-dock-away" : ""}`}
       >
         <motion.div
+          ref={dockRef}
+          style={{ x: dockX, y: dockY }}
           drag
           dragControls={controls}
           dragListener={false}
-          dragElastic={0.08}
+          dragElastic={0}
+          dragMomentum={false}
           dragConstraints={boundsRef}
-          dragSnapToOrigin
-          dragTransition={SNAP_BACK}
+          onDragEnd={() => settleDock()}
           className="os-dock pointer-events-auto flex items-end gap-2.5 px-2.5 py-2 sm:gap-5 sm:px-4"
         >
           <div
@@ -756,7 +836,7 @@ function Dock({ currentPage, windowState, onMinimize, onRestore }) {
               e.preventDefault();
               controls.start(e);
             }}
-            title="Drag the dock; it springs back when you let go."
+            title="Drag the dock anywhere; it settles onto the grid."
             aria-hidden="true"
           />
           {OS_PAGES.map(({ page, label, href, Icon }) => {
@@ -1116,6 +1196,8 @@ const STORED_ITEMS = [
   { label: "usage statistics choice", key: "comcen_analytics" },
   { label: "desktop widgets", key: "comcen_widgets" },
   { label: "widget layout", key: "comcen_widget_layout" },
+  { label: "window position", key: "comcen_window_pos" },
+  { label: "dock position", key: "comcen_dock_pos" },
   { label: "radio station", key: "comcen_radio_station" },
   { label: "weather location", key: "comcen_weather" },
   { label: "internet trial", key: "comcen_trial_end" },
@@ -1264,6 +1346,15 @@ function DockPane() {
           checked={dock.autohide}
           onChange={(autohide) => setDock({ autohide })}
         />
+        <div className="flex items-center justify-between gap-3 text-[13px]">
+          <span>
+            <span className="block">dock position</span>
+            <span className="block text-[12px] text-[var(--os-ink-3)]">Drag the dock by its speaker grille; it settles onto an invisible grid and stays on screen.</span>
+          </span>
+          <button type="button" onClick={() => window.dispatchEvent(new Event("mh-dock-reset"))} className="shrink-0 rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
+            put it back
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1297,6 +1388,15 @@ function WindowsPane() {
           checked={win.animate}
           onChange={(animate) => setWin({ animate })}
         />
+        <div className="flex items-center justify-between gap-3 text-[13px]">
+          <span>
+            <span className="block">window position</span>
+            <span className="block text-[12px] text-[var(--os-ink-3)]">Drag a window by its title bar; it settles onto an invisible grid and stays on screen.</span>
+          </span>
+          <button type="button" onClick={() => window.dispatchEvent(new Event("mh-window-reset"))} className="shrink-0 rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
+            center
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -5626,20 +5726,31 @@ function SystemPreferences() {
 
   return (
     <div className="os-ui fixed inset-0 z-[70] flex items-center justify-center bg-black/20 p-3 sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && setPane(null)}>
+      <PrefsWindow panelRef={panelRef} drag={drag} pane={pane} paneInfo={paneInfo} setPane={setPane} current={current} />
+    </div>
+  );
+}
+
+// The System Preferences window itself: it moves on the grid and stays on screen
+function PrefsWindow({ panelRef, drag, pane, paneInfo, setPane, current }) {
+  const { x, y, settle } = useGridPosition({ limits: () => screenBox(8), ref: panelRef });
+
+  return (
       <motion.div
         ref={panelRef}
+        style={{ x, y }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="prefs-title"
         drag
         dragControls={drag}
         dragListener={false}
-        dragElastic={0.08}
-        dragSnapToOrigin
-        dragTransition={SNAP_BACK}
+        dragElastic={0}
+        dragMomentum={false}
+        onDragEnd={() => settle()}
         className="os-window prefs-window flex max-h-[calc(100vh-24px)] w-full max-w-[760px] flex-col overflow-hidden"
       >
-        {/* Title bar: drag to move; it springs back when you let go */}
+        {/* Title bar: drag to move; it settles onto the grid, on screen */}
         <div
           className="os-titlebar-grab relative flex items-center gap-3 border-b border-[var(--os-line)] px-4 py-2.5"
           onPointerDown={(e) => {
@@ -5822,7 +5933,6 @@ function SystemPreferences() {
           )}
         </p>
       </motion.div>
-    </div>
   );
 }
 
@@ -6601,6 +6711,19 @@ function SharedShell({ currentPage, children }) {
   const [maximized, setMaximized] = useState(win.openMaximized);
   const reduceMotion = prefersReducedMotion() || !win.animate;
   const windowDrag = useDragControls();
+  const windowRef = useRef(null);
+  // The window is part of a scrolling page, so it stays fully on screen side to side, and its top (the title bar)
+  // stays between the menu bar and 120px above the bottom of the screen, measured on the page
+  const windowLimits = (rect) => {
+    const box = screenBox(8);
+    const scroll = window.scrollY;
+    return { left: box.left, right: box.right, top: box.top - scroll, bottom: rect.bottom + (window.innerHeight - 120 - scroll - rect.top) };
+  };
+  const { x: winX, y: winY, settle: settleWindow, reset: resetWindow } = useGridPosition({ storageKey: "comcen_window_pos", limits: windowLimits, ref: windowRef });
+  useEffect(() => {
+    window.addEventListener("mh-window-reset", resetWindow);
+    return () => window.removeEventListener("mh-window-reset", resetWindow);
+  }, [resetWindow]);
   usePageMeta(currentPage);
 
   const page = OS_PAGES.find((p) => p.page === currentPage) || OS_PAGES[0];
@@ -6700,14 +6823,19 @@ function SharedShell({ currentPage, children }) {
         }`}
       >
         <motion.div
-          className={`os-window relative z-10 mx-auto origin-bottom ${maximized ? "os-window-max max-w-none" : "max-w-7xl"}`}
-          initial={false}
+          ref={windowRef}
+          className={`relative z-10 mx-auto ${maximized ? "max-w-none" : "max-w-7xl"}`}
+          style={maximized ? { x: 0, y: 0 } : { x: winX, y: winY }}
           drag={!maximized}
           dragControls={windowDrag}
           dragListener={false}
-          dragElastic={0.08}
-          dragSnapToOrigin
-          dragTransition={SNAP_BACK}
+          dragElastic={0}
+          dragMomentum={false}
+          onDragEnd={() => settleWindow()}
+        >
+        <motion.div
+          className={`os-window relative origin-bottom ${maximized ? "os-window-max" : ""}`}
+          initial={false}
           animate={isOpen ? { display: "block", opacity: 1, scale: 1, y: 0 } : hiddenPose}
           transition={{ duration: reduceMotion ? 0 : windowState === "closed" ? 0.14 : 0.22, ease: [0.3, 0, 0.2, 1] }}
           aria-hidden={!isOpen}
@@ -6782,6 +6910,7 @@ function SharedShell({ currentPage, children }) {
               </span>
             </footer>
           </div>
+        </motion.div>
         </motion.div>
       </div>
 
@@ -10309,6 +10438,7 @@ const WIDGET_KINDS = [
 const WIDGET_WIDTH = 196;
 const WIDGET_GAP = 16;
 const WIDGET_EDGE = 20;
+const WIDGET_ROW = 16; // the grid's row height
 const WIDGET_LAYOUT_KEY = "comcen_widget_layout";
 const WIDGET_HOLD_MS = 550; // press and hold this long to start editing, like iOS
 const WIDGET_DRAG_SLOP = 5; // px of movement before a press becomes a drag
@@ -10322,7 +10452,8 @@ function readWidgetLayout() {
     });
     const pos = {};
     Object.entries(saved.pos || {}).forEach(([id, p]) => {
-      if (Number.isFinite(p?.fx) && Number.isFinite(p?.y)) pos[id] = { fx: Math.max(0, Math.min(1, p.fx)), y: Math.max(0, p.y) };
+      if (Number.isFinite(p?.col) && Number.isFinite(p?.y)) pos[id] = { col: Math.max(0, Math.round(p.col)), y: Math.max(0, p.y) };
+      else if (Number.isFinite(p?.fx) && Number.isFinite(p?.y)) pos[id] = { fx: Math.max(0, Math.min(1, p.fx)), y: Math.max(0, p.y) };
     });
     return { shown, pos };
   } catch {
@@ -10506,45 +10637,64 @@ function Widgets({ disabled }) {
 
   const shown = WIDGET_KINDS.filter((w) => layout.shown[w.id]);
 
-  // Default spots: a column down the right edge, starting another to its left when one fills up
-  const defaults = {};
-  {
-    let column = 0;
-    let top = WIDGET_EDGE;
-    shown.forEach((w) => {
-      const h = heights[w.id] || WIDGET_WIDTH;
-      if (top > WIDGET_EDGE && top + h > areaH - WIDGET_EDGE) {
-        column += 1;
-        top = WIDGET_EDGE;
-      }
-      defaults[w.id] = { x: areaW - WIDGET_EDGE - WIDGET_WIDTH - column * (WIDGET_WIDTH + WIDGET_GAP), y: top };
-      top += h + WIDGET_GAP;
-    });
-  }
+  /* The invisible grid: columns one widget wide, counted from the right edge, and rows every 16px.
+     Every widget sits on it, fully on screen, and never on top of another. */
+  const pitch = WIDGET_WIDTH + WIDGET_GAP;
+  const maxCol = Math.max(0, Math.floor((areaW - WIDGET_EDGE * 2 - WIDGET_WIDTH) / pitch));
+  const colX = (col) => areaW - WIDGET_EDGE - WIDGET_WIDTH - col * pitch;
+  const colAt = (x) => Math.max(0, Math.min(maxCol, Math.round((areaW - WIDGET_EDGE - WIDGET_WIDTH - x) / pitch)));
+  const heightOf = (id) => heights[id] || WIDGET_WIDTH;
+  const lowest = (h) => Math.max(WIDGET_EDGE, WIDGET_EDGE + Math.floor((areaH - WIDGET_EDGE * 2 - h) / WIDGET_ROW) * WIDGET_ROW);
+  const rowAt = (y, h) => Math.max(WIDGET_EDGE, Math.min(lowest(h), WIDGET_EDGE + Math.round((y - WIDGET_EDGE) / WIDGET_ROW) * WIDGET_ROW));
 
-  // Where each widget sits: its saved spot, or its default spot
-  const place = (id) => {
-    const h = heights[id] || WIDGET_WIDTH;
-    const free = Math.max(0, areaW - WIDGET_WIDTH - WIDGET_EDGE * 2);
-    let x;
-    let y;
-    if (drag?.id === id) {
-      ({ x, y } = drag);
-    } else if (layout.pos[id]) {
-      x = WIDGET_EDGE + layout.pos[id].fx * free;
-      y = layout.pos[id].y;
-    } else {
-      ({ x, y } = defaults[id] || { x: WIDGET_EDGE + free, y: WIDGET_EDGE });
-    }
-    return {
-      x: Math.max(WIDGET_EDGE, Math.min(x, areaW - WIDGET_WIDTH - WIDGET_EDGE)),
-      y: Math.max(8, Math.min(y, areaH - Math.min(h, 120) - 8)),
-    };
+  const savedSpot = (id) => {
+    const p = layout.pos[id];
+    if (!p) return null;
+    const col = Number.isFinite(p.col) ? p.col : Math.round((1 - p.fx) * Math.max(0, areaW - WIDGET_WIDTH - WIDGET_EDGE * 2) / pitch);
+    return { col: Math.min(maxCol, col), y: p.y };
   };
 
-  const onPointerDown = (e, id, index) => {
+  // The nearest free spot to where a widget wants to be: the same column first, then the ones beside it
+  const findSpot = (want, h, taken) => {
+    const fits = (col, y) => !taken.some((t) => t.col === col && y < t.y + t.h + WIDGET_GAP && t.y < y + h + WIDGET_GAP);
+    const start = rowAt(want.y, h);
+    const columns = [want.col];
+    for (let d = 1; d <= maxCol; d++) columns.push(want.col + d, want.col - d);
+    for (const col of columns.filter((c) => c >= 0 && c <= maxCol)) {
+      for (let y = start; y <= lowest(h); y += WIDGET_ROW) if (fits(col, y)) return { col, y };
+      for (let y = start - WIDGET_ROW; y >= WIDGET_EDGE; y -= WIDGET_ROW) if (fits(col, y)) return { col, y };
+    }
+    return { col: want.col, y: start }; // no room left anywhere: overlap rather than leave the screen
+  };
+
+  // Lay everything out: placed widgets keep their spots, new ones fill in from the top right
+  const resolve = (skip) => {
+    const spots = {};
+    const taken = [];
+    const put = (id, want) => {
+      const h = heightOf(id);
+      const spot = findSpot(want, h, taken);
+      spots[id] = spot;
+      taken.push({ ...spot, h });
+    };
+    shown.filter((w) => w.id !== skip && savedSpot(w.id)).forEach((w) => put(w.id, savedSpot(w.id)));
+    shown.filter((w) => w.id !== skip && !savedSpot(w.id)).forEach((w) => put(w.id, { col: 0, y: WIDGET_EDGE }));
+    return { spots, taken };
+  };
+
+  const layoutNow = resolve(drag?.id);
+  // Where a dragged widget would land if dropped now
+  const landing = drag ? findSpot({ col: colAt(drag.x), y: drag.y }, heightOf(drag.id), layoutNow.taken) : null;
+
+  const place = (id) => {
+    if (drag?.id === id) return { x: drag.x, y: drag.y };
+    const spot = layoutNow.spots[id] || { col: 0, y: WIDGET_EDGE };
+    return { x: colX(spot.col), y: spot.y };
+  };
+
+  const onPointerDown = (e, id) => {
     if (e.button !== 0 || e.target.closest(".widget-remove")) return;
-    const start = place(id, index);
+    const start = place(id);
     const interactive = !!e.target.closest("button, a, input, select, textarea");
     const p = { id, pointerId: e.pointerId, sx: e.clientX, sy: e.clientY, ox: start.x, oy: start.y, dragging: false, interactive };
     p.timer = setTimeout(() => {
@@ -10572,8 +10722,9 @@ function Widgets({ disabled }) {
       p.dragging = true;
       e.currentTarget.setPointerCapture?.(e.pointerId);
     }
-    p.x = p.ox + dx;
-    p.y = p.oy + dy;
+    // Follow the pointer, but never past the edges of the screen
+    p.x = Math.max(WIDGET_EDGE, Math.min(areaW - WIDGET_EDGE - WIDGET_WIDTH, p.ox + dx));
+    p.y = Math.max(WIDGET_EDGE, Math.min(lowest(heightOf(p.id)), p.oy + dy));
     setDrag({ id: p.id, x: p.x, y: p.y });
   };
 
@@ -10584,12 +10735,11 @@ function Widgets({ disabled }) {
     press.current = null;
     if (!p.dragging) return;
     swallowClick.current = true;
-    const free = Math.max(1, areaW - WIDGET_WIDTH - WIDGET_EDGE * 2);
-    const h = heights[p.id] || WIDGET_WIDTH;
-    const x = Math.max(WIDGET_EDGE, Math.min(p.x, areaW - WIDGET_WIDTH - WIDGET_EDGE));
-    const y = Math.max(8, Math.min(p.y, areaH - Math.min(h, 120) - 8));
+    // Drop onto the grid, and pin everything where it is so nothing else shifts
+    const others = resolve(p.id);
+    const spot = findSpot({ col: colAt(p.x), y: p.y }, heightOf(p.id), others.taken);
     setDrag(null);
-    setWidgetLayout({ pos: { ...widgetLayout.pos, [p.id]: { fx: Math.max(0, Math.min(1, (x - WIDGET_EDGE) / free)), y: Math.round(y) } } });
+    setWidgetLayout({ pos: { ...widgetLayout.pos, ...others.spots, [p.id]: spot } });
   };
 
   const onClickCapture = (e) => {
@@ -10607,7 +10757,7 @@ function Widgets({ disabled }) {
   const slots = shown.map((kind, index) => {
     const { id, label } = kind;
     const Body = kind.Component;
-    const { x, y } = place(id, index);
+    const { x, y } = place(id);
     return (
       <div
         key={id}
@@ -10616,7 +10766,7 @@ function Widgets({ disabled }) {
         }}
         className={`widget-slot ${editing ? "widget-slot-editing" : ""} ${drag?.id === id ? "widget-slot-dragging" : ""}`}
         style={stacked ? undefined : { transform: `translate(${Math.round(x)}px, ${Math.round(y)}px)`, "--jiggle-delay": `${index * -0.11}s` }}
-        onPointerDown={(e) => onPointerDown(e, id, index)}
+        onPointerDown={(e) => onPointerDown(e, id)}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
@@ -10638,6 +10788,14 @@ function Widgets({ disabled }) {
       </div>
     );
   });
+
+  const ghost = landing && !stacked && (
+    <div
+      className="widget-ghost"
+      aria-hidden="true"
+      style={{ height: heightOf(drag.id), transform: `translate(${colX(landing.col)}px, ${landing.y}px)` }}
+    />
+  );
 
   const done = editing ? (
     <button type="button" className="widget-done" onClick={() => setEditing(false)}>
@@ -10675,6 +10833,7 @@ function Widgets({ disabled }) {
         role="dialog"
         aria-label="Widgets"
       >
+        {ghost}
         {shown.length ? slots : empty}
         {done}
       </div>
@@ -10690,6 +10849,7 @@ function Widgets({ disabled }) {
       }`}
       aria-label="Desktop widgets"
     >
+      {ghost}
       {slots}
       {done}
     </div>
