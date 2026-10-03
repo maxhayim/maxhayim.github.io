@@ -4723,6 +4723,15 @@ function WidgetGallery() {
           >
             widget settings…
           </button>
+          <a
+            href={`https://github.com/maxhayim/${WIDGETS_PACK.repo}`}
+            target="_blank"
+            rel="noreferrer"
+            className="relative hidden items-center gap-1 rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] sm:inline-flex"
+            title="All 13 widgets as desktop widgets"
+          >
+            for your desktop <ExternalLink className="h-3 w-3" aria-hidden="true" />
+          </a>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
           <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">
@@ -5761,6 +5770,120 @@ function PrefsGrid({ onOpen }) {
         );
       })}
     </div>
+  );
+}
+
+/* ---------- For your computer: the screen savers and widgets as desktop apps, from their own GitHub repos ---------- */
+
+const DESKTOP_SAVERS = [
+  { repo: "screensaver-mesh", name: "Mesh", note: "Your Meshtastic mesh, live from MeshMonitor, or a simulated one. Custom colors." },
+  { repo: "screensaver-starfield", name: "Starfield", note: "The 90s flight through space, with your own colors, speed, and trails." },
+];
+const WIDGETS_PACK = { repo: "widgets-pack", name: "Widgets Pack", note: "All 13 widgets as desktop widgets for your computer." };
+const RELEASES_CACHE = "comcen_desktop_releases"; // session cache, keeps well inside GitHub's rate limit
+
+// Which systems a release has downloads for, from its file names
+function releasePlatforms(assets = []) {
+  const names = assets.map((a) => a.name.toLowerCase());
+  return [
+    names.some((n) => /mac|darwin|\.saver|\.dmg/.test(n)) && "macOS",
+    names.some((n) => /win|\.scr|\.exe|\.msi/.test(n)) && "Windows",
+    names.some((n) => /linux|\.appimage|\.deb|\.tar\.gz/.test(n)) && "Linux",
+  ].filter(Boolean);
+}
+
+// The latest release of one of Max's repos, or null while it's still in development
+function useLatestRelease(repo) {
+  const [state, setState] = useState(() => {
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(RELEASES_CACHE) || "{}")[repo];
+      if (cached && Date.now() - cached.at < 30 * 60 * 1000) return { repo, release: cached.release, status: "ok" };
+    } catch {
+      /* no cache */
+    }
+    return { repo, release: null, status: "loading" };
+  });
+  const fresh = state.status === "ok";
+
+  useEffect(() => {
+    if (fresh) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(`https://api.github.com/repos/maxhayim/${repo}/releases/latest`, { headers: { Accept: "application/vnd.github+json" } });
+        if (response.status !== 404 && !response.ok) throw new Error("github");
+        const json = response.status === 404 ? null : await response.json();
+        const release = json
+          ? { version: json.tag_name, name: json.name, date: json.published_at, url: json.html_url, platforms: releasePlatforms(json.assets) }
+          : null;
+        try {
+          const all = JSON.parse(sessionStorage.getItem(RELEASES_CACHE) || "{}");
+          sessionStorage.setItem(RELEASES_CACHE, JSON.stringify({ ...all, [repo]: { release, at: Date.now() } }));
+        } catch {
+          /* fine without a cache */
+        }
+        if (!cancelled) setState({ repo, release, status: "ok" });
+      } catch {
+        if (!cancelled) setState({ repo, release: null, status: "error" });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [repo, fresh]);
+  return state;
+}
+
+function DesktopAppCard({ repo, name, note }) {
+  const { release, status } = useLatestRelease(repo);
+  const [region] = usePrefs(REGION_PREFS);
+  const page = `https://github.com/maxhayim/${repo}`;
+  const statusLine =
+    status === "loading"
+      ? "Checking GitHub…"
+      : release
+        ? [release.version, release.platforms.join(", "), new Date(release.date).toLocaleDateString(region.locale, { month: "short", day: "numeric", year: "numeric" })]
+            .filter(Boolean)
+            .join(" · ")
+        : status === "error"
+          ? "Couldn't reach GitHub right now."
+          : "In development: no download yet.";
+
+  return (
+    <li className="flex flex-wrap items-center gap-3 px-3 py-2.5 text-[13px]">
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold">{name}</span>
+        <span className="block text-[12px] text-[var(--os-ink-3)]">{note}</span>
+        <span className="mt-0.5 flex items-center gap-1.5 text-[12px] text-[var(--os-ink-2)]">
+          <span className={`widget-led ${release ? "widget-led-on" : ""}`} aria-hidden="true" />
+          {statusLine}
+        </span>
+      </span>
+      <a
+        href={release ? release.url : page}
+        target="_blank"
+        rel="noreferrer"
+        className={`inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-[13px] ${
+          release ? "bg-[var(--os-accent)] font-semibold text-white hover:brightness-105" : "ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
+        }`}
+      >
+        {release ? "download" : "on GitHub"} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+      </a>
+    </li>
+  );
+}
+
+function DesktopApps({ title, intro, apps }) {
+  return (
+    <>
+      <div className="mt-6 text-[13px] font-semibold">{title}</div>
+      <p className="mt-1 text-[12px] text-[var(--os-ink-3)]">{intro}</p>
+      <ul className="mt-2 divide-y divide-[var(--os-line)] rounded-xl ring-1 ring-[var(--os-line)]">
+        {apps.map((app) => (
+          <DesktopAppCard key={app.repo} {...app} />
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -6901,6 +7024,12 @@ function ScreenSaverPane() {
 
         </div>
       </div>
+
+      <DesktopApps
+        title="for your computer"
+        intro="The same screen savers as real ones for macOS, Windows, and Linux. Free and open source."
+        apps={DESKTOP_SAVERS}
+      />
     </div>
   );
 }
@@ -10777,6 +10906,7 @@ function WidgetsPane() {
         </button>
       </label>
 
+      <DesktopApps title="for your desktop" intro="Take the widgets off the web: free and open source, on GitHub." apps={[WIDGETS_PACK]} />
       <WidgetExtrasSettings />
       <StocksSettings />
 
