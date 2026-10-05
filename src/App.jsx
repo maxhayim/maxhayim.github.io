@@ -4588,7 +4588,7 @@ function PhotosWidget() {
 }
 
 // Widgets pane: the Photos widget's pictures and the World Clock's cities
-function WidgetExtrasSettings() {
+function WidgetExtrasSettings({ part }) {
   const photos = usePictures("photo");
   const [world, setWorld] = usePrefs(WORLD_PREFS);
   const fileRef = useRef(null);
@@ -4610,6 +4610,8 @@ function WidgetExtrasSettings() {
 
   return (
     <>
+      {part !== "worldclock" && (
+        <>
       <div className="mt-6 text-[13px] font-semibold">photos</div>
       <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6">
         {photos.map((p) => (
@@ -4645,6 +4647,10 @@ function WidgetExtrasSettings() {
       {message && <p className="mt-2 text-[12px] text-[var(--os-warn)]">{message}</p>}
       <p className="mt-2 text-[12px] text-[var(--os-ink-3)]">Shown in the Photos widget. Resized and kept in this browser; nothing is uploaded.</p>
 
+        </>
+      )}
+      {part !== "photos" && (
+        <>
       <div className="mt-6 text-[13px] font-semibold">world clock cities</div>
       <div className="mt-2 grid gap-2 text-[13px] sm:grid-cols-3">
         {["a", "b", "c"].map((slot) => (
@@ -4657,12 +4663,15 @@ function WidgetExtrasSettings() {
           </select>
         ))}
       </div>
+        </>
+      )}
     </>
   );
 }
 
 /* Widget gallery: every widget with a live preview, to add or remove */
-const openWidgetGallery = () => window.dispatchEvent(new Event("mh-widget-gallery-open"));
+// The widget gallery is the Widgets pane of System Preferences
+const openWidgetGallery = () => openPreferences("widgets");
 
 // Each widget's folder in the Widgets Pack repo
 const WIDGET_PACK_FOLDERS = {
@@ -4698,115 +4707,62 @@ const GALLERY_BACKDROPS = [
 ];
 const galleryBackground = (i) => ({ backgroundImage: GALLERY_BACKDROPS[i % GALLERY_BACKDROPS.length] });
 
-function WidgetGallery() {
-  const [open, setOpen] = useState(false);
+// Every widget with a live preview: add or remove it, download it, or open its settings in a popup
+function WidgetGalleryGrid() {
   const layout = useWidgetLayout();
-
-  useEffect(() => {
-    const onOpen = () => setOpen(true);
-    window.addEventListener("mh-widget-gallery-open", onOpen);
-    return () => window.removeEventListener("mh-widget-gallery-open", onOpen);
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") {
-        e.stopImmediatePropagation(); // close just the gallery, not what's behind it
-        setOpen(false);
-      }
-    };
-    document.addEventListener("keydown", onKey, true);
-    return () => document.removeEventListener("keydown", onKey, true);
-  }, [open]);
-
-  if (!open) return null;
-  const out = WIDGET_KINDS.filter((w) => layout.shown[w.id]).length;
-
   return (
-    <div className="os-ui no-print fixed inset-0 z-[72] flex items-center justify-center bg-black/30 p-3 sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
-      <div role="dialog" aria-modal="true" aria-labelledby="gallery-title" className="os-window prefs-window flex max-h-[calc(100vh-24px)] w-full max-w-[880px] flex-col overflow-hidden">
-        <div className="relative flex items-center gap-3 border-b border-[var(--os-line)] px-4 py-2.5">
-          <button type="button" onClick={() => setOpen(false)} aria-label="Close widget gallery" title="Close" className="os-round-btn os-win-close">
-            <X className="h-3.5 w-3.5" strokeWidth={2.2} />
-          </button>
-          <h2 id="gallery-title" className="pointer-events-none absolute inset-x-0 text-center font-semibold tracking-tight">
-            widget gallery
-          </h2>
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              openPreferences("widgets");
-            }}
-            className="relative ml-auto rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
-          >
-            widget settings…
-          </button>
-
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
-          <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">
-            {out} of {WIDGET_KINDS.length} out. Add one and it appears on your desktop and in the dashboard; drag it wherever you like.
-          </p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {WIDGET_KINDS.map((kind, i) => {
-              const { id, label, note, settings } = kind;
-              const Preview = kind.Component;
-              const shown = layout.shown[id];
-              return (
-                <div key={id} className={`gallery-card flex flex-col ${shown ? "gallery-card-on" : ""}`}>
-                  <div className="gallery-preview" style={galleryBackground(i)} aria-hidden="true" inert>
-                    <div className="gallery-preview-scale">
-                      <Preview />
-                    </div>
-                  </div>
-                  <div className="mt-2 flex items-start justify-between gap-2">
-                    <span className="min-w-0">
-                      <span className="block text-[13px] font-semibold">{label}</span>
-                      <span className="line-clamp-2 block text-[11.5px] leading-snug text-[var(--os-ink-3)]">{note}</span>
-                    </span>
-                  </div>
-                  {/* Pinned to the bottom so every card's buttons line up */}
-                  <div className="mt-auto flex items-center justify-between gap-2 pt-2.5">
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <a
-                        href={widgetDownloadUrl(id)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center rounded-full bg-[var(--os-accent)] px-2.5 py-0.5 text-[12px] font-semibold text-white hover:brightness-105"
-                        title={`The ${label} desktop widget, on GitHub`}
-                      >
-                        Download
-                      </a>
-                      {settings && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOpen(false);
-                            openPreferences(settings);
-                          }}
-                          className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] ring-1 ring-inset ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
-                        >
-                          Settings
-                        </button>
-                      )}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setWidgetShown(id, !shown)}
-                      aria-label={`${shown ? "Remove" : "Add"} the ${label.toLowerCase()} widget`}
-                      className={shown ? "gallery-toggle gallery-toggle-on" : "gallery-toggle"}
-                    >
-                      {shown ? <Check className="h-3.5 w-3.5" strokeWidth={2.6} /> : <span aria-hidden="true">+</span>}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {WIDGET_KINDS.map((kind, i) => {
+        const { id, label, note, settings } = kind;
+        const Preview = kind.Component;
+        const shown = layout.shown[id];
+        return (
+          <div key={id} className={`gallery-card flex flex-col ${shown ? "gallery-card-on" : ""}`}>
+            <div className="gallery-preview" style={galleryBackground(i)} aria-hidden="true" inert>
+              <div className="gallery-preview-scale">
+                <Preview />
+              </div>
+            </div>
+            <div className="mt-2 flex items-start justify-between gap-2">
+              <span className="min-w-0">
+                <span className="block text-[13px] font-semibold">{label}</span>
+                <span className="line-clamp-2 block text-[11.5px] leading-snug text-[var(--os-ink-3)]">{note}</span>
+              </span>
+            </div>
+            {/* Pinned to the bottom so every card's buttons line up */}
+            <div className="mt-auto flex items-center justify-between gap-2 pt-2.5">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <a
+                  href={widgetDownloadUrl(id)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center rounded-full bg-[var(--os-accent)] px-2.5 py-0.5 text-[12px] font-semibold text-white hover:brightness-105"
+                  title={`The ${label} desktop widget, on GitHub`}
+                >
+                  Download
+                </a>
+                {settings && (
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new CustomEvent("mh-widget-settings-open", { detail: id }))}
+                    className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] ring-1 ring-inset ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
+                  >
+                    Settings
+                  </button>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => setWidgetShown(id, !shown)}
+                aria-label={`${shown ? "Remove" : "Add"} the ${label.toLowerCase()} widget`}
+                className={shown ? "gallery-toggle gallery-toggle-on" : "gallery-toggle"}
+              >
+                {shown ? <Check className="h-3.5 w-3.5" strokeWidth={2.6} /> : <span aria-hidden="true">+</span>}
+              </button>
+            </div>
           </div>
-        </div>
-      </div>
+        );
+      })}
     </div>
   );
 }
@@ -10776,74 +10732,116 @@ function WidgetsPane() {
   const layout = useWidgetLayout();
   const [onDesk, setOnDesk] = useState(readWidgetsOnDesk);
   const moved = Object.keys(layout.pos).length > 0;
+  const out = WIDGET_KINDS.filter((w) => layout.shown[w.id]).length;
 
   return (
     <div className="p-5">
-      <div className="mb-1 flex items-center gap-2 font-semibold">
-        <span className="h-[7px] w-[7px] rounded-full bg-[var(--os-accent)]" aria-hidden="true" />
-        widgets
-      </div>
-      <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">
-        Braun-inspired desk accessories. Drag a widget to move it; press and hold one to remove it.
-      </p>
+      <PaneHeader title="widgets">
+        Braun-inspired desk accessories: {out} of {WIDGET_KINDS.length} out. Drag a widget to move it; press and hold one to remove it.
+      </PaneHeader>
 
-      <ul className="divide-y divide-[var(--os-line)] rounded-xl ring-1 ring-[var(--os-line)]">
-        {WIDGET_KINDS.map(({ id, label, note, Icon }) => (
-          <li key={id} className="flex items-center gap-3 px-3 py-2.5 text-[13px]">
-            <span className="prefs-icon shrink-0">
-              <Icon className="h-5 w-5" strokeWidth={1.6} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-semibold">{label}</span>
-              <span className="block truncate text-[12px] text-[var(--os-ink-3)]">{note}</span>
-            </span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={layout.shown[id]}
-              aria-label={`Show the ${label.toLowerCase()} widget`}
-              onClick={() => setWidgetShown(id, !layout.shown[id])}
-              className={`os-switch ${layout.shown[id] ? "os-switch-on" : ""} shrink-0 cursor-pointer`}
-            />
-          </li>
-        ))}
-      </ul>
-
-      <label className="mt-5 flex items-center justify-between gap-3 text-[13px]">
-        <span>
-          <span className="block">show widgets on the desktop</span>
-          <span className="block text-[12px] text-[var(--os-ink-3)]">With the window open, only on wide screens. The dock&rsquo;s widgets button always brings them forward.</span>
-        </span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={onDesk}
-          onClick={() => {
-            saveWidgetsOnDesk(!onDesk);
-            setOnDesk(!onDesk);
+      <div className="flex flex-col gap-3">
+        <PrefSwitch
+          label="show widgets on the desktop"
+          hint="With the window open, only on wide screens. The dock's widgets button always brings them forward."
+          checked={onDesk}
+          onChange={(on) => {
+            saveWidgetsOnDesk(on);
+            setOnDesk(on);
           }}
-          className={`os-switch ${onDesk ? "os-switch-on" : ""} shrink-0 cursor-pointer`}
-        >
-          <span className="sr-only">show widgets on the desktop</span>
-        </button>
-      </label>
+        />
+        <div className="flex justify-end">
+          <button
+            type="button"
+            disabled={!moved}
+            onClick={() => setWidgetLayout({ pos: {} })}
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)] disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+            reset positions
+          </button>
+        </div>
+      </div>
 
-      <WidgetExtrasSettings />
+      <div className="mt-4">
+        <WidgetGalleryGrid />
+      </div>
+    </div>
+  );
+}
+
+// A widget's own settings, in a popup over System Preferences
+const WIDGET_SETTINGS = {
+  clock: () => <DateTimePane />,
+  calendar: () => <DateTimePane />,
+  radio: () => <SoundPane />,
+  weather: () => <LanguagePane />,
+  mesh: () => (
+    <div className="p-5">
+      <MeshMonitorSettings />
+    </div>
+  ),
+  worldclock: () => (
+    <div className="px-5 pb-5">
+      <WidgetExtrasSettings part="worldclock" />
+    </div>
+  ),
+  photos: () => (
+    <div className="px-5 pb-5">
+      <WidgetExtrasSettings part="photos" />
+    </div>
+  ),
+  stocks: () => (
+    <div className="px-5 pb-5">
       <StocksSettings />
+    </div>
+  ),
+};
 
-      <div className="mt-5 flex flex-wrap items-center justify-end gap-2 text-[13px]">
-        <button type="button" onClick={openWidgetGallery} className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
-          widget gallery…
-        </button>
-        <button
-          type="button"
-          disabled={!moved}
-          onClick={() => setWidgetLayout({ pos: {} })}
-          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)] disabled:opacity-40 disabled:hover:bg-transparent"
-        >
-          <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-          reset positions
-        </button>
+function WidgetSettingsPopup() {
+  const [id, setId] = useState(null);
+  const kind = WIDGET_KINDS.find((w) => w.id === id);
+
+  useEffect(() => {
+    const onOpen = (e) => setId(e.detail);
+    window.addEventListener("mh-widget-settings-open", onOpen);
+    return () => window.removeEventListener("mh-widget-settings-open", onOpen);
+  }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.stopImmediatePropagation(); // close just this popup, not System Preferences behind it
+        setId(null);
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [id]);
+
+  if (!kind || !WIDGET_SETTINGS[id]) return null;
+  const Body = WIDGET_SETTINGS[id];
+
+  return (
+    <div className="os-ui no-print fixed inset-0 z-[74] flex items-center justify-center bg-black/25 p-3 sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && setId(null)}>
+      <div role="dialog" aria-modal="true" aria-labelledby="widget-settings-title" className="os-window prefs-window flex max-h-[calc(100vh-48px)] w-full max-w-[600px] flex-col overflow-hidden">
+        <div className="relative flex shrink-0 items-center gap-3 border-b border-[var(--os-line)] px-4 py-2.5">
+          <button type="button" onClick={() => setId(null)} aria-label={`Close ${kind.label} settings`} title="Close" className="os-round-btn os-win-close">
+            <X className="h-3.5 w-3.5" strokeWidth={2.2} />
+          </button>
+          <h2 id="widget-settings-title" className="pointer-events-none absolute inset-x-0 text-center font-semibold tracking-tight">
+            {kind.label.toLowerCase()} settings
+          </h2>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <Body />
+        </div>
+        <div className="flex shrink-0 justify-end border-t border-[var(--os-line)] px-4 py-2.5">
+          <button type="button" onClick={() => setId(null)} className="rounded-full bg-[var(--os-accent)] px-4 py-1 text-[13px] font-semibold text-white hover:brightness-105">
+            Done
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -11195,7 +11193,7 @@ export default function App() {
       <ScreenSaverHost disabled={booting} />
       <NightShift />
       <PointerTrails />
-      <WidgetGallery />
+      <WidgetSettingsPopup />
       <PhotoGalleryViewer />
       {booting && (
         <BootScreen
