@@ -4765,6 +4765,20 @@ function WidgetGallery() {
                     <span className="min-w-0">
                       <span className="block text-[13px] font-semibold">{label}</span>
                       <span className="line-clamp-2 block text-[11.5px] leading-snug text-[var(--os-ink-3)]">{note}</span>
+                    </span>
+                  </div>
+                  {/* Pinned to the bottom so every card's buttons line up */}
+                  <div className="mt-auto flex items-center justify-between gap-2 pt-2.5">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <a
+                        href={widgetDownloadUrl(id)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center rounded-full bg-[var(--os-accent)] px-2.5 py-0.5 text-[12px] font-semibold text-white hover:brightness-105"
+                        title={`The ${label} desktop widget, on GitHub`}
+                      >
+                        Download
+                      </a>
                       {settings && (
                         <button
                           type="button"
@@ -4772,24 +4786,12 @@ function WidgetGallery() {
                             setOpen(false);
                             openPreferences(settings);
                           }}
-                          className="mt-0.5 text-[11.5px] text-[var(--os-accent)] underline-offset-2 hover:underline"
+                          className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] ring-1 ring-inset ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
                         >
-                          settings…
+                          Settings
                         </button>
                       )}
                     </span>
-                  </div>
-                  {/* Pinned to the bottom so every card's buttons line up */}
-                  <div className="mt-auto flex items-center justify-between gap-2 pt-2.5">
-                    <a
-                      href={widgetDownloadUrl(id)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[12px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
-                      title={`The ${label} desktop widget`}
-                    >
-                      Download <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                    </a>
                     <button
                       type="button"
                       onClick={() => setWidgetShown(id, !shown)}
@@ -4803,13 +4805,6 @@ function WidgetGallery() {
               );
             })}
           </div>
-
-          {/* The widgets for your desktop: downloads live here, in the gallery, not in preferences */}
-          <DesktopApps
-            title="for your desktop"
-            intro="Every widget here, as a desktop widget for your computer. Free and open source."
-            apps={[WIDGETS_PACK]}
-          />
         </div>
       </div>
     </div>
@@ -5811,39 +5806,6 @@ const DESKTOP_SAVERS = [
   { repo: "screensaver-starfield", name: "Starfield", note: "The 90s flight through space, with your own colors, speed, and trails." },
 ];
 const WIDGETS_PACK = { repo: "widgets-pack", name: "Widgets Pack", note: "All 13 widgets as desktop widgets for your computer." };
-// A project for your computer: Download opens its GitHub repo
-function DesktopAppCard({ repo, name, note }) {
-  return (
-    <li className="flex flex-wrap items-center gap-3 px-3 py-2.5 text-[13px]">
-      <span className="min-w-0 flex-1">
-        <span className="block font-semibold">{name}</span>
-        <span className="block text-[12px] text-[var(--os-ink-3)]">{note}</span>
-      </span>
-      <a
-        href={`https://github.com/maxhayim/${repo}`}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--os-accent)] px-3 py-1 text-[13px] font-semibold text-white hover:brightness-105"
-      >
-        Download <ExternalLink className="h-3 w-3" aria-hidden="true" />
-      </a>
-    </li>
-  );
-}
-
-function DesktopApps({ title, intro, apps }) {
-  return (
-    <>
-      <div className="mt-6 text-[13px] font-semibold">{title}</div>
-      <p className="mt-1 text-[12px] text-[var(--os-ink-3)]">{intro}</p>
-      <ul className="mt-2 divide-y divide-[var(--os-line)] rounded-xl ring-1 ring-[var(--os-line)]">
-        {apps.map((app) => (
-          <DesktopAppCard key={app.repo} {...app} />
-        ))}
-      </ul>
-    </>
-  );
-}
 
 /* Each screen saver's description and its desktop project */
 const SAVER_DETAILS = {
