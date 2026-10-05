@@ -1000,7 +1000,7 @@ function DesktopMenu() {
           openPreferences("wallpaper");
         }}
       >
-        change wallpaper…
+        wallpapers…
       </button>
       <button
         role="menuitem"
@@ -3339,7 +3339,7 @@ function PowerPane() {
         <p className="text-[12px] text-[var(--os-ink-3)]">
           When the desk is idle, the{" "}
           <button type="button" onClick={() => openPreferences("screensaver")} className="underline underline-offset-2 hover:text-[var(--os-ink)]">
-            screen saver
+            screensaver
           </button>{" "}
           takes over.
         </p>
@@ -4664,6 +4664,25 @@ function WidgetExtrasSettings() {
 /* Widget gallery: every widget with a live preview, to add or remove */
 const openWidgetGallery = () => window.dispatchEvent(new Event("mh-widget-gallery-open"));
 
+// Each widget's folder in the Widgets Pack repo
+const WIDGET_PACK_FOLDERS = {
+  clock: "clock",
+  radio: "radio",
+  weather: "weather",
+  mesh: "mesh",
+  calculator: "calculator",
+  calendar: "calendar",
+  notes: "sticky-notes",
+  worldclock: "world-clock",
+  photos: "photo-gallery",
+  convert: "convert",
+  translator: "translator",
+  flight: "flight-tracker",
+  stocks: "stocks",
+};
+const widgetDownloadUrl = (id) =>
+  WIDGET_PACK_FOLDERS[id] ? `https://github.com/maxhayim/${WIDGETS_PACK.repo}/tree/main/widgets/${WIDGET_PACK_FOLDERS[id]}` : `https://github.com/maxhayim/${WIDGETS_PACK.repo}`;
+
 // Each gallery card gets its own backdrop: the built-in wallpapers, alternating with Braun-style color panels
 const GALLERY_PANELS = [
   "linear-gradient(150deg, #e8591a, #9c3410)",
@@ -4736,7 +4755,7 @@ function WidgetGallery() {
               const Preview = kind.Component;
               const shown = layout.shown[id];
               return (
-                <div key={id} className={`gallery-card ${shown ? "gallery-card-on" : ""}`}>
+                <div key={id} className={`gallery-card flex flex-col ${shown ? "gallery-card-on" : ""}`}>
                   <div className="gallery-preview" style={galleryBackground(i)} aria-hidden="true" inert>
                     <div className="gallery-preview-scale">
                       <Preview />
@@ -4759,6 +4778,18 @@ function WidgetGallery() {
                         </button>
                       )}
                     </span>
+                  </div>
+                  {/* Pinned to the bottom so every card's buttons line up */}
+                  <div className="mt-auto flex items-center justify-between gap-2 pt-2.5">
+                    <a
+                      href={widgetDownloadUrl(id)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[12px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
+                      title={`The ${label} desktop widget`}
+                    >
+                      Download <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                    </a>
                     <button
                       type="button"
                       onClick={() => setWidgetShown(id, !shown)}
@@ -5780,99 +5811,21 @@ const DESKTOP_SAVERS = [
   { repo: "screensaver-starfield", name: "Starfield", note: "The 90s flight through space, with your own colors, speed, and trails." },
 ];
 const WIDGETS_PACK = { repo: "widgets-pack", name: "Widgets Pack", note: "All 13 widgets as desktop widgets for your computer." };
-const RELEASES_CACHE = "comcen_desktop_releases"; // session cache, keeps well inside GitHub's rate limit
-
-// Which systems a release has downloads for, from its file names
-function releasePlatforms(assets = []) {
-  const names = assets.map((a) => a.name.toLowerCase());
-  return [
-    names.some((n) => /mac|darwin|\.saver|\.dmg/.test(n)) && "macOS",
-    names.some((n) => /win|\.scr|\.exe|\.msi/.test(n)) && "Windows",
-    names.some((n) => /linux|\.appimage|\.deb|\.tar\.gz/.test(n)) && "Linux",
-  ].filter(Boolean);
-}
-
-// The latest release of one of Max's repos, or null while it's still in development
-function cachedRelease(repo) {
-  try {
-    const cached = JSON.parse(sessionStorage.getItem(RELEASES_CACHE) || "{}")[repo];
-    return cached && Date.now() - cached.at < 30 * 60 * 1000 ? cached : null;
-  } catch {
-    return null;
-  }
-}
-
-function useLatestRelease(repo) {
-  const [state, setState] = useState(null); // the last answer from GitHub, for whichever repo asked
-  const cached = cachedRelease(repo);
-
-  useEffect(() => {
-    if (cachedRelease(repo)) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const response = await fetch(`https://api.github.com/repos/maxhayim/${repo}/releases/latest`, { headers: { Accept: "application/vnd.github+json" } });
-        if (response.status !== 404 && !response.ok) throw new Error("github");
-        const json = response.status === 404 ? null : await response.json();
-        const release = json
-          ? { version: json.tag_name, name: json.name, date: json.published_at, url: json.html_url, platforms: releasePlatforms(json.assets) }
-          : null;
-        try {
-          const all = JSON.parse(sessionStorage.getItem(RELEASES_CACHE) || "{}");
-          sessionStorage.setItem(RELEASES_CACHE, JSON.stringify({ ...all, [repo]: { release, at: Date.now() } }));
-        } catch {
-          /* fine without a cache */
-        }
-        if (!cancelled) setState({ repo, release, status: "ok" });
-      } catch {
-        if (!cancelled) setState({ repo, release: null, status: "error" });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [repo]);
-
-  // Always answer for the repo being asked about now, never a previous one
-  if (cached) return { repo, release: cached.release, status: "ok" };
-  if (state?.repo === repo) return state;
-  return { repo, release: null, status: "loading" };
-}
-
+// A project for your computer: Download opens its GitHub repo
 function DesktopAppCard({ repo, name, note }) {
-  const { release, status } = useLatestRelease(repo);
-  const [region] = usePrefs(REGION_PREFS);
-  const page = `https://github.com/maxhayim/${repo}`;
-  const statusLine =
-    status === "loading"
-      ? "Checking GitHub…"
-      : release
-        ? [release.version, release.platforms.join(", "), new Date(release.date).toLocaleDateString(region.locale, { month: "short", day: "numeric", year: "numeric" })]
-            .filter(Boolean)
-            .join(" · ")
-        : status === "error"
-          ? "Couldn't reach GitHub right now."
-          : "In development: no download yet.";
-
   return (
     <li className="flex flex-wrap items-center gap-3 px-3 py-2.5 text-[13px]">
       <span className="min-w-0 flex-1">
         <span className="block font-semibold">{name}</span>
         <span className="block text-[12px] text-[var(--os-ink-3)]">{note}</span>
-        <span className="mt-0.5 flex items-center gap-1.5 text-[12px] text-[var(--os-ink-2)]">
-          <span className={`widget-led ${release ? "widget-led-on" : ""}`} aria-hidden="true" />
-          {statusLine}
-        </span>
       </span>
       <a
-        href={release ? release.url : page}
+        href={`https://github.com/maxhayim/${repo}`}
         target="_blank"
         rel="noreferrer"
-        className={`inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-[13px] ${
-          release ? "bg-[var(--os-accent)] font-semibold text-white hover:brightness-105" : "ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
-        }`}
+        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--os-accent)] px-3 py-1 text-[13px] font-semibold text-white hover:brightness-105"
       >
-        {release ? "download" : "on GitHub"} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        Download <ExternalLink className="h-3 w-3" aria-hidden="true" />
       </a>
     </li>
   );
@@ -5904,8 +5857,8 @@ const PREF_SECTIONS = [
     title: "Desk",
     panes: [
       { id: "theme", label: "Theme", Icon: Palette, ready: true },
-      { id: "wallpaper", label: "Wallpaper", Icon: ImageIcon, ready: true },
-      { id: "screensaver", label: "Screen Saver", Icon: MonitorPlay, ready: true },
+      { id: "wallpaper", label: "Wallpapers", Icon: ImageIcon, ready: true },
+      { id: "screensaver", label: "Screensavers", Icon: MonitorPlay, ready: true },
       { id: "widgets", label: "Widgets", Icon: LayoutDashboard, ready: true },
       { id: "dock", label: "Dock", Icon: PanelBottom, ready: true },
       { id: "menubar", label: "Menu Bar", Icon: PanelTop, ready: true },
@@ -6152,7 +6105,7 @@ function PrefsWindow({ panelRef, drag, pane, paneInfo, setPane, current }) {
             className={`prefs-tool flex flex-col items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] ${pane === "wallpaper" ? "prefs-tool-active" : ""}`}
           >
             <ImageIcon className="h-5 w-5" strokeWidth={1.6} />
-            wallpaper
+            wallpapers
           </button>
           <button
             type="button"
@@ -6161,7 +6114,7 @@ function PrefsWindow({ panelRef, drag, pane, paneInfo, setPane, current }) {
             className={`prefs-tool flex flex-col items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] ${pane === "screensaver" ? "prefs-tool-active" : ""}`}
           >
             <MonitorPlay className="h-5 w-5" strokeWidth={1.6} />
-            screen saver
+            screensavers
           </button>
           <button
             type="button"
@@ -6228,7 +6181,7 @@ function PrefsWindow({ panelRef, drag, pane, paneInfo, setPane, current }) {
             <div className="p-5">
               <div className="mb-1 flex items-center gap-2 font-semibold">
                 <span className="h-[7px] w-[7px] rounded-full bg-[var(--os-accent)]" aria-hidden="true" />
-                wallpaper
+                wallpapers
               </div>
               <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">Choose the picture on your desktop, or add your own.</p>
               <div role="radiogroup" aria-label="Wallpaper" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -6965,8 +6918,7 @@ function ScreenSaverPane() {
   };
   const choice = settings.on ? settings.saver : "none";
   const details = SAVER_DETAILS[settings.saver] || {};
-  const { release } = useLatestRelease(details.repo || DESKTOP_SAVERS[0].repo);
-  const downloadUrl = release?.url || `https://github.com/maxhayim/${details.repo}`;
+  const downloadUrl = `https://github.com/maxhayim/${details.repo || DESKTOP_SAVERS[0].repo}`; // the repo, not a release
   const control = "rounded-lg bg-[var(--os-card)] px-2.5 py-1.5 ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]";
   const button = "rounded-full px-3.5 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] disabled:opacity-40";
 
@@ -6983,7 +6935,7 @@ function ScreenSaverPane() {
       </div>
 
       <fieldset className="saver-group mt-5">
-        <legend>Screen saver</legend>
+        <legend>Screensavers</legend>
         <div className="flex flex-wrap items-center gap-2 text-[13px]">
           <select
             value={choice}
