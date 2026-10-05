@@ -74,7 +74,6 @@ import {
   SkipBack,
   SkipForward,
   RadioTower,
-  Check,
   Calculator,
   CalendarDays,
   PanelTop,
@@ -1022,7 +1021,7 @@ function DesktopMenu() {
           openWidgetGallery();
         }}
       >
-        widget gallery…
+        widgets…
       </button>
 
       {divider}
@@ -4670,7 +4669,7 @@ function WidgetExtrasSettings({ part }) {
 }
 
 /* Widget gallery: every widget with a live preview, to add or remove */
-// The widget gallery is the Widgets pane of System Preferences
+// The widgets gallery is the Widgets pane of System Preferences
 const openWidgetGallery = () => openPreferences("widgets");
 
 // Each widget's folder in the Widgets Pack repo
@@ -4744,7 +4743,11 @@ function WidgetGalleryGrid() {
                 {settings && (
                   <button
                     type="button"
-                    onClick={() => window.dispatchEvent(new CustomEvent("mh-widget-settings-open", { detail: id }))}
+                    onClick={() =>
+                      WIDGET_SETTINGS[id]
+                        ? window.dispatchEvent(new CustomEvent("mh-widget-settings-open", { detail: id }))
+                        : openPreferences(settings) // a system preference: go to its page
+                    }
                     className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] ring-1 ring-inset ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
                   >
                     Settings
@@ -4757,7 +4760,7 @@ function WidgetGalleryGrid() {
                 aria-label={`${shown ? "Remove" : "Add"} the ${label.toLowerCase()} widget`}
                 className={shown ? "gallery-toggle gallery-toggle-on" : "gallery-toggle"}
               >
-                {shown ? <Check className="h-3.5 w-3.5" strokeWidth={2.6} /> : <span aria-hidden="true">+</span>}
+                {shown ? <X className="h-3.5 w-3.5" strokeWidth={2.6} /> : <span aria-hidden="true">+</span>}
               </button>
             </div>
           </div>
@@ -10651,13 +10654,13 @@ function WeatherWidget() {
 /* Which widgets are out and where they sit. Positions are kept as a share of the free width (so a widget on the
    right stays on the right when the screen changes size) plus a distance from the top. */
 const WIDGET_KINDS = [
-  // settings: the preferences pane each widget follows, linked from the widget gallery
+  // settings: the preferences pane each widget follows, linked from Widgets preferences
   { id: "clock", label: "Clock", note: "after the Braun ABW 41 wall clock", Icon: Clock3, Component: ClockWidget, settings: "datetime" },
   { id: "radio", label: "Radio", note: "after the Braun T3 pocket radio", Icon: Radio, Component: RadioWidget, settings: "sound" },
   { id: "weather", label: "Weather", note: "Miami, or wherever you are", Icon: CloudSun, Component: WeatherWidget, settings: "language" },
   // Off until you connect a MeshMonitor in Mesh Radio
   { id: "mesh", label: "Mesh", note: "live from your MeshMonitor", Icon: RadioTower, Component: MeshWidget, defaultShown: false, settings: "mesh" },
-  // More in the widget gallery
+  // More in Widgets preferences
   { id: "calculator", label: "Calculator", note: "after the Braun ET66 by Dieter Rams", Icon: Calculator, Component: CalculatorWidget, defaultShown: false },
   { id: "calendar", label: "Calendar", note: "this month, in your language", Icon: CalendarDays, Component: CalendarWidget, defaultShown: false, settings: "datetime" },
   { id: "notes", label: "Sticky Notes", note: "notes in five colors that save as you type", Icon: StickyNote, Component: NotesWidget, defaultShown: false },
@@ -10736,46 +10739,42 @@ function WidgetsPane() {
 
   return (
     <div className="p-5">
-      <PaneHeader title="widgets">
-        Braun-inspired desk accessories: {out} of {WIDGET_KINDS.length} out. Drag a widget to move it; press and hold one to remove it.
-      </PaneHeader>
+      <WidgetGalleryGrid />
 
-      <div className="flex flex-col gap-3">
-        <PrefSwitch
-          label="show widgets on the desktop"
-          hint="With the window open, only on wide screens. The dock's widgets button always brings them forward."
-          checked={onDesk}
-          onChange={(on) => {
-            saveWidgetsOnDesk(on);
-            setOnDesk(on);
-          }}
-        />
-        <div className="flex justify-end">
-          <button
-            type="button"
-            disabled={!moved}
-            onClick={() => setWidgetLayout({ pos: {} })}
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)] disabled:opacity-40 disabled:hover:bg-transparent"
-          >
-            <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-            reset positions
-          </button>
+      <div className="mt-6 border-t border-[var(--os-line)] pt-4">
+        <PaneHeader title="widgets">
+          Braun-inspired desk accessories: {out} of {WIDGET_KINDS.length} out. Drag a widget to move it; press and hold one to remove it.
+        </PaneHeader>
+        <div className="flex flex-col gap-3">
+          <PrefSwitch
+            label="show widgets on the desktop"
+            hint="With the window open, only on wide screens. The dock's widgets button always brings them forward."
+            checked={onDesk}
+            onChange={(on) => {
+              saveWidgetsOnDesk(on);
+              setOnDesk(on);
+            }}
+          />
+          <div className="flex justify-end">
+            <button
+              type="button"
+              disabled={!moved}
+              onClick={() => setWidgetLayout({ pos: {} })}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)] disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              <RotateCcw className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+              reset positions
+            </button>
+          </div>
         </div>
-      </div>
-
-      <div className="mt-4">
-        <WidgetGalleryGrid />
       </div>
     </div>
   );
 }
 
-// A widget's own settings, in a popup over System Preferences
+// Settings that belong to the widget itself open in a popup over System Preferences.
+// The rest (Clock, Calendar, Radio, Weather) follow system preferences, so Settings switches to that page.
 const WIDGET_SETTINGS = {
-  clock: () => <DateTimePane />,
-  calendar: () => <DateTimePane />,
-  radio: () => <SoundPane />,
-  weather: () => <LanguagePane />,
   mesh: () => (
     <div className="p-5">
       <MeshMonitorSettings />
