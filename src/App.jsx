@@ -1030,10 +1030,10 @@ function DesktopMenu() {
         className={on}
         onClick={() => {
           setMenu(null);
-          window.dispatchEvent(new Event("mh-saver-gallery-open"));
+          openPreferences("screensaver");
         }}
       >
-        screen saver gallery…
+        screen savers…
       </button>
       {divider}
       <button role="menuitem" type="button" aria-disabled="true" className={off}>
@@ -5897,120 +5897,12 @@ function DesktopApps({ title, intro, apps }) {
   );
 }
 
-/* Screen saver gallery: each saver large and live, to use, try full screen, or get for your computer */
+/* Each screen saver's description and its desktop project */
 const SAVER_DETAILS = {
   mesh: { note: "A mesh-radio network: nodes drift, links join the ones in reach, and orange packets hop between them.", repo: "screensaver-mesh" },
   starfield: { note: "A 90s flight through space, with streaks like a CRT's afterglow and the odd orange star.", repo: "screensaver-starfield" },
 };
 
-function ScreenSaverGallery() {
-  const [open, setOpen] = useState(false);
-  const [settings, setSettings] = useState(readScreensaver);
-
-  useEffect(() => {
-    const onOpen = () => {
-      setSettings(readScreensaver());
-      setOpen(true);
-    };
-    const onChanged = (e) => setSettings(e.detail);
-    window.addEventListener("mh-saver-gallery-open", onOpen);
-    window.addEventListener("mh-screensaver-changed", onChanged);
-    return () => {
-      window.removeEventListener("mh-saver-gallery-open", onOpen);
-      window.removeEventListener("mh-screensaver-changed", onChanged);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") {
-        e.stopImmediatePropagation(); // close just the gallery
-        setOpen(false);
-      }
-    };
-    document.addEventListener("keydown", onKey, true);
-    return () => document.removeEventListener("keydown", onKey, true);
-  }, [open]);
-
-  if (!open) return null;
-  const use = (saver) => {
-    const next = { ...readScreensaver(), saver };
-    saveScreensaver(next);
-    setSettings(next);
-  };
-
-  return (
-    <div className="os-ui no-print fixed inset-0 z-[72] flex items-center justify-center bg-black/30 p-3 sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
-      <div role="dialog" aria-modal="true" aria-labelledby="saver-gallery-title" className="os-window prefs-window flex max-h-[calc(100vh-24px)] w-full max-w-[880px] flex-col overflow-hidden">
-        <div className="relative flex shrink-0 items-center gap-3 border-b border-[var(--os-line)] px-4 py-2.5">
-          <button type="button" onClick={() => setOpen(false)} aria-label="Close screen saver gallery" title="Close" className="os-round-btn os-win-close">
-            <X className="h-3.5 w-3.5" strokeWidth={2.2} />
-          </button>
-          <h2 id="saver-gallery-title" className="pointer-events-none absolute inset-x-0 text-center font-semibold tracking-tight">
-            screen saver gallery
-          </h2>
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              openPreferences("screensaver");
-            }}
-            className="relative ml-auto rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
-          >
-            screen saver settings…
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
-          <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">Use one here, try it full screen, or get it for your computer: real screen savers for macOS, Windows, and Linux, free and open source.</p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {SCREENSAVERS.map((sv) => {
-              const details = SAVER_DETAILS[sv.id] || {};
-              const inUse = settings.saver === sv.id;
-              const app = DESKTOP_SAVERS.find((d) => d.repo === details.repo);
-              return (
-                <div key={sv.id} className={`gallery-card ${inUse ? "gallery-card-on" : ""}`}>
-                  <div className="relative aspect-video overflow-hidden rounded-xl bg-[#0b0b0a]">
-                    <SaverCanvas saver={sv.id} compact />
-                  </div>
-                  <div className="mt-3 flex items-start justify-between gap-2">
-                    <span className="min-w-0">
-                      <span className="block text-[15px] font-semibold">{sv.label}</span>
-                      <span className="block text-[12px] leading-snug text-[var(--os-ink-3)]">{details.note}</span>
-                    </span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px]">
-                    {inUse ? (
-                      <span className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-[var(--os-accent)] ring-1 ring-[var(--os-accent)]">
-                        <Check className="h-3.5 w-3.5" strokeWidth={2.6} aria-hidden="true" /> in use
-                      </span>
-                    ) : (
-                      <button type="button" onClick={() => use(sv.id)} className="rounded-full bg-[var(--os-accent)] px-3 py-1 font-semibold text-white hover:brightness-105">
-                        use
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => window.dispatchEvent(new CustomEvent("mh-screensaver-start", { detail: { saver: sv.id } }))}
-                      className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
-                    >
-                      test
-                    </button>
-                  </div>
-                  {app && (
-                    <ul className="mt-3 rounded-xl ring-1 ring-[var(--os-line)]">
-                      <DesktopAppCard {...app} name="for your computer" note="macOS, Windows, and Linux." />
-                    </ul>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 const PREF_SECTIONS = [
   {
@@ -7067,6 +6959,7 @@ function ScreenSaverHost({ disabled }) {
   );
 }
 
+// Screen Saver preferences and the screen saver gallery in one: settings on top, then each saver to use, try, or download
 function ScreenSaverPane() {
   const [settings, setSettings] = useState(readScreensaver);
   const update = (next) => {
@@ -7077,89 +6970,82 @@ function ScreenSaverPane() {
 
   return (
     <div className="p-5">
-      <div className="mb-1 flex items-center gap-2 font-semibold">
-        <span className="h-[7px] w-[7px] rounded-full bg-[var(--os-accent)]" aria-hidden="true" />
-        screen saver
-      </div>
-      <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">Shown when the desk has been idle. Move the mouse or press a key to return.</p>
+      <PaneHeader title="screen saver">
+        Shown when the desk has been idle. Move the mouse or press a key to return. Each one is also a real screen saver for macOS, Windows, and Linux,
+        free and open source.
+      </PaneHeader>
 
-      <div className="grid gap-5 sm:grid-cols-[1.2fr_1fr]">
-        <div>
-          <div className="relative aspect-video overflow-hidden rounded-xl ring-1 ring-[var(--os-line)]">
-            <SaverCanvas key={settings.saver} saver={settings.saver} compact />
-          </div>
-          <div role="radiogroup" aria-label="Screen saver" className="mt-3 grid grid-cols-2 gap-2">
-            {SCREENSAVERS.map((sv) => {
-              const active = settings.saver === sv.id;
-              return (
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-3 text-[13px]">
+        <div className="min-w-[220px] flex-1">
+          <PrefSwitch label="use screen saver" checked={settings.on} onChange={(on) => update({ on })} />
+        </div>
+        <label className={`flex items-center gap-2 ${settings.on ? "" : "opacity-50"}`}>
+          <span>start after</span>
+          <select
+            value={settings.minutes}
+            disabled={!settings.on}
+            onChange={(e) => update({ minutes: Number(e.target.value) })}
+            className="rounded-lg bg-[var(--os-card)] px-2.5 py-1.5 ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]"
+          >
+            {SCREENSAVER_DELAYS.map((d) => (
+              <option key={d.minutes} value={d.minutes}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div role="radiogroup" aria-label="Screen saver" className="mt-5 grid gap-4 sm:grid-cols-2">
+        {SCREENSAVERS.map((sv) => {
+          const details = SAVER_DETAILS[sv.id] || {};
+          const inUse = settings.saver === sv.id;
+          const app = DESKTOP_SAVERS.find((d) => d.repo === details.repo);
+          return (
+            <div key={sv.id} className={`gallery-card ${inUse ? "gallery-card-on" : ""}`}>
+              <div className="relative aspect-video overflow-hidden rounded-xl bg-[#0b0b0a]">
+                <SaverCanvas saver={sv.id} compact />
+              </div>
+              <div className="mt-3 text-[15px] font-semibold">{sv.label}</div>
+              <div className="text-[12px] leading-snug text-[var(--os-ink-3)]">{details.note}</div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px]">
                 <button
-                  key={sv.id}
                   type="button"
                   role="radio"
-                  aria-checked={active}
+                  aria-checked={inUse}
                   onClick={() => update({ saver: sv.id })}
-                  className={`prefs-option flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] ring-1 ${
-                    active ? "bg-[var(--os-hover)] ring-[var(--os-accent)]" : "ring-[var(--os-line)]"
-                  }`}
+                  className={
+                    inUse
+                      ? "inline-flex items-center gap-1 rounded-full px-3 py-1 text-[var(--os-accent)] ring-1 ring-[var(--os-accent)]"
+                      : "rounded-full bg-[var(--os-accent)] px-3 py-1 font-semibold text-white hover:brightness-105"
+                  }
                 >
-                  <span className={`os-dot ${active ? "os-dot-on" : ""}`} aria-hidden="true" />
-                  {sv.label}
+                  {inUse ? (
+                    <>
+                      <Check className="h-3.5 w-3.5" strokeWidth={2.6} aria-hidden="true" /> in use
+                    </>
+                  ) : (
+                    "use"
+                  )}
                 </button>
-              );
-            })}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center justify-end gap-2 text-[13px]">
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new Event("mh-screensaver-start"))}
-              title="Preview the screen saver full screen"
-              className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]"
-            >
-              test
-            </button>
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new Event("mh-saver-gallery-open"))}
-              className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]"
-            >
-              screen saver gallery…
-            </button>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-4 text-[13px]">
-          <label className="flex items-center justify-between gap-3">
-            <span>use screen saver</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={settings.on}
-              onClick={() => update({ on: !settings.on })}
-              className={`os-switch ${settings.on ? "os-switch-on" : ""} shrink-0 cursor-pointer`}
-            >
-              <span className="sr-only">use screen saver</span>
-            </button>
-          </label>
-
-          <label className={`flex flex-col gap-1.5 ${settings.on ? "" : "opacity-50"}`}>
-            <span>start after</span>
-            <select
-              value={settings.minutes}
-              disabled={!settings.on}
-              onChange={(e) => update({ minutes: Number(e.target.value) })}
-              className="rounded-lg bg-[var(--os-card)] px-2.5 py-1.5 ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]"
-            >
-              {SCREENSAVER_DELAYS.map((d) => (
-                <option key={d.minutes} value={d.minutes}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-        </div>
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent("mh-screensaver-start", { detail: { saver: sv.id } }))}
+                  title="Preview it full screen"
+                  className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
+                >
+                  test
+                </button>
+              </div>
+              {app && (
+                <ul className="mt-3 rounded-xl ring-1 ring-[var(--os-line)]">
+                  <DesktopAppCard {...app} name="for your computer" note="macOS, Windows, and Linux." />
+                </ul>
+              )}
+            </div>
+          );
+        })}
       </div>
-
     </div>
   );
 }
@@ -11404,7 +11290,6 @@ export default function App() {
       <NightShift />
       <PointerTrails />
       <WidgetGallery />
-      <ScreenSaverGallery />
       <PhotoGalleryViewer />
       {booting && (
         <BootScreen
