@@ -4723,15 +4723,7 @@ function WidgetGallery() {
           >
             widget settings…
           </button>
-          <a
-            href={`https://github.com/maxhayim/${WIDGETS_PACK.repo}`}
-            target="_blank"
-            rel="noreferrer"
-            className="relative hidden items-center gap-1 rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] sm:inline-flex"
-            title="All 13 widgets as desktop widgets"
-          >
-            for your desktop <ExternalLink className="h-3 w-3" aria-hidden="true" />
-          </a>
+
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
           <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">
@@ -4779,6 +4771,13 @@ function WidgetGallery() {
               );
             })}
           </div>
+
+          {/* The widgets for your desktop: downloads live here, in the gallery, not in preferences */}
+          <DesktopApps
+            title="for your desktop"
+            intro="Every widget here, as a desktop widget for your computer. Free and open source."
+            apps={[WIDGETS_PACK]}
+          />
         </div>
       </div>
     </div>
@@ -10906,7 +10905,6 @@ function WidgetsPane() {
         </button>
       </label>
 
-      <DesktopApps title="for your desktop" intro="Take the widgets off the web: free and open source, on GitHub." apps={[WIDGETS_PACK]} />
       <WidgetExtrasSettings />
       <StocksSettings />
 
