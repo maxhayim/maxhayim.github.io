@@ -752,6 +752,12 @@
 .saver-group { padding: 10px 14px 14px; border-radius: 12px; border: 1px solid var(--os-line); }
 .saver-group legend { padding: 0 6px; font-size: 12px; font-weight: 600; color: var(--os-ink-2); }
 
+/* Color swatches in widget settings (as in Widgets Pack) */
+.wp-swatch { position: relative; display: inline-block; width: 20px; height: 20px; border-radius: 999px; cursor: pointer; box-shadow: 0 0 0 1px var(--os-line); }
+.wp-swatch-on { box-shadow: 0 0 0 2px var(--os-case), 0 0 0 4px var(--os-accent); }
+.wp-swatch-custom { background: conic-gradient(#e8591a, #f2b200, #3f7f33, #46687a, #7a5aa6, #c8371a, #e8591a); }
+.widget-clock-label { font-size: 8.5px; font-weight: 600; fill: var(--w-mark); font-family: "Twemoji Country Flags", inherit; }
+
 /* Widget gallery */
 .gallery-card { padding: 10px; border-radius: 16px; box-shadow: inset 0 0 0 1px var(--os-line); }
 .gallery-card-on { box-shadow: inset 0 0 0 1.5px var(--os-accent); }

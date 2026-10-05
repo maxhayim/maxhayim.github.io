@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, Reorder, useDragControls, useMotionValue, animate } from "framer-motion";
+import { polyfillCountryFlagEmojis } from "country-flag-emoji-polyfill";
+import flagFont from "country-flag-emoji-polyfill/dist/TwemojiCountryFlags.woff2?url";
 import {
   Radar,
   Star,
@@ -1048,20 +1050,30 @@ const REGION_LOCALES = [
   { id: "he", label: "עברית" },
 ];
 
+// The same cities as Widgets Pack (src/shared/time.jsx)
 const TIME_ZONES = [
   { id: "auto", label: "automatic" },
   { id: "America/New_York", label: "Miami · New York" },
   { id: "America/Chicago", label: "Chicago" },
   { id: "America/Denver", label: "Denver" },
   { id: "America/Los_Angeles", label: "Los Angeles" },
+  { id: "America/Anchorage", label: "Anchorage" },
   { id: "Pacific/Honolulu", label: "Honolulu" },
+  { id: "America/Mexico_City", label: "Mexico City" },
+  { id: "America/Sao_Paulo", label: "São Paulo" },
   { id: "Europe/London", label: "London" },
   { id: "Europe/Paris", label: "Paris · Berlin · Rome" },
+  { id: "Europe/Athens", label: "Athens" },
+  { id: "Europe/Moscow", label: "Moscow" },
   { id: "Asia/Jerusalem", label: "Jerusalem · Tel Aviv" },
   { id: "Asia/Dubai", label: "Dubai" },
   { id: "Asia/Kolkata", label: "Mumbai · Delhi" },
+  { id: "Asia/Bangkok", label: "Bangkok" },
+  { id: "Asia/Singapore", label: "Singapore" },
+  { id: "Asia/Shanghai", label: "Shanghai" },
   { id: "Asia/Tokyo", label: "Tokyo" },
   { id: "Australia/Sydney", label: "Sydney" },
+  { id: "Pacific/Auckland", label: "Auckland" },
   { id: "UTC", label: "UTC" },
 ];
 
@@ -1214,6 +1226,10 @@ const STORED_ITEMS = [
   { label: "menu bar order", key: "comcen_menubar" },
   { label: "radio station", key: "comcen_radio_station" },
   { label: "weather location", key: "comcen_weather" },
+  { label: "weather colors", key: "comcen_weather_look" },
+  { label: "your radio stations", key: "comcen_radio_stations" },
+  { label: "clock widget", key: "comcen_clock_widget" },
+  { label: "calendar widget", key: "comcen_calendar_widget" },
   { label: "internet trial", key: "comcen_trial_end" },
   { label: "registration", key: "comcen_license" },
   { label: "startup screen seen", key: "mh-booted" },
@@ -1554,9 +1570,9 @@ function DateTimePane() {
 
 function PrivacyPane() {
   const [analytics, setAnalytics] = useState(readAnalyticsOn);
-  const [place, setPlace] = useState(() => readWeatherPrefs().place);
+  const { home, here, save: saveWeatherPlaces } = useWeatherPlaces();
   const [confirming, setConfirming] = useState(false);
-  const usingLocation = place.name !== WEATHER_HOME.name;
+  const usingLocation = !!here;
   const stored = STORED_ITEMS.filter((item) => isStored(item.key));
 
   return (
@@ -1579,16 +1595,13 @@ function PrivacyPane() {
             <span className="block text-[12px] text-[var(--os-ink-3)]">
               {usingLocation
                 ? "The weather widget is using your location, rounded to about a kilometer. It's kept only on this browser."
-                : `The weather widget shows ${WEATHER_HOME.name}. Your location is used only if you press its locate button.`}
+                : `The weather widget shows ${home.name}. Your location is used only if you press its locate button.`}
             </span>
           </span>
           <button
             type="button"
             disabled={!usingLocation}
-            onClick={() => {
-              saveWeatherPlace(WEATHER_HOME);
-              setPlace(WEATHER_HOME);
-            }}
+            onClick={() => saveWeatherPlaces({ here: null })}
             className="shrink-0 rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)] disabled:opacity-40 disabled:hover:bg-transparent"
           >
             stop using
@@ -4407,6 +4420,12 @@ function CalculatorWidget() {
 }
 
 /* Calendar: this month, in your language, starting on your week's first day */
+const CALENDAR_WIDGET_PREFS = {
+  key: "comcen_calendar_widget",
+  defaults: { weekStart: "auto", accent: "", case: "" },
+  allowed: { weekStart: ["auto", "0", "1", "6"] },
+};
+
 function weekStartsOn(locale) {
   try {
     const info = new Intl.Locale(locale);
@@ -4415,28 +4434,30 @@ function weekStartsOn(locale) {
   } catch {
     /* older browsers */
   }
-  return ["en-US", "he", "ja", "pt-BR"].includes(locale) ? 0 : 1;
+  return /-(US|CA|BR|JP|IL|MX|PH)$/i.test(locale) || ["he", "ja"].includes(locale) ? 0 : 1;
 }
 
 function CalendarWidget() {
   const now = useMinuteClock();
   const [region] = usePrefs(REGION_PREFS);
-  const start = weekStartsOn(region.locale);
+  const [prefs] = useWidgetPrefs(CALENDAR_WIDGET_PREFS);
+  const start = prefs.weekStart === "auto" ? weekStartsOn(region.locale) : Number(prefs.weekStart);
   const year = now.getFullYear();
   const month = now.getMonth();
   const firstWeekday = (new Date(year, month, 1).getDay() - start + 7) % 7;
   const days = new Date(year, month + 1, 0).getDate();
   const cells = [...Array(firstWeekday).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)];
   const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 7 + ((start + i) % 7)).toLocaleDateString(region.locale, { weekday: "narrow" }));
-  const open = () => openPreferences("datetime");
+  const open = () => openWidgetSettings("calendar");
 
   return (
     <section
       className="widget widget-calendar cursor-pointer px-3.5 pb-3.5 pt-3"
+      style={{ ...caseStyle(prefs.case), ...(isColor(prefs.accent) ? { "--os-accent": prefs.accent } : {}) }}
       role="button"
       tabIndex={0}
-      aria-label={`Calendar: ${now.toLocaleDateString(region.locale, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}. Open date and time preferences.`}
-      title="Date & time preferences"
+      aria-label={`Calendar: ${now.toLocaleDateString(region.locale, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}. Open calendar settings.`}
+      title="Calendar settings"
       onClick={open}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -4467,18 +4488,40 @@ function CalendarWidget() {
   );
 }
 
+function CalendarSettings() {
+  const [prefs, setPrefs] = useWidgetPrefs(CALENDAR_WIDGET_PREFS);
+  return (
+    <div className="flex flex-col gap-4 p-5">
+      <ColorChoice label="month and today" value={prefs.accent} onChange={(accent) => setPrefs({ accent })} />
+      <ColorChoice label="case" value={prefs.case} onChange={(c) => setPrefs({ case: c })} presets={CASES} />
+      <PrefChoice
+        label="week starts on"
+        value={prefs.weekStart}
+        onChange={(weekStart) => setPrefs({ weekStart })}
+        options={[
+          { id: "auto", label: "auto" },
+          { id: "0", label: "Sun" },
+          { id: "1", label: "Mon" },
+          { id: "6", label: "Sat" },
+        ]}
+      />
+    </div>
+  );
+}
+
 /* Notes: a sticky note that saves as you type */
 const NOTE_KEY = "comcen_note";
 
 
-/* World Clock: three cities, set in Widgets preferences */
+/* World Clock: three cities at a glance */
+const CITIES = TIME_ZONES.filter((z) => z.id !== "auto");
 const WORLD_PREFS = {
   cookie: "comcen_worldclock",
   event: "mh-worldclock-changed",
-  defaults: { a: "Asia/Jerusalem", b: "Europe/London", c: "Asia/Tokyo" },
-  allowed: Object.fromEntries(["a", "b", "c"].map((k) => [k, TIME_ZONES.filter((z) => z.id !== "auto").map((z) => z.id)])),
+  defaults: { a: "Asia/Jerusalem", b: "Europe/London", c: "Asia/Tokyo", ticker: "" },
+  allowed: Object.fromEntries(["a", "b", "c"].map((k) => [k, CITIES.map((z) => z.id)])),
 };
-const cityName = (zone) => (TIME_ZONES.find((z) => z.id === zone)?.label || zone).split(" · ").pop();
+const cityName = (zone) => (CITIES.find((z) => z.id === zone)?.label || zone).split(" · ").pop();
 
 function dayOffset(now, zone) {
   const local = new Date(now.toLocaleString("en-US"));
@@ -4494,7 +4537,11 @@ function WorldClockWidget() {
   const [time] = usePrefs(TIME_PREFS);
   const zones = [world.a, world.b, world.c];
   return (
-    <section className="widget widget-world px-3 pb-3.5 pt-3" aria-label={`World clock: ${zones.map((z) => `${cityName(z)} ${formatTime(now, { region, time, timeZone: z })}`).join(", ")}`}>
+    <section
+      className="widget widget-world px-3 pb-3.5 pt-3"
+      style={isColor(world.ticker) ? { "--os-accent": world.ticker } : undefined}
+      aria-label={`World clock: ${zones.map((z) => `${cityName(z)} ${formatTime(now, { region, time, timeZone: z })}`).join(", ")}`}
+    >
       <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--os-ink-3)]">world clock</div>
       <div className="mt-2 grid grid-cols-3 gap-1 text-center">
         {zones.map((zone, i) => (
@@ -4509,6 +4556,27 @@ function WorldClockWidget() {
         ))}
       </div>
     </section>
+  );
+}
+
+function WorldClockSettings() {
+  const [world, setWorld] = usePrefs(WORLD_PREFS);
+  return (
+    <div className="flex flex-col gap-4 p-5 text-[13px]">
+      <ColorChoice label="second hands" value={world.ticker} onChange={(ticker) => setWorld({ ticker })} />
+      {["a", "b", "c"].map((slot, i) => (
+        <label key={slot} className="flex flex-col gap-1.5">
+          <span>city {i + 1}</span>
+          <select className={prefSelect} value={world[slot]} onChange={(e) => setWorld({ [slot]: e.target.value })}>
+            {CITIES.map((z) => (
+              <option key={z.id} value={z.id}>
+                {z.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))}
+    </div>
   );
 }
 
@@ -4587,13 +4655,12 @@ function PhotosWidget() {
 }
 
 // Widgets pane: the Photos widget's pictures and the World Clock's cities
-function WidgetExtrasSettings({ part }) {
+// Photo Gallery settings: the photos it shows
+function PhotosSettings() {
   const photos = usePictures("photo");
-  const [world, setWorld] = usePrefs(WORLD_PREFS);
   const fileRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const select = "w-full rounded-lg bg-[var(--os-card)] px-2 py-1.5 ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]";
 
   const add = async (files) => {
     setBusy(true);
@@ -4609,9 +4676,7 @@ function WidgetExtrasSettings({ part }) {
 
   return (
     <>
-      {part !== "worldclock" && (
-        <>
-      <div className="mt-6 text-[13px] font-semibold">photos</div>
+      <div className="text-[13px] font-semibold">photos</div>
       <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6">
         {photos.map((p) => (
           <div key={p.id} className="relative">
@@ -4645,25 +4710,6 @@ function WidgetExtrasSettings({ part }) {
       />
       {message && <p className="mt-2 text-[12px] text-[var(--os-warn)]">{message}</p>}
       <p className="mt-2 text-[12px] text-[var(--os-ink-3)]">Shown in the Photos widget. Resized and kept in this browser; nothing is uploaded.</p>
-
-        </>
-      )}
-      {part !== "photos" && (
-        <>
-      <div className="mt-6 text-[13px] font-semibold">world clock cities</div>
-      <div className="mt-2 grid gap-2 text-[13px] sm:grid-cols-3">
-        {["a", "b", "c"].map((slot) => (
-          <select key={slot} value={world[slot]} onChange={(e) => setWorld({ [slot]: e.target.value })} className={select} aria-label={`World clock city ${slot.toUpperCase()}`}>
-            {TIME_ZONES.filter((z) => z.id !== "auto").map((z) => (
-              <option key={z.id} value={z.id}>
-                {z.label}
-              </option>
-            ))}
-          </select>
-        ))}
-      </div>
-        </>
-      )}
     </>
   );
 }
@@ -4740,7 +4786,7 @@ function WidgetGalleryGrid() {
                 >
                   Download
                 </a>
-                {settings && (
+                {(WIDGET_SETTINGS[id] || settings) && (
                   <button
                     type="button"
                     onClick={() =>
@@ -4911,14 +4957,26 @@ const widgetSelect =
 const widgetInput =
   "w-full min-w-0 rounded-md bg-[var(--os-card)] px-2 py-1 text-[13px] ring-1 ring-[var(--w-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]";
 
+// Every copy of a widget (desktop, dashboard, its settings popup) follows the same saved value
 function useStoredJSON(key, fallback) {
   const [value, setValue] = useState(() => readJSON(key, fallback));
+  const latest = useRef(value);
+  const fallbackRef = useRef(fallback);
+  useEffect(() => {
+    const onChange = (e) => {
+      if (e.detail?.key !== key) return;
+      latest.current = e.detail.value;
+      setValue(e.detail.value);
+    };
+    window.addEventListener("mh-stored", onChange);
+    return () => window.removeEventListener("mh-stored", onChange);
+  }, [key]);
   const update = (next) => {
-    setValue((current) => {
-      const merged = typeof next === "function" ? next(current) : next;
-      writeStore("localStorage", key, JSON.stringify(merged));
-      return merged;
-    });
+    const merged = typeof next === "function" ? next(latest.current ?? fallbackRef.current) : next;
+    latest.current = merged;
+    writeStore("localStorage", key, JSON.stringify(merged));
+    setValue(merged);
+    window.dispatchEvent(new CustomEvent("mh-stored", { detail: { key, value: merged } }));
   };
   return [value, update];
 }
@@ -5078,32 +5136,30 @@ function ConvertWidget() {
 const NOTES_KEY = "comcen_notes";
 const NOTE_COLORS = { yellow: "#f2c94c", orange: "#f08a5d", green: "#8fb07a", blue: "#7fa6c4", grey: "#c9c4b8" };
 
-function readNotes() {
-  const saved = readJSON(NOTES_KEY, null);
-  if (Array.isArray(saved) && saved.length) {
-    return saved.filter((n) => n && typeof n.text === "string").map((n) => ({ id: String(n.id), text: n.text.slice(0, 2000), color: NOTE_COLORS[n.color] ? n.color : "yellow" }));
-  }
+const freshNote = (color = "yellow") => ({ id: `n${Date.now().toString(36)}`, text: "", color });
+
+function cleanNotes(saved) {
+  const list = Array.isArray(saved) ? saved.filter((n) => n && typeof n.text === "string") : [];
+  if (list.length) return list.map((n) => ({ id: String(n.id), text: n.text.slice(0, 2000), color: NOTE_COLORS[n.color] ? n.color : "yellow" }));
   // The single note from before Sticky Notes becomes the first one
   return [{ id: "n1", text: readStore("localStorage", NOTE_KEY) || "", color: "yellow" }];
 }
 
 function NotesWidget() {
-  const [notes, setNotesState] = useState(readNotes);
+  const [saved, save] = useStoredJSON(NOTES_KEY, null);
+  const notes = cleanNotes(saved);
   const [index, setIndex] = useState(0);
-  const current = notes[Math.min(index, notes.length - 1)];
-  const save = (next) => {
-    setNotesState(next);
-    writeStore("localStorage", NOTES_KEY, JSON.stringify(next));
-  };
+  const at = Math.min(index, notes.length - 1);
+  const current = notes[at];
   const update = (patch) => save(notes.map((n) => (n.id === current.id ? { ...n, ...patch } : n)));
   const add = () => {
-    const next = [...notes, { id: `n${Date.now().toString(36)}`, text: "", color: Object.keys(NOTE_COLORS)[notes.length % 5] }];
+    const next = [...notes, freshNote(Object.keys(NOTE_COLORS)[notes.length % 5])];
     save(next);
     setIndex(next.length - 1);
   };
   const remove = () => {
     const next = notes.filter((n) => n.id !== current.id);
-    save(next.length ? next : [{ id: `n${Date.now().toString(36)}`, text: "", color: "yellow" }]);
+    save(next.length ? next : [freshNote()]);
     setIndex((i) => Math.max(0, Math.min(i, next.length - 1)));
   };
 
@@ -5114,19 +5170,19 @@ function NotesWidget() {
         maxLength={2000}
         onChange={(e) => update({ text: e.target.value })}
         placeholder="Write a note…"
-        aria-label={`Note ${index + 1} of ${notes.length}`}
+        aria-label={`Note ${at + 1} of ${notes.length}`}
         spellCheck
         dir="auto"
         className="widget-notes-text"
       />
       <div className="widget-notes-bar">
-        <button type="button" disabled={index === 0} onClick={() => setIndex((i) => i - 1)} className="widget-notes-btn" aria-label="Previous note">
+        <button type="button" disabled={at === 0} onClick={() => setIndex(at - 1)} className="widget-notes-btn" aria-label="Previous note">
           ‹
         </button>
         <span className="tabular-nums">
-          {Math.min(index, notes.length - 1) + 1}/{notes.length}
+          {at + 1}/{notes.length}
         </span>
-        <button type="button" disabled={index >= notes.length - 1} onClick={() => setIndex((i) => i + 1)} className="widget-notes-btn" aria-label="Next note">
+        <button type="button" disabled={at >= notes.length - 1} onClick={() => setIndex(at + 1)} className="widget-notes-btn" aria-label="Next note">
           ›
         </button>
         <span className="ml-auto flex gap-1" role="radiogroup" aria-label="Note color">
@@ -5242,7 +5298,7 @@ function TranslatorWidget() {
         rows={3}
         className={`${widgetInput} mt-2 resize-none leading-snug`}
       />
-      <div className="mt-2 min-h-[54px] rounded-md bg-[var(--os-hover)] px-2 py-1.5 text-[13px] leading-snug" aria-live="polite" dir="auto">
+      <div className="mt-2 min-h-[54px] rounded-md bg-[var(--os-hover)] px-2 py-1.5 text-[13px] leading-snug select-text" aria-live="polite" dir="auto" data-nodrag>
         {result === "working" ? (
           <span className="text-[var(--os-ink-3)]">Translating…</span>
         ) : result?.error ? (
@@ -5253,8 +5309,8 @@ function TranslatorWidget() {
           <span className="text-[var(--os-ink-3)]">The translation appears here.</span>
         )}
       </div>
-      <div className="mt-1.5 flex items-center justify-between text-[10px] text-[var(--os-ink-3)]">
-        <span>{result?.via ? `translated ${result.via === "MyMemory" ? "by MyMemory" : result.via}` : "Chrome translates on-device; others use MyMemory"}</span>
+      <div className="mt-1.5 flex items-center justify-end gap-2 text-[10px] text-[var(--os-ink-3)]">
+        <span className="mr-auto truncate">{result?.via ? `by ${result.via}` : ""}</span>
         <button type="button" onClick={run} disabled={!text.trim() || result === "working"} className="rounded-full px-2 py-0.5 text-[11px] ring-1 ring-[var(--w-line)] hover:bg-[var(--os-hover)] disabled:opacity-40">
           translate
         </button>
@@ -5463,7 +5519,7 @@ function StocksWidget() {
     <section className="widget widget-stocks px-3.5 pb-3 pt-3" aria-label="Stocks">
       <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-[var(--os-ink-3)]">
         <span>stocks</span>
-        <button type="button" onClick={() => openPreferences("widgets")} className="normal-case tracking-normal underline-offset-2 hover:underline">
+        <button type="button" onClick={() => openWidgetSettings("stocks")} className="normal-case tracking-normal underline-offset-2 hover:underline">
           edit
         </button>
       </div>
@@ -5483,7 +5539,7 @@ function StocksWidget() {
         })}
       </ul>
       <p className="mt-1.5 text-[10px] leading-snug text-[var(--os-ink-3)]">
-        {needsKey ? "Add a free Finnhub key in Widgets settings for stock prices." : "Prices may be delayed."}
+        {needsKey ? "Add a free Finnhub key in settings for stock prices." : "Prices may be delayed."}
       </p>
     </section>
   );
@@ -10029,7 +10085,7 @@ function BuddyList() {
                 <article
                   key={buddy.name}
                   aria-hidden={buddy.i !== selected}
-                  inert={buddy.i !== selected ? "" : undefined}
+                  inert={buddy.i !== selected}
                   className="w-full shrink-0 px-0.5"
                 >
                   <div className="flex flex-wrap items-center gap-3">
@@ -10129,32 +10185,173 @@ function useDashboardOpen() {
   return open;
 }
 
-/* Clock: after the Braun ABW 41 wall clock. Flat black hands, yellow sweep hand with a round counterweight. */
+/* ---------- Matching Widgets Pack v1.3.0 (github.com/maxhayim/widgets-pack) ----------
+   The widgets below follow the pack's widgets feature for feature. What differs is only how they plug in here:
+   settings live in this site's per-user storage, links open in a new tab, and the radio goes through the site's
+   sound system. widgets-pack.json records which pack release they match. */
+
+// Country flags as emoji. Windows has no flag emoji, so there they come from a bundled Twemoji font.
+polyfillCountryFlagEmojis("Twemoji Country Flags", flagFont);
+
+const flagEmoji = (code) =>
+  /^[A-Z]{2}$/.test(code || "") ? String.fromCodePoint(...[...code].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)) : "";
+
+// Every country and territory the system can name, sorted by name in the given language
+const NOT_PLACES = new Set(["EU", "EZ", "UN", "QO", "XA", "XB", "ZZ"]);
+function countries(locale) {
+  let names;
+  try {
+    names = new Intl.DisplayNames([locale, "en"], { type: "region", fallback: "none" });
+  } catch {
+    return [];
+  }
+  const list = [];
+  for (let a = 65; a <= 90; a++) {
+    for (let b = 65; b <= 90; b++) {
+      const code = String.fromCharCode(a, b);
+      if (NOT_PLACES.has(code)) continue;
+      const name = names.of(code);
+      if (name && name !== code) list.push({ code, name });
+    }
+  }
+  return list.sort((x, y) => x.name.localeCompare(y.name, locale));
+}
+
+// Colors a widget can be given: Braun-palette swatches, or any color from the system picker. "" means the default.
+const isColor = (value) => /^#[0-9a-f]{6}$/i.test(value || "");
+
+const ACCENTS = [
+  ["#e8591a", "orange"],
+  ["#f2b200", "yellow"],
+  ["#c8371a", "red"],
+  ["#3f7f33", "green"],
+  ["#46687a", "blue"],
+  ["#7a5aa6", "violet"],
+  ["#262624", "black"],
+];
+
+const CASES = [
+  ["#f3f1ec", "warm white"],
+  ["#201f1d", "graphite"],
+  ["#e8591a", "orange"],
+  ["#f2b200", "yellow"],
+  ["#8a9a6b", "olive"],
+  ["#5d7f93", "blue"],
+  ["#d9d4c7", "stone"],
+];
+
+function ColorChoice({ label, value, onChange, presets = ACCENTS }) {
+  const current = isColor(value) ? value.toLowerCase() : "";
+  const isCustom = current && !presets.some(([c]) => c === current);
+  return (
+    <div className="text-[13px]" role="radiogroup" aria-label={label}>
+      <div className="mb-1.5">{label}</div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          role="radio"
+          aria-checked={!current}
+          onClick={() => onChange("")}
+          className={`rounded-full px-2.5 py-0.5 text-[12px] ring-1 ${!current ? "bg-[var(--os-hover)] ring-[var(--os-accent)]" : "ring-[var(--os-line)] hover:bg-[var(--os-hover)]"}`}
+        >
+          default
+        </button>
+        {presets.map(([color, name]) => (
+          <button
+            key={color}
+            type="button"
+            role="radio"
+            aria-checked={current === color}
+            aria-label={name}
+            title={name}
+            onClick={() => onChange(color)}
+            className={`wp-swatch ${current === color ? "wp-swatch-on" : ""}`}
+            style={{ background: color }}
+          />
+        ))}
+        <label className={`wp-swatch wp-swatch-custom ${isCustom ? "wp-swatch-on" : ""}`} title="Any color" style={isCustom ? { background: current } : undefined}>
+          <input type="color" value={current || "#e8591a"} onChange={(e) => onChange(e.target.value)} className="sr-only" aria-label={`${label}: any color`} />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+// Style for a widget case in any color, with text that stays readable on it
+function caseStyle(color) {
+  if (!isColor(color)) return undefined;
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  const dark = 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.3;
+  const ink = dark ? "#eeebe4" : "#262624";
+  return {
+    "--w-case": color,
+    "--os-ink": ink,
+    "--os-ink-2": `color-mix(in oklab, ${ink} 80%, ${color})`,
+    "--os-ink-3": `color-mix(in oklab, ${ink} 60%, ${color})`,
+    "--w-line": `color-mix(in oklab, ${ink} 18%, ${color})`,
+    "--os-hover": `color-mix(in oklab, ${ink} 8%, transparent)`,
+  };
+}
+
+// A widget's own settings, kept per user like the rest (cleaned against defaults and allowed values, as the pack does)
+function useWidgetPrefs({ key, defaults, allowed = {} }) {
+  const [saved, setSaved] = useStoredJSON(key, {});
+  const source = saved && typeof saved === "object" ? saved : {};
+  const prefs = Object.fromEntries(
+    Object.entries(defaults).map(([name, value]) => {
+      const candidate = source[name];
+      const ok = typeof candidate === typeof value && (!allowed[name] || allowed[name].includes(candidate));
+      return [name, ok ? candidate : value];
+    }),
+  );
+  const update = (patch) => setSaved((current) => ({ ...(current && typeof current === "object" ? current : {}), ...patch }));
+  return [prefs, update];
+}
+
+// Opens a widget's settings popup (Widgets preferences → Settings, or a widget's own "edit" / "set up…")
+const openWidgetSettings = (id) => window.dispatchEvent(new CustomEvent("mh-widget-settings-open", { detail: id }));
+
+// A select and a labeled field, styled like the site's preferences
+const prefSelect = "w-full rounded-lg bg-[var(--os-card)] px-2.5 py-1.5 ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]";
+
+/* Clock: after the Braun ABW 41 wall clock. Flat black hands, yellow sweep hand with a round counterweight.
+   An optional name and country flag sit on the face, under the 12; without one, the site's "comcen" mark does. */
+const CLOCK_WIDGET_PREFS = {
+  key: "comcen_clock_widget",
+  defaults: { timeZone: "auto", seconds: true, name: "", flag: "", ticker: "" },
+  allowed: { timeZone: TIME_ZONES.map((z) => z.id) },
+};
+
 function ClockWidget() {
   const now = useClock();
   const [time] = usePrefs(TIME_PREFS);
   const [region] = usePrefs(REGION_PREFS);
-  const parts = clockParts(now, time);
+  const [prefs] = useWidgetPrefs(CLOCK_WIDGET_PREFS);
+  // "automatic" follows the site's Date & Time setting
+  const clockTime = prefs.timeZone === "auto" ? time : { ...time, timeZone: prefs.timeZone };
+  const parts = clockParts(now, clockTime);
   const s = parts.s;
   const m = parts.m + s / 60;
   const h = (parts.h % 12) + m / 60;
   const hand = (deg, length, tail, width, color) => (
     <line x1="100" y1={100 + tail} x2="100" y2={100 - length} stroke={color} strokeWidth={width} transform={`rotate(${deg} 100 100)`} />
   );
+  const open = () => openWidgetSettings("clock");
 
   return (
-    // Click (or press Enter) for Date & Time preferences; dragging it still moves it
+    // Click (or press Enter) for its settings; dragging it still moves it
     <section
       className="widget widget-clock cursor-pointer"
+      style={isColor(prefs.ticker) ? { "--w-yellow": prefs.ticker } : undefined}
       role="button"
       tabIndex={0}
-      aria-label={`Clock: ${formatTime(now, { region, time })}. Open date and time preferences.`}
-      title="Date & time preferences"
-      onClick={() => openPreferences("datetime")}
+      aria-label={`${prefs.name || "Clock"}: ${formatTime(now, { region, time: clockTime })}. Open clock settings.`}
+      title="Clock settings"
+      onClick={open}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          openPreferences("datetime");
+          open();
         }
       }}
     >
@@ -10169,28 +10366,83 @@ function ClockWidget() {
           const n = i + 1;
           const a = (n * 30 * Math.PI) / 180;
           return (
-            <text
-              key={n}
-              x={100 + Math.sin(a) * 72}
-              y={100 - Math.cos(a) * 72}
-              textAnchor="middle"
-              dominantBaseline="central"
-              className="widget-clock-num"
-            >
+            <text key={n} x={100 + Math.sin(a) * 72} y={100 - Math.cos(a) * 72} textAnchor="middle" dominantBaseline="central" className="widget-clock-num">
               {n}
             </text>
           );
         })}
-        <text x="100" y="62" textAnchor="middle" className="widget-clock-brand">comcen</text>
+        {prefs.flag || prefs.name ? (
+          <text x="100" y="62" textAnchor="middle" dominantBaseline="central" className="widget-clock-label">
+            {prefs.flag && <tspan>{flagEmoji(prefs.flag)}</tspan>}
+            {prefs.flag && prefs.name ? " " : ""}
+            {prefs.name.slice(0, 18)}
+          </text>
+        ) : (
+          <text x="100" y="62" textAnchor="middle" className="widget-clock-brand">
+            comcen
+          </text>
+        )}
         {hand(h * 30, 46, 10, 6, "var(--w-hand)")}
         {hand(m * 6, 70, 12, 4, "var(--w-hand)")}
-        <g transform={`rotate(${s * 6} 100 100)`}>
-          <line x1="100" y1="124" x2="100" y2="20" stroke="var(--w-yellow)" strokeWidth="1.6" />
-          <circle cx="100" cy="122" r="5" fill="var(--w-yellow)" />
-        </g>
-        <circle cx="100" cy="100" r="4" fill="var(--w-yellow)" />
+        {prefs.seconds && (
+          <g transform={`rotate(${s * 6} 100 100)`}>
+            <line x1="100" y1="124" x2="100" y2="20" stroke="var(--w-yellow)" strokeWidth="1.6" />
+            <circle cx="100" cy="122" r="5" fill="var(--w-yellow)" />
+          </g>
+        )}
+        <circle cx="100" cy="100" r="4" fill={prefs.seconds ? "var(--w-yellow)" : "var(--w-hand)"} />
       </svg>
     </section>
+  );
+}
+
+function ClockSettings() {
+  const [prefs, setPrefs] = useWidgetPrefs(CLOCK_WIDGET_PREFS);
+  const [region] = usePrefs(REGION_PREFS);
+  const places = useMemo(() => countries(region.locale), [region.locale]);
+  return (
+    <div className="flex flex-col gap-4 p-5 text-[13px]">
+      <label className="flex flex-col gap-1.5">
+        <span>name on the face</span>
+        <input className={prefSelect} value={prefs.name} onChange={(e) => setPrefs({ name: e.target.value.slice(0, 18) })} placeholder="e.g. Home, Office, Mom" maxLength={18} />
+      </label>
+      <label className="flex flex-col gap-1.5">
+        <span>flag</span>
+        <select className={prefSelect} style={{ fontFamily: '"Twemoji Country Flags", inherit' }} value={prefs.flag} onChange={(e) => setPrefs({ flag: e.target.value })}>
+          <option value="">none</option>
+          {places.map((c) => (
+            <option key={c.code} value={c.code}>
+              {flagEmoji(c.code)} {c.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <ColorChoice
+        label="second hand"
+        value={prefs.ticker}
+        onChange={(ticker) => setPrefs({ ticker })}
+        presets={[["#f2b200", "yellow"], ...ACCENTS.filter(([c]) => c !== "#f2b200")]}
+      />
+      <label className="flex flex-col gap-1.5">
+        <span>time zone</span>
+        <select className={prefSelect} value={prefs.timeZone} onChange={(e) => setPrefs({ timeZone: e.target.value })}>
+          {TIME_ZONES.map((z) => (
+            <option key={z.id} value={z.id}>
+              {z.id === "auto" ? "automatic (Date & Time)" : z.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <PrefChoice
+        label="second hand"
+        value={prefs.seconds ? "on" : "off"}
+        onChange={(v) => setPrefs({ seconds: v === "on" })}
+        options={[
+          { id: "on", label: "on" },
+          { id: "off", label: "off" },
+        ]}
+      />
+    </div>
   );
 }
 
@@ -10245,16 +10497,48 @@ const RADIO_STATIONS = [
     site: "https://www.revolution935.com/",
   },
 ];
-const RADIO_KEY = "comcen_radio_station";
+const RADIO_KEY = "comcen_radio_station"; // the station's id, so adding or removing stations never changes the one playing
+const RADIO_OWN_KEY = "comcen_radio_stations";
 const RADIO_LEVEL = 0.7; // under the site volume, so it never drowns out system sounds
+
+/* Your own stations, after the built-in ones. The dial has room for 16 in all. */
+const MAX_STATIONS = 16;
+const MAX_OWN = MAX_STATIONS - RADIO_STATIONS.length;
+const isStreamUrl = (url) => /^https?:\/\/[^\s"']+$/i.test(url);
+
+function cleanOwnStations(saved) {
+  return (Array.isArray(saved) ? saved : [])
+    .filter((s) => s && typeof s.id === "string" && typeof s.name === "string" && isStreamUrl(s.stream || ""))
+    .slice(0, MAX_OWN)
+    .map((s) => ({
+      id: s.id,
+      name: s.name.slice(0, 40),
+      genre: typeof s.genre === "string" && s.genre ? s.genre.slice(0, 60) : "your station",
+      stream: s.stream,
+      site: typeof s.site === "string" && /^https:\/\/[^\s"']+$/.test(s.site) ? s.site : null,
+      own: true,
+    }));
+}
+
+// Older versions saved the station's position on the dial
+function readRadioStation() {
+  const saved = readStore("localStorage", RADIO_KEY) || "";
+  return /^\d+$/.test(saved) ? RADIO_STATIONS[Number(saved)]?.id || RADIO_STATIONS[0].id : saved;
+}
 
 // One radio for the whole site, outside React, so it keeps playing as you move between pages.
 const radio = {
-  station: Math.max(0, Math.min(RADIO_STATIONS.length - 1, Number(readStore("localStorage", RADIO_KEY)) || 0)),
+  own: cleanOwnStations(readJSON(RADIO_OWN_KEY, [])),
+  stationId: readRadioStation(),
   status: "off", // "off" | "tuning" | "on" | "error"
   audio: null,
   listeners: new Set(),
 };
+
+const newStationId = () => `own-${Date.now().toString(36)}`;
+const radioStations = () => [...RADIO_STATIONS, ...radio.own];
+const radioIndex = () => Math.max(0, radioStations().findIndex((s) => s.id === radio.stationId));
+const radioCurrent = () => radioStations()[radioIndex()];
 
 function setRadio(patch) {
   Object.assign(radio, patch);
@@ -10287,7 +10571,7 @@ function radioAudio() {
 function radioStart() {
   discPause(); // one sound source at a time
   const audio = radioAudio();
-  audio.src = RADIO_STATIONS[radio.station].stream;
+  audio.src = radioCurrent().stream;
   applyMedia(audio);
   liveMedia.add(audio);
   setRadio({ status: "tuning" });
@@ -10305,12 +10589,52 @@ function radioStop() {
   liveMedia.delete(audio);
 }
 
-function radioTune(step) {
-  const n = RADIO_STATIONS.length;
-  const station = (radio.station + step + n) % n;
-  writeStore("localStorage", RADIO_KEY, String(station));
-  setRadio({ station });
+// Choose a station; it plays right away if the radio is on
+function radioSelect(stationId) {
+  writeStore("localStorage", RADIO_KEY, stationId);
+  setRadio({ stationId });
   if (radio.status !== "off") radioStart();
+}
+
+function radioTune(step) {
+  const stations = radioStations();
+  const n = stations.length;
+  radioSelect(stations[(radioIndex() + step + n) % n].id);
+}
+
+function radioSaveOwn(list) {
+  const own = cleanOwnStations(list);
+  writeStore("localStorage", RADIO_OWN_KEY, JSON.stringify(own));
+  const playingGone = !own.some((s) => s.id === radio.stationId) && !RADIO_STATIONS.some((s) => s.id === radio.stationId);
+  setRadio({ own });
+  if (playingGone) radioSelect(RADIO_STATIONS[0].id);
+}
+
+// Tries a stream silently before it's added: "ok" if it starts, "bad" if the browser can't play it at all
+// (a web page, a playlist file, a wrong address), "unknown" if it doesn't answer in time
+function testStream(url) {
+  return new Promise((resolve) => {
+    const a = new Audio();
+    a.muted = true;
+    a.preload = "auto";
+    let done = false;
+    const finish = (result) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      a.pause();
+      a.removeAttribute("src");
+      a.load();
+      resolve(result);
+    };
+    const timer = setTimeout(() => finish("unknown"), 10000);
+    a.addEventListener("canplay", () => finish("ok"), { once: true });
+    a.addEventListener("playing", () => finish("ok"), { once: true });
+    a.addEventListener("error", () => finish("bad"), { once: true });
+    a.src = url;
+    // Muted playback is the surest test; if the browser won't allow it, loading alone has to do
+    a.play().catch((e) => e?.name !== "NotAllowedError" && e?.name !== "AbortError" && finish("bad"));
+  });
 }
 
 // What's on now, for the stations that publish it
@@ -10338,12 +10662,14 @@ function useNowPlaying(station, active) {
 }
 
 function RadioWidget() {
-  const { station, status } = useRadio();
+  const { status } = useRadio();
   const sound = useSound();
-  const current = RADIO_STATIONS[station];
+  const stations = radioStations();
+  const station = radioIndex();
+  const current = stations[station];
   const playing = status !== "off";
   const track = useNowPlaying(current, status === "on");
-  const n = RADIO_STATIONS.length;
+  const n = stations.length;
 
   const statusLabel = !playing
     ? "off"
@@ -10401,13 +10727,13 @@ function RadioWidget() {
               {Array.from({ length: 36 }, (_, i) => (
                 <line key={i} x1="32" y1="3" x2="32" y2="6.5" stroke="var(--w-mark)" strokeWidth="0.8" transform={`rotate(${i * 10} 32 32)`} />
               ))}
-              {RADIO_STATIONS.map((s, i) => {
+              {stations.map((s, i) => {
                 const deg = (i * 360) / n;
                 const a = deg * (Math.PI / 180);
                 const x = 32 + Math.sin(a) * 19;
                 const y = 32 - Math.cos(a) * 19;
                 return (
-                  <text key={s.id} x={x} y={y} textAnchor="middle" dominantBaseline="central" transform={`rotate(${deg} ${x} ${y})`} className="widget-radio-num">
+                  <text key={s.id} x={x} y={y} textAnchor="middle" dominantBaseline="central" transform={`rotate(${deg} ${x} ${y})`} className="widget-radio-num" style={n > 12 ? { fontSize: "6.5px" } : undefined}>
                     {i + 1}
                   </text>
                 );
@@ -10429,33 +10755,146 @@ function RadioWidget() {
           {playing ? <Square className="h-3.5 w-3.5" fill="currentColor" strokeWidth={0} /> : <Play className="ml-0.5 h-4 w-4" fill="currentColor" strokeWidth={0} />}
         </button>
       </div>
-      <a href={current.site} target="_blank" rel="noreferrer" className="widget-credit">
-        {current.name}
-      </a>
+      {current.site && (
+        <a href={current.site} target="_blank" rel="noreferrer" className="widget-credit">
+          {current.name}
+        </a>
+      )}
     </section>
   );
 }
 
-/* Weather: a Braun-style weather station. Miami by default; the locate button switches to the visitor's own location.
-   Forecasts come from Open-Meteo. */
+function RadioSettings() {
+  const { stationId, own } = useRadio();
+  const stations = radioStations();
+  const current = stations.some((s) => s.id === stationId) ? stationId : stations[0].id;
+  const [name, setName] = useState("");
+  const [stream, setStream] = useState("");
+  const [state, setState] = useState(null); // { kind: "testing" | "ok" | "error", text }
+  const button = "rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] disabled:opacity-40";
+
+  const add = async () => {
+    const url = stream.trim();
+    const title = name.trim();
+    if (!title || !isStreamUrl(url)) {
+      setState({ kind: "error", text: "Give it a name and a stream address starting with http:// or https://." });
+      return;
+    }
+    if (stations.some((s) => s.stream === url)) {
+      setState({ kind: "error", text: "That stream is already on the dial." });
+      return;
+    }
+    setState({ kind: "testing", text: "Tuning in…" });
+    const result = await testStream(url);
+    if (result === "bad") {
+      setState({
+        kind: "error",
+        text: "That stream didn't play. Use the direct stream address (often ending in /stream, .mp3, or .aac), not a .pls or .m3u playlist or a web page.",
+      });
+      return;
+    }
+    const id = newStationId();
+    radioSaveOwn([...radio.own, { id, name: title, stream: url }]);
+    radioSelect(id);
+    setName("");
+    setStream("");
+    setState({
+      kind: "ok",
+      text: result === "ok" ? `Added ${title} as station ${stations.length + 1}.` : `Added ${title} as station ${stations.length + 1}. It was slow to answer, so check that it plays.`,
+    });
+  };
+
+  return (
+    <div className="flex flex-col gap-4 p-5 text-[13px]">
+      <label className="flex flex-col gap-1.5">
+        <span>station</span>
+        <select className={prefSelect} value={current} onChange={(e) => radioSelect(e.target.value)}>
+          {stations.map((s, i) => (
+            <option key={s.id} value={s.id}>
+              {i + 1}. {s.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="text-[12px] text-[var(--os-ink-3)]">
+        Volume and mute:{" "}
+        <button type="button" className="underline underline-offset-2 hover:text-[var(--os-ink)]" onClick={() => openPreferences("sound")}>
+          Sound preferences
+        </button>
+        .
+      </p>
+
+      <div className="flex flex-col gap-2 border-t border-[var(--os-line)] pt-4">
+        <span className="font-semibold">your stations</span>
+        {own.length > 0 && (
+          <ul className="flex flex-col gap-1">
+            {own.map((s) => (
+              <li key={s.id} className="flex items-center gap-2">
+                <span className="tabular-nums text-[var(--os-ink-3)]">{stations.findIndex((x) => x.id === s.id) + 1}.</span>
+                <span className="min-w-0 flex-1 truncate" title={s.stream}>
+                  {s.name}
+                </span>
+                <button type="button" onClick={() => radioSaveOwn(radio.own.filter((x) => x.id !== s.id))} className="widget-mini-btn h-6 w-6" aria-label={`Remove ${s.name}`} title="Remove">
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {own.length < MAX_OWN ? (
+          <form
+            className="flex flex-col gap-1.5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              add();
+            }}
+          >
+            <input className={prefSelect} value={name} onChange={(e) => setName(e.target.value.slice(0, 40))} placeholder="Name, e.g. WLRN" aria-label="Station name" />
+            <input
+              className={prefSelect}
+              value={stream}
+              onChange={(e) => setStream(e.target.value)}
+              placeholder="https://…/stream"
+              aria-label="Stream address"
+              inputMode="url"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <div className="flex justify-end">
+              <button type="submit" className={button} disabled={!name.trim() || !stream.trim() || state?.kind === "testing"}>
+                {state?.kind === "testing" ? "testing…" : "add station"}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <p className="text-[12px] text-[var(--os-ink-3)]">The dial is full ({MAX_STATIONS} stations). Remove one to add another.</p>
+        )}
+        {state && state.kind !== "testing" && (
+          <p className={`text-[12px] leading-snug ${state.kind === "error" ? "text-[var(--os-warn)]" : "text-[var(--os-ink-2)]"}`} aria-live="polite">
+            {state.text}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* Weather: a Braun-style weather station. Miami until you pick a city; the locate button switches to where you are
+   (with the browser's permission) and back. Forecasts and city search come from Open-Meteo. */
 const WEATHER_HOME = { name: "Miami", lat: 25.7617, lon: -80.1918 };
 const WEATHER_KEY = "comcen_weather";
 const WEATHER_REFRESH_MS = 15 * 60 * 1000;
+const WEATHER_LOOK = { key: "comcen_weather_look", defaults: { accent: "" } };
 
-function readWeatherPrefs() {
-  try {
-    const saved = JSON.parse(readStore("localStorage", WEATHER_KEY) || "{}");
-    const place = Number.isFinite(saved.place?.lat) && Number.isFinite(saved.place?.lon) ? saved.place : WEATHER_HOME;
-    return { place };
-  } catch {
-    return { place: WEATHER_HOME };
-  }
-}
+const validPlace = (p) => p && typeof p.name === "string" && Number.isFinite(p.lat) && Number.isFinite(p.lon);
 
-// Also used by Privacy → stop using my location; the widget follows along
-function saveWeatherPlace(place) {
-  writeStore("localStorage", WEATHER_KEY, JSON.stringify({ place }));
-  window.dispatchEvent(new CustomEvent("mh-weather-place", { detail: place }));
+// { home: the chosen city, here: where you are, or null }. Older versions kept one { place }.
+function useWeatherPlaces() {
+  const [saved, save] = useStoredJSON(WEATHER_KEY, {});
+  const old = validPlace(saved?.place) ? saved.place : null;
+  const home = validPlace(saved?.home) ? saved.home : old && old.name !== "Here" ? old : WEATHER_HOME;
+  const here = validPlace(saved?.here) ? saved.here : old?.name === "Here" ? old : null;
+  return { home, here, save: (patch) => save({ home, here, ...patch }) };
 }
 
 // WMO weather codes, as Open-Meteo reports them
@@ -10526,24 +10965,16 @@ function useWeather(place, unit) {
 }
 
 function WeatherWidget() {
-  const [prefs, setPrefs] = useState(readWeatherPrefs);
+  const { home, here, save } = useWeatherPlaces();
   const [region, setRegion] = usePrefs(REGION_PREFS); // °F or °C lives in the Language pane
+  const [look] = useWidgetPrefs(WEATHER_LOOK);
   const [locating, setLocating] = useState(false);
   const unit = region.temperature;
-  const { data, error } = useWeather(prefs.place, unit);
-  const isHome = prefs.place.name === WEATHER_HOME.name;
-
-  useEffect(() => {
-    const onPlace = (e) => setPrefs({ place: e.detail });
-    window.addEventListener("mh-weather-place", onPlace);
-    return () => window.removeEventListener("mh-weather-place", onPlace);
-  }, []);
-
-  const update = ({ place }) => saveWeatherPlace(place);
+  const { data, error } = useWeather(here || home, unit);
 
   const locate = () => {
-    if (!isHome) {
-      update({ place: WEATHER_HOME });
+    if (here) {
+      save({ here: null });
       return;
     }
     if (!navigator.geolocation) return;
@@ -10552,7 +10983,7 @@ function WeatherWidget() {
       (pos) => {
         setLocating(false);
         // Rounded to about a kilometer: plenty for a forecast
-        update({ place: { name: "Here", lat: Math.round(pos.coords.latitude * 100) / 100, lon: Math.round(pos.coords.longitude * 100) / 100 } });
+        save({ here: { name: "Here", lat: Math.round(pos.coords.latitude * 100) / 100, lon: Math.round(pos.coords.longitude * 100) / 100 } });
       },
       () => setLocating(false),
       { maximumAge: 30 * 60 * 1000, timeout: 10000 },
@@ -10581,19 +11012,19 @@ function WeatherWidget() {
   };
 
   return (
-    <section className="widget widget-weather px-3.5 pb-3 pt-3" aria-label="Weather">
+    <section className="widget widget-weather px-3.5 pb-3 pt-3" style={isColor(look.accent) ? { "--os-accent": look.accent } : undefined} aria-label="Weather">
       <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.16em] text-[var(--os-ink-3)]">
         <span className="flex min-w-0 items-center gap-1.5">
           <span className={`widget-led ${current ? "widget-led-on" : ""}`} aria-hidden="true" />
-          <span className="truncate">{isHome ? prefs.place.name : "your location"}</span>
+          <span className="truncate">{here ? "near you" : home.name}</span>
         </span>
         <button
           type="button"
           onClick={locate}
           disabled={locating}
-          className={`widget-mini-btn ${isHome ? "" : "widget-mini-btn-on"}`}
-          aria-label={isHome ? "Show weather for your location" : `Back to ${WEATHER_HOME.name}`}
-          title={isHome ? "Use my location" : `Back to ${WEATHER_HOME.name}`}
+          className={`widget-mini-btn ${here ? "widget-mini-btn-on" : ""}`}
+          aria-label={here ? `Back to ${home.name}` : "Show weather near you"}
+          title={here ? `Back to ${home.name}` : "Near me"}
         >
           <LocateFixed className={`h-3.5 w-3.5 ${locating ? "animate-pulse" : ""}`} strokeWidth={2} />
         </button>
@@ -10651,18 +11082,103 @@ function WeatherWidget() {
   );
 }
 
+// Pick the city: Open-Meteo's place search
+function WeatherSettings() {
+  const { home, save } = useWeatherPlaces();
+  const [region] = usePrefs(REGION_PREFS);
+  const [look, setLook] = useWidgetPrefs(WEATHER_LOOK);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState(null); // null | "searching" | "error" | [{ name, detail, lat, lon }]
+
+  const search = async () => {
+    const q = query.trim();
+    if (!q) return;
+    setResults("searching");
+    try {
+      const params = new URLSearchParams({ name: q, count: "6", language: region.locale.split("-")[0], format: "json" });
+      const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${params}`);
+      if (!response.ok) throw new Error("search");
+      const json = await response.json();
+      setResults(
+        (json.results || []).map((r) => ({
+          name: r.name,
+          detail: [r.admin1, r.country].filter(Boolean).join(", "),
+          lat: Math.round(r.latitude * 1000) / 1000,
+          lon: Math.round(r.longitude * 1000) / 1000,
+        })),
+      );
+    } catch {
+      setResults("error");
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4 p-5 text-[13px]">
+      <ColorChoice label="temperature bars" value={look.accent} onChange={(accent) => setLook({ accent })} />
+      <div className="flex flex-col gap-1.5">
+        <span>
+          city: <strong>{home.name}</strong>
+        </span>
+        <form
+          className="flex gap-1.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            search();
+          }}
+        >
+          <input className={prefSelect} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a city" aria-label="Find a city" />
+          <button type="submit" className="shrink-0 rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] disabled:opacity-40" disabled={!query.trim()}>
+            find
+          </button>
+        </form>
+        {results === "searching" && <p className="text-[12px] text-[var(--os-ink-3)]">Searching…</p>}
+        {results === "error" && <p className="text-[12px] text-[var(--os-warn)]">Couldn't search right now.</p>}
+        {Array.isArray(results) &&
+          (results.length ? (
+            <ul className="flex flex-col gap-0.5">
+              {results.map((r) => (
+                <li key={`${r.lat},${r.lon}`}>
+                  <button
+                    type="button"
+                    className="w-full truncate rounded-md px-2 py-1 text-left hover:bg-[var(--os-hover)]"
+                    onClick={() => {
+                      save({ home: { name: r.name, lat: r.lat, lon: r.lon }, here: null });
+                      setResults(null);
+                      setQuery("");
+                    }}
+                  >
+                    <span className="font-semibold">{r.name}</span> <span className="text-[var(--os-ink-3)]">{r.detail}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[12px] text-[var(--os-ink-3)]">No places by that name.</p>
+          ))}
+      </div>
+      <p className="text-[12px] text-[var(--os-ink-3)]">
+        °F or °C:{" "}
+        <button type="button" className="underline underline-offset-2 hover:text-[var(--os-ink)]" onClick={() => openPreferences("language")}>
+          Language preferences
+        </button>
+        , or click the temperature.
+      </p>
+    </div>
+  );
+}
+
 /* Which widgets are out and where they sit. Positions are kept as a share of the free width (so a widget on the
    right stays on the right when the screen changes size) plus a distance from the top. */
 const WIDGET_KINDS = [
   // settings: the preferences pane each widget follows, linked from Widgets preferences
-  { id: "clock", label: "Clock", note: "after the Braun ABW 41 wall clock", Icon: Clock3, Component: ClockWidget, settings: "datetime" },
-  { id: "radio", label: "Radio", note: "after the Braun T3 pocket radio", Icon: Radio, Component: RadioWidget, settings: "sound" },
-  { id: "weather", label: "Weather", note: "Miami, or wherever you are", Icon: CloudSun, Component: WeatherWidget, settings: "language" },
+  { id: "clock", label: "Clock", note: "after the Braun ABW 41 wall clock", Icon: Clock3, Component: ClockWidget },
+  { id: "radio", label: "Radio", note: "after the Braun T3 pocket radio", Icon: Radio, Component: RadioWidget },
+  { id: "weather", label: "Weather", note: "Miami, or wherever you are", Icon: CloudSun, Component: WeatherWidget },
   // Off until you connect a MeshMonitor in Mesh Radio
   { id: "mesh", label: "Mesh", note: "live from your MeshMonitor", Icon: RadioTower, Component: MeshWidget, defaultShown: false, settings: "mesh" },
   // More in Widgets preferences
   { id: "calculator", label: "Calculator", note: "after the Braun ET66 by Dieter Rams", Icon: Calculator, Component: CalculatorWidget, defaultShown: false },
-  { id: "calendar", label: "Calendar", note: "this month, in your language", Icon: CalendarDays, Component: CalendarWidget, defaultShown: false, settings: "datetime" },
+  { id: "calendar", label: "Calendar", note: "this month, in your language", Icon: CalendarDays, Component: CalendarWidget, defaultShown: false },
   { id: "notes", label: "Sticky Notes", note: "notes in five colors that save as you type", Icon: StickyNote, Component: NotesWidget, defaultShown: false },
   { id: "worldclock", label: "World Clock", note: "three cities at a glance", Icon: Globe, Component: WorldClockWidget, defaultShown: false, settings: "widgets" },
   { id: "photos", label: "Photo Gallery", note: "your own photos, in a frame", Icon: ImageIcon, Component: PhotosWidget, defaultShown: false, settings: "widgets" },
@@ -10775,19 +11291,19 @@ function WidgetsPane() {
 // Settings that belong to the widget itself open in a popup over System Preferences.
 // The rest (Clock, Calendar, Radio, Weather) follow system preferences, so Settings switches to that page.
 const WIDGET_SETTINGS = {
+  clock: ClockSettings,
+  radio: RadioSettings,
+  weather: WeatherSettings,
+  calendar: CalendarSettings,
+  worldclock: WorldClockSettings,
   mesh: () => (
     <div className="p-5">
       <MeshMonitorSettings />
     </div>
   ),
-  worldclock: () => (
-    <div className="px-5 pb-5">
-      <WidgetExtrasSettings part="worldclock" />
-    </div>
-  ),
   photos: () => (
-    <div className="px-5 pb-5">
-      <WidgetExtrasSettings part="photos" />
+    <div className="p-5">
+      <PhotosSettings />
     </div>
   ),
   stocks: () => (
@@ -10969,7 +11485,7 @@ function Widgets({ disabled }) {
   const onPointerDown = (e, id) => {
     if (e.button !== 0 || e.target.closest(".widget-remove")) return;
     const start = place(id);
-    const interactive = !!e.target.closest("button, a, input, select, textarea");
+    const interactive = !!e.target.closest("button, a, input, select, textarea, [data-nodrag]");
     const p = { id, pointerId: e.pointerId, sx: e.clientX, sy: e.clientY, ox: start.x, oy: start.y, dragging: false, interactive };
     p.timer = setTimeout(() => {
       if (press.current !== p || p.dragging) return;

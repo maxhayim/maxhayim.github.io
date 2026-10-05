@@ -1,0 +1,56 @@
+# Daily check: is there a Widgets Pack release newer than the one the site's widgets match?
+# The pack is a Zebar widget pack, not a library, so the site keeps its own copies of the widgets.
+# When the pack moves ahead, this opens an issue listing what changed, so the site can be brought up to it.
+# widgets-pack.json records the release the site's widgets match.
+name: Widgets Pack check
+
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare with the latest Widgets Pack release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pack=$(jq -r .repo widgets-pack.json)
+          matches=$(jq -r .matches widgets-pack.json)
+          latest=$(gh api "repos/$pack/releases/latest" --jq .tag_name)
+          echo "Site matches $matches; latest Widgets Pack release is $latest"
+
+          newest=$(printf '%s\n%s\n' "${matches#v}" "${latest#v}" | sort -V | tail -1)
+          if [ "$newest" = "${matches#v}" ]; then
+            echo "Up to date."
+            exit 0
+          fi
+
+          title="Widgets Pack $latest: bring the site's widgets up to it"
+          if gh issue list --state open --search "in:title \"Widgets Pack $latest\"" --json number --jq 'length' | grep -qv '^0$'; then
+            echo "An issue for $latest is already open."
+            exit 0
+          fi
+
+          {
+            echo "Widgets Pack **$latest** is out. The site's widgets match **$matches**."
+            echo
+            echo "- Release: https://github.com/$pack/releases/tag/$latest"
+            echo "- Changes: https://github.com/$pack/compare/$matches...$latest"
+            echo
+            echo "## Release notes"
+            echo
+            gh api "repos/$pack/releases/latest" --jq .body
+            echo
+            echo "When the site's widgets match it, set \`matches\` in widgets-pack.json to \`$latest\`."
+          } > body.md
+          gh issue create --title "$title" --body-file body.md
