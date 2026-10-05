@@ -729,6 +729,29 @@
 .widget-flight-path::before { content: ""; position: absolute; inset: 50% 4px auto; border-top: 1.5px dashed var(--w-line); }
 .widget-flight-path svg { position: relative; background: var(--w-case); }
 
+/* Screen Saver preferences: a monitor with the saver on it, and grouped controls */
+.saver-monitor { width: min(100%, 300px); }
+.saver-monitor-bezel {
+  position: relative;
+  padding: 14px 14px 26px;
+  border-radius: 14px;
+  background: linear-gradient(var(--os-knob-top), var(--os-knob-bot));
+  box-shadow: 0 0 0 1px var(--os-line), 0 10px 24px -12px rgba(0, 0, 0, 0.45);
+}
+.saver-monitor-screen {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #0b0b0a;
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.5), inset 0 0 18px rgba(0, 0, 0, 0.6);
+}
+.saver-monitor-led { position: absolute; right: 18px; bottom: 9px; width: 6px; height: 6px; border-radius: 999px; background: var(--os-ok); }
+.saver-monitor-neck { width: 46px; height: 14px; margin: 0 auto; background: linear-gradient(var(--os-knob-bot), var(--os-knob-top)); box-shadow: 0 0 0 1px var(--os-line); }
+.saver-monitor-base { width: 130px; height: 10px; margin: 0 auto; border-radius: 6px 6px 3px 3px; background: linear-gradient(var(--os-knob-top), var(--os-knob-bot)); box-shadow: 0 0 0 1px var(--os-line); }
+.saver-group { padding: 10px 14px 14px; border-radius: 12px; border: 1px solid var(--os-line); }
+.saver-group legend { padding: 0 6px; font-size: 12px; font-weight: 600; color: var(--os-ink-2); }
+
 /* Widget gallery */
 .gallery-card { padding: 10px; border-radius: 16px; box-shadow: inset 0 0 0 1px var(--os-line); }
 .gallery-card-on { box-shadow: inset 0 0 0 1.5px var(--os-accent); }
