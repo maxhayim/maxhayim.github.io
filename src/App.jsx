@@ -5777,7 +5777,7 @@ const PREF_SECTIONS = [
   {
     title: "Desk",
     panes: [
-      { id: "theme", label: "Theme", Icon: Palette, ready: true },
+      { id: "theme", label: "Themes", Icon: Palette, ready: true },
       { id: "wallpaper", label: "Wallpapers", Icon: ImageIcon, ready: true },
       { id: "screensaver", label: "Screensavers", Icon: MonitorPlay, ready: true },
       { id: "widgets", label: "Widgets", Icon: LayoutDashboard, ready: true },
@@ -6017,7 +6017,7 @@ function PrefsWindow({ panelRef, drag, pane, paneInfo, setPane, current }) {
             className={`prefs-tool flex flex-col items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] ${pane === "theme" ? "prefs-tool-active" : ""}`}
           >
             <Palette className="h-5 w-5" strokeWidth={1.6} />
-            theme
+            themes
           </button>
           <button
             type="button"
@@ -6389,7 +6389,7 @@ function ThemePane() {
     <div className="p-5">
       <div className="mb-1 flex items-center gap-2 font-semibold">
         <span className="h-[7px] w-[7px] rounded-full bg-[var(--os-accent)]" aria-hidden="true" />
-        theme
+        themes
       </div>
       <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">Pick the white or graphite edition, or let comcen os follow your computer.</p>
 
