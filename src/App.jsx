@@ -1,7 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, Reorder, useDragControls, useMotionValue, animate } from "framer-motion";
-import { polyfillCountryFlagEmojis } from "country-flag-emoji-polyfill";
-import flagFont from "country-flag-emoji-polyfill/dist/TwemojiCountryFlags.woff2?url";
+import {
+  WidgetHost,
+  calculator as packCalculator,
+  calendar as packCalendar,
+  clock as packClock,
+  convert as packConvert,
+  flightTracker as packFlight,
+  mesh as packMesh,
+  photoGallery as packPhotos,
+  radio as packRadio,
+  stickyNotes as packNotes,
+  stocks as packStocks,
+  stopRadio,
+  toggleRadio,
+  translator as packTranslator,
+  weather as packWeather,
+  worldClock as packWorldClock,
+} from "widgets-pack";
+import "widgets-pack/widgets.css";
 import {
   Radar,
   Star,
@@ -1764,7 +1781,7 @@ function setUserCookie(id) {
 function switchUser(id, { saveCurrent = true } = {}) {
   const from = currentUserId();
   if (id === from) return;
-  radioStop();
+  stopRadio();
   const saved = readJSON(USER_PREFS_KEY, {});
   if (saveCurrent) saved[from] = collectUserPrefs();
   clearUserPrefs();
@@ -3063,7 +3080,7 @@ function discAudio() {
 
 function discPlay(index = disc.index) {
   if (!disc.tracks.length) return;
-  radioStop(); // one sound source at a time, like a real stereo
+  stopRadio(); // one sound source at a time, like a real stereo
   const audio = discAudio();
   if (index !== disc.index || !audio.src) {
     audio.src = disc.tracks[index].url;
@@ -3384,7 +3401,7 @@ function runShortcut(e) {
     if (page) window.location.hash = page.href.slice(1);
   } else if (e.code === "KeyW") toggleDashboard();
   else if (e.code === "Comma") openPreferences("all");
-  else if (e.code === "KeyR") radio.status === "off" ? radioStart() : radioStop();
+  else if (e.code === "KeyR") toggleRadio();
   else if (e.code === "KeyS") window.dispatchEvent(new Event("mh-screensaver-start"));
   else if (e.code === "KeyP") printPage();
 }
@@ -3757,7 +3774,6 @@ function saveMeshMonitor(conn) {
       /* ignore */
     }
   }
-  meshSnapshots.clear();
   window.dispatchEvent(new Event("mh-meshmonitor-changed"));
 }
 
@@ -3811,162 +3827,6 @@ function describeMeshMonitorError(error, url = "") {
   if (error.message === "token") return "MeshMonitor didn't accept that API token.";
   if (error.message === "permission") return "That token isn't allowed to read nodes on this source.";
   return "MeshMonitor answered with an error. Check that it's version 4.13 or newer.";
-}
-
-// The latest snapshot per server and source, so the widget doesn't reload when it moves
-const meshSnapshots = new Map(); // key -> { data, at }
-
-async function loadMeshSnapshot(conn) {
-  const base = `/sources/${encodeURIComponent(conn.source)}`;
-  const [nodes, status, messages] = await Promise.all([
-    meshMonitorFetch(conn, `${base}/nodes`),
-    meshMonitorFetch(conn, `${base}/status`).catch(() => null),
-    meshMonitorFetch(conn, `${base}/messages?limit=25`).catch(() => []),
-  ]);
-  const list = Array.isArray(nodes) ? nodes : [];
-  const nowSeconds = Date.now() / 1000;
-  const heardWithin = (seconds) => list.filter((n) => n.lastHeard && nowSeconds - n.lastHeard < seconds).length;
-  const nameOf = (id) => {
-    const node = list.find((n) => n.nodeId === id);
-    return node?.longName || node?.shortName || id;
-  };
-  // Channel messages only: direct messages stay private, even on your own screen
-  const latest = (Array.isArray(messages) ? messages : []).find((m) => m.text && m.toNodeId === MESH_BROADCAST);
-  return {
-    total: list.length,
-    hour: heardWithin(3600),
-    day: heardWithin(86400),
-    week: heardWithin(7 * 86400),
-    local: status ? { name: status.longName || status.shortName || status.localNodeId, connected: !!status.connected } : null,
-    message: latest ? { from: nameOf(latest.fromNodeId), text: latest.text, at: latest.timestamp } : null,
-  };
-}
-
-function useMeshSnapshot(conn) {
-  const key = conn ? `${conn.url}|${conn.source}` : "";
-  const [state, setState] = useState(() => ({ key, data: meshSnapshots.get(key)?.data ?? null, error: null }));
-
-  useEffect(() => {
-    if (!conn) return;
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const data = await loadMeshSnapshot(conn);
-        meshSnapshots.set(key, { data, at: Date.now() });
-        if (!cancelled) setState({ key, data, error: null });
-      } catch (error) {
-        if (!cancelled) setState((s) => ({ key, data: s.key === key ? s.data : null, error }));
-      }
-    };
-    const age = Date.now() - (meshSnapshots.get(key)?.at ?? 0);
-    let id;
-    const first = setTimeout(
-      () => {
-        load();
-        id = setInterval(load, MESHMONITOR_REFRESH_MS);
-      },
-      Math.max(0, MESHMONITOR_REFRESH_MS - age),
-    );
-    return () => {
-      cancelled = true;
-      clearTimeout(first);
-      clearInterval(id);
-    };
-  }, [conn, key]);
-
-  if (!conn) return { data: null, error: null };
-  if (state.key === key) return state;
-  return { data: meshSnapshots.get(key)?.data ?? null, error: null };
-}
-
-const timeAgo = (ms) => {
-  const s = Math.max(0, (Date.now() - ms) / 1000);
-  if (s < 60) return "now";
-  if (s < 3600) return `${Math.floor(s / 60)} min`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h`;
-  return `${Math.floor(s / 86400)} d`;
-};
-
-/* Mesh widget: a Braun-style receiver panel for your MeshMonitor */
-function MeshWidget() {
-  const conn = useMeshMonitorConfig();
-  const { data, error } = useMeshSnapshot(conn);
-  useMinuteClock(); // keeps "5 min ago" current
-  const open = () => openPreferences("mesh");
-  const live = data && !error && data.local?.connected !== false;
-
-  return (
-    <section
-      className="widget widget-mesh cursor-pointer px-3.5 pb-4 pt-3"
-      role="button"
-      tabIndex={0}
-      aria-label={conn ? `Mesh: ${data ? `${data.hour} nodes heard in the last hour` : "loading"}. Open Mesh Radio preferences.` : "Mesh: not connected. Open Mesh Radio preferences."}
-      title="Mesh Radio preferences"
-      onClick={open}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          open();
-        }
-      }}
-    >
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-[var(--os-ink-3)]">
-        <span className={`widget-led ${live ? "widget-led-on" : ""}`} aria-hidden="true" />
-        <span className="min-w-0 truncate">{conn ? data?.local?.name || "mesh" : "mesh"}</span>
-      </div>
-
-      {!conn ? (
-        <div className="flex h-[150px] flex-col items-center justify-center gap-2 text-center">
-          <RadioTower className="h-8 w-8 text-[var(--os-ink-3)]" strokeWidth={1.4} aria-hidden="true" />
-          <p className="text-[12px] leading-snug text-[var(--os-ink-2)]">Connect your MeshMonitor to see your mesh here.</p>
-          <span className="rounded-full px-3 py-1 text-[12px] ring-1 ring-[var(--os-line)]">set up…</span>
-        </div>
-      ) : !data ? (
-        <div className="flex h-[150px] items-center justify-center px-2 text-center text-[12px] text-[var(--os-ink-3)]">
-          {error ? describeMeshMonitorError(error).split(". ")[0] + "." : "Listening…"}
-        </div>
-      ) : (
-        <>
-          <div className="mt-1.5 flex items-end gap-2">
-            <span className="widget-weather-temp">{data.hour}</span>
-            <span className="mb-1 text-[11px] leading-tight text-[var(--os-ink-3)]">
-              heard in the
-              <br />
-              last hour
-            </span>
-          </div>
-          <div className="mt-2 grid grid-cols-3 gap-1 border-t border-[var(--w-line)] pt-2 text-center tabular-nums">
-            {[
-              ["day", data.day],
-              ["week", data.week],
-              ["all", data.total],
-            ].map(([label, value]) => (
-              <div key={label}>
-                <div className="text-[14px] font-semibold">{value}</div>
-                <div className="text-[9.5px] uppercase tracking-[0.12em] text-[var(--os-ink-3)]">{label}</div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-2 min-h-[34px] border-t border-[var(--w-line)] pt-2 text-[11px] leading-snug">
-            {data.message ? (
-              <>
-                <div className="flex items-baseline justify-between gap-2 text-[10px] text-[var(--os-ink-3)]">
-                  <span className="truncate font-semibold text-[var(--os-ink-2)]">{data.message.from}</span>
-                  <span className="shrink-0">{timeAgo(data.message.at)}</span>
-                </div>
-                <p className="line-clamp-2 text-[var(--os-ink-2)]" dir="auto">
-                  {data.message.text}
-                </p>
-              </>
-            ) : (
-              <p className="text-[var(--os-ink-3)]">No channel messages yet.</p>
-            )}
-          </div>
-        </>
-      )}
-      <span className="widget-credit">MeshMonitor</span>
-    </section>
-  );
 }
 
 // Mesh Radio → MeshMonitor
@@ -4233,13 +4093,6 @@ async function savePictureFile(file, kind) {
   return id;
 }
 
-// Object URLs for stored pictures, released when no longer shown
-function useObjectUrl(blob) {
-  const url = useMemo(() => (blob ? URL.createObjectURL(blob) : null), [blob]);
-  useEffect(() => () => url && URL.revokeObjectURL(url), [url]);
-  return url;
-}
-
 // Custom wallpapers load from IndexedDB after the page starts
 let customWallpaperUrl = null;
 async function applyCustomWallpaper(id) {
@@ -4330,389 +4183,11 @@ function CustomWallpapers({ current }) {
 
 /* ---------- More widgets: Calculator, Calendar, Notes, World Clock, Photos ---------- */
 
-/* Calculator: after the Braun ET66 by Dieter Rams and Dietrich Lubs, 1987 */
-const CALC_MAX_DIGITS = 9;
-
-function formatCalc(n) {
-  if (!Number.isFinite(n)) return "Error";
-  if (Math.abs(n) >= 1e9 || (Math.abs(n) < 1e-7 && n !== 0)) return n.toExponential(3).replace("e+", "e");
-  return String(Number.parseFloat(n.toPrecision(CALC_MAX_DIGITS)));
-}
-
-function calcStep(state, key) {
-  const value = Number.parseFloat(state.display);
-  const apply = (a, op, b) => (op === "+" ? a + b : op === "−" ? a - b : op === "×" ? a * b : b === 0 ? Number.NaN : a / b);
-  if (state.display === "Error" && key !== "C") return state;
-  if (/^[0-9]$/.test(key)) {
-    if (state.fresh) return { ...state, display: key, fresh: false };
-    if (state.display.replace(/[-.]/g, "").length >= CALC_MAX_DIGITS) return state;
-    return { ...state, display: state.display === "0" ? key : state.display + key };
-  }
-  if (key === ".") {
-    if (state.fresh) return { ...state, display: "0.", fresh: false };
-    return state.display.includes(".") ? state : { ...state, display: `${state.display}.` };
-  }
-  if (key === "C") return { display: "0", acc: null, op: null, fresh: true };
-  if (key === "±") return { ...state, display: formatCalc(-value) };
-  // Percent finishes the sum like a pocket calculator: 50 × 10 % = 5, 200 + 10 % = 220, 200 − 10 % = 180
-  if (key === "%") {
-    if (state.acc === null || !state.op) return { ...state, display: formatCalc(value / 100), fresh: true };
-    const part = (state.acc * value) / 100;
-    const result = state.op === "×" ? part : state.op === "÷" ? (value === 0 ? Number.NaN : (state.acc * 100) / value) : state.op === "+" ? state.acc + part : state.acc - part;
-    return { display: formatCalc(result), acc: null, op: null, fresh: true };
-  }
-  if (["+", "−", "×", "÷"].includes(key)) {
-    const acc = state.acc !== null && state.op && !state.fresh ? apply(state.acc, state.op, value) : value;
-    return { display: formatCalc(acc), acc, op: key, fresh: true };
-  }
-  if (key === "=") {
-    if (state.acc === null || !state.op) return { ...state, fresh: true };
-    return { display: formatCalc(apply(state.acc, state.op, value)), acc: null, op: null, fresh: true };
-  }
-  return state;
-}
-
 const CALC_KEYS = ["C", "±", "%", "÷", "7", "8", "9", "×", "4", "5", "6", "−", "1", "2", "3", "+", "0", ".", "="];
-
-function CalculatorWidget() {
-  const [state, setState] = useState({ display: "0", acc: null, op: null, fresh: true });
-  const press = (key) => setState((s) => calcStep(s, key));
-  const keyMap = { "*": "×", x: "×", "/": "÷", "-": "−", "+": "+", Enter: "=", "=": "=", Escape: "C", c: "C", C: "C", ",": ".", ".": ".", "%": "%" };
-
-  return (
-    <section
-      className="widget widget-calc"
-      aria-label="Calculator"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        const key = /^[0-9]$/.test(e.key) ? e.key : keyMap[e.key];
-        // Keys the calculator uses stay with it (Escape clears instead of closing the dashboard)
-        if (e.key === "Backspace") {
-          e.preventDefault();
-          e.stopPropagation();
-          setState((s) => (s.fresh ? s : { ...s, display: s.display.length > 1 ? s.display.slice(0, -1) : "0" }));
-        } else if (key && !e.altKey && !e.metaKey && !e.ctrlKey) {
-          e.preventDefault();
-          e.stopPropagation();
-          press(key);
-        }
-      }}
-    >
-      <div className="widget-calc-lcd" aria-live="polite">
-        <span className="widget-calc-op">{state.op || ""}</span>
-        {state.display}
-      </div>
-      <div className="widget-calc-keys">
-        {CALC_KEYS.map((key) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => press(key)}
-            className={`widget-calc-key ${key === "=" ? "widget-calc-equals" : ""} ${key === "C" ? "widget-calc-clear" : ""} ${key === "0" ? "col-span-2" : ""} ${["÷", "×", "−", "+"].includes(key) ? "widget-calc-fn" : ""}`}
-            aria-label={{ "÷": "divide", "×": "multiply", "−": "minus", "+": "plus", "±": "change sign", "%": "percent", C: "clear", "=": "equals", ".": "point" }[key] || key}
-          >
-            {key}
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/* Calendar: this month, in your language, starting on your week's first day */
-const CALENDAR_WIDGET_PREFS = {
-  key: "comcen_calendar_widget",
-  defaults: { weekStart: "auto", accent: "", case: "" },
-  allowed: { weekStart: ["auto", "0", "1", "6"] },
-};
-
-function weekStartsOn(locale) {
-  try {
-    const info = new Intl.Locale(locale);
-    const first = info.getWeekInfo?.().firstDay ?? info.weekInfo?.firstDay;
-    if (first) return first % 7; // 7 = Sunday
-  } catch {
-    /* older browsers */
-  }
-  return /-(US|CA|BR|JP|IL|MX|PH)$/i.test(locale) || ["he", "ja"].includes(locale) ? 0 : 1;
-}
-
-function CalendarWidget() {
-  const now = useMinuteClock();
-  const [region] = usePrefs(REGION_PREFS);
-  const [prefs] = useWidgetPrefs(CALENDAR_WIDGET_PREFS);
-  const start = prefs.weekStart === "auto" ? weekStartsOn(region.locale) : Number(prefs.weekStart);
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const firstWeekday = (new Date(year, month, 1).getDay() - start + 7) % 7;
-  const days = new Date(year, month + 1, 0).getDate();
-  const cells = [...Array(firstWeekday).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)];
-  const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 7 + ((start + i) % 7)).toLocaleDateString(region.locale, { weekday: "narrow" }));
-  const open = () => openWidgetSettings("calendar");
-
-  return (
-    <section
-      className="widget widget-calendar cursor-pointer px-3.5 pb-3.5 pt-3"
-      style={{ ...caseStyle(prefs.case), ...(isColor(prefs.accent) ? { "--os-accent": prefs.accent } : {}) }}
-      role="button"
-      tabIndex={0}
-      aria-label={`Calendar: ${now.toLocaleDateString(region.locale, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}. Open calendar settings.`}
-      title="Calendar settings"
-      onClick={open}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          open();
-        }
-      }}
-    >
-      <div className="flex items-baseline justify-between text-[10px] uppercase tracking-[0.16em]">
-        <span className="font-semibold text-[var(--os-accent)]" dir="auto">
-          {now.toLocaleDateString(region.locale, { month: "long" })}
-        </span>
-        <span className="text-[var(--os-ink-3)]">{year}</span>
-      </div>
-      <div className="mt-2 grid grid-cols-7 text-center text-[9.5px] text-[var(--os-ink-3)]" aria-hidden="true">
-        {weekdays.map((d, i) => (
-          <span key={i}>{d}</span>
-        ))}
-      </div>
-      <div className="mt-1 grid grid-cols-7 gap-y-0.5 text-center text-[11px] tabular-nums" aria-hidden="true">
-        {cells.map((day, i) => (
-          <span key={i} className={`mx-auto flex h-[21px] w-[21px] items-center justify-center rounded-full ${day === now.getDate() ? "bg-[var(--os-accent)] font-semibold text-white" : ""}`}>
-            {day || ""}
-          </span>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function CalendarSettings() {
-  const [prefs, setPrefs] = useWidgetPrefs(CALENDAR_WIDGET_PREFS);
-  return (
-    <div className="flex flex-col gap-4 p-5">
-      <ColorChoice label="month and today" value={prefs.accent} onChange={(accent) => setPrefs({ accent })} />
-      <ColorChoice label="case" value={prefs.case} onChange={(c) => setPrefs({ case: c })} presets={CASES} />
-      <PrefChoice
-        label="week starts on"
-        value={prefs.weekStart}
-        onChange={(weekStart) => setPrefs({ weekStart })}
-        options={[
-          { id: "auto", label: "auto" },
-          { id: "0", label: "Sun" },
-          { id: "1", label: "Mon" },
-          { id: "6", label: "Sat" },
-        ]}
-      />
-    </div>
-  );
-}
 
 /* Notes: a sticky note that saves as you type */
 const NOTE_KEY = "comcen_note";
 
-
-/* World Clock: three cities at a glance */
-const CITIES = TIME_ZONES.filter((z) => z.id !== "auto");
-const WORLD_PREFS = {
-  cookie: "comcen_worldclock",
-  event: "mh-worldclock-changed",
-  defaults: { a: "Asia/Jerusalem", b: "Europe/London", c: "Asia/Tokyo", ticker: "" },
-  allowed: Object.fromEntries(["a", "b", "c"].map((k) => [k, CITIES.map((z) => z.id)])),
-};
-const cityName = (zone) => (CITIES.find((z) => z.id === zone)?.label || zone).split(" · ").pop();
-
-function dayOffset(now, zone) {
-  const local = new Date(now.toLocaleString("en-US"));
-  const there = new Date(now.toLocaleString("en-US", { timeZone: zone }));
-  const days = Math.round((new Date(there.toDateString()) - new Date(local.toDateString())) / 86400000);
-  return days > 0 ? "tomorrow" : days < 0 ? "yesterday" : "today";
-}
-
-function WorldClockWidget() {
-  const now = useClock();
-  const [world] = usePrefs(WORLD_PREFS);
-  const [region] = usePrefs(REGION_PREFS);
-  const [time] = usePrefs(TIME_PREFS);
-  const zones = [world.a, world.b, world.c];
-  return (
-    <section
-      className="widget widget-world px-3 pb-3.5 pt-3"
-      style={isColor(world.ticker) ? { "--os-accent": world.ticker } : undefined}
-      aria-label={`World clock: ${zones.map((z) => `${cityName(z)} ${formatTime(now, { region, time, timeZone: z })}`).join(", ")}`}
-    >
-      <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--os-ink-3)]">world clock</div>
-      <div className="mt-2 grid grid-cols-3 gap-1 text-center">
-        {zones.map((zone, i) => (
-          <div key={`${zone}-${i}`} className="flex min-w-0 flex-col items-center">
-            <AnalogClock now={now} time={{ timeZone: zone }} className="h-[50px] w-[50px]" />
-            <span className="mt-1.5 w-full truncate text-[11px] font-semibold">{cityName(zone)}</span>
-            <span className="text-[10.5px] tabular-nums text-[var(--os-ink-2)]" dir="auto">
-              {formatTime(now, { region, time, timeZone: zone })}
-            </span>
-            <span className="text-[9.5px] text-[var(--os-ink-3)]">{dayOffset(now, zone)}</span>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function WorldClockSettings() {
-  const [world, setWorld] = usePrefs(WORLD_PREFS);
-  return (
-    <div className="flex flex-col gap-4 p-5 text-[13px]">
-      <ColorChoice label="second hands" value={world.ticker} onChange={(ticker) => setWorld({ ticker })} />
-      {["a", "b", "c"].map((slot, i) => (
-        <label key={slot} className="flex flex-col gap-1.5">
-          <span>city {i + 1}</span>
-          <select className={prefSelect} value={world[slot]} onChange={(e) => setWorld({ [slot]: e.target.value })}>
-            {CITIES.map((z) => (
-              <option key={z.id} value={z.id}>
-                {z.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      ))}
-    </div>
-  );
-}
-
-/* Photo Gallery: your own photos as a slideshow in a frame, a new one every 20 seconds.
-   Click it for the full gallery. */
-const PHOTO_INTERVAL_MS = 20000;
-
-function PhotosWidget() {
-  const photos = usePictures("photo");
-  const [index, setIndex] = useState(0);
-  const fileRef = useRef(null);
-  const [busy, setBusy] = useState(false);
-  const count = photos.length;
-  const current = count ? photos[index % count] : null;
-  const url = useObjectUrl(current?.blob);
-
-  useEffect(() => {
-    if (count < 2) return;
-    const id = setInterval(() => setIndex((i) => i + 1), PHOTO_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [count]);
-
-  const add = async (files) => {
-    setBusy(true);
-    try {
-      for (const file of files) await savePictureFile(file, "photo");
-    } catch {
-      /* a file that isn't a picture is skipped */
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className="widget widget-photos" aria-label={current ? `Photo Gallery: ${current.name}` : "Photo Gallery"}>
-      {current ? (
-        <button
-          type="button"
-          onClick={() => openPhotoGallery(index % count)}
-          className="widget-photos-frame"
-          title="Open the photo gallery"
-          aria-label={`${current.name}. Open the photo gallery.`}
-        >
-          {url && <img src={url} alt="" className="h-full w-full object-cover" />}
-        </button>
-      ) : (
-        <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
-          <ImageIcon className="h-8 w-8 text-[var(--os-ink-3)]" strokeWidth={1.4} aria-hidden="true" />
-          <p className="text-[12px] text-[var(--os-ink-2)]">Your photos, in a frame.</p>
-          <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} className="rounded-full px-3 py-1 text-[12px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
-            {busy ? "adding…" : "add photos…"}
-          </button>
-        </div>
-      )}
-      {count > 1 && (
-        <div className="widget-photos-dots" aria-hidden="true">
-          {photos.slice(0, 8).map((p, i) => (
-            <span key={p.id} className={i === index % count ? "on" : ""} />
-          ))}
-        </div>
-      )}
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        multiple
-        className="sr-only"
-        tabIndex={-1}
-        onChange={(e) => {
-          add([...(e.target.files || [])]);
-          e.target.value = "";
-        }}
-      />
-    </section>
-  );
-}
-
-// Widgets pane: the Photos widget's pictures and the World Clock's cities
-// Photo Gallery settings: the photos it shows
-function PhotosSettings() {
-  const photos = usePictures("photo");
-  const fileRef = useRef(null);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-
-  const add = async (files) => {
-    setBusy(true);
-    setMessage("");
-    try {
-      for (const file of files) await savePictureFile(file, "photo");
-    } catch (e) {
-      setMessage(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <>
-      <div className="text-[13px] font-semibold">photos</div>
-      <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6">
-        {photos.map((p) => (
-          <div key={p.id} className="relative">
-            <img src={p.thumb} alt={p.name} className="aspect-square w-full rounded-lg object-cover ring-1 ring-[var(--os-line)]" />
-            <button type="button" onClick={() => deletePicture(p.id)} className="widget-remove" aria-label={`Remove ${p.name}`} title="Remove">
-              <X className="h-3 w-3" strokeWidth={2.6} />
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => fileRef.current?.click()}
-          className="prefs-option flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-[var(--os-line)] text-[11px] text-[var(--os-ink-2)]"
-        >
-          <ImageIcon className="h-4 w-4" strokeWidth={1.6} aria-hidden="true" />
-          {busy ? "adding…" : "add…"}
-        </button>
-      </div>
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        multiple
-        className="sr-only"
-        tabIndex={-1}
-        onChange={(e) => {
-          add([...(e.target.files || [])]);
-          e.target.value = "";
-        }}
-      />
-      {message && <p className="mt-2 text-[12px] text-[var(--os-warn)]">{message}</p>}
-      <p className="mt-2 text-[12px] text-[var(--os-ink-3)]">Shown in the Photos widget. Resized and kept in this browser; nothing is uploaded.</p>
-    </>
-  );
-}
 
 /* Widget gallery: every widget with a live preview, to add or remove */
 // The widgets gallery is the Widgets pane of System Preferences
@@ -4765,7 +4240,7 @@ function WidgetGalleryGrid() {
           <div key={id} className={`gallery-card flex flex-col ${shown ? "gallery-card-on" : ""}`}>
             <div className="gallery-preview" style={galleryBackground(i)} aria-hidden="true" inert>
               <div className="gallery-preview-scale">
-                <Preview />
+                <Preview id={id} />
               </div>
             </div>
             <div className="mt-2 flex items-start justify-between gap-2">
@@ -4816,147 +4291,6 @@ function WidgetGalleryGrid() {
   );
 }
 
-/* Photo gallery viewer: every photo large, with a thumbnail strip, arrows, and arrow keys */
-const openPhotoGallery = (index = 0) => window.dispatchEvent(new CustomEvent("mh-photo-gallery-open", { detail: index }));
-
-function PhotoGalleryViewer() {
-  const photos = usePictures("photo");
-  const [index, setIndex] = useState(null); // null = closed
-  const fileRef = useRef(null);
-  const stripRef = useRef(null);
-  const [busy, setBusy] = useState(false);
-  const count = photos.length;
-  const current = index !== null && count ? photos[Math.min(index, count - 1)] : null;
-  const url = useObjectUrl(current?.blob);
-  const go = (step) => setIndex((i) => (count ? (i + step + count) % count : 0));
-
-  useEffect(() => {
-    const onOpen = (e) => setIndex(Number(e.detail) || 0);
-    window.addEventListener("mh-photo-gallery-open", onOpen);
-    return () => window.removeEventListener("mh-photo-gallery-open", onOpen);
-  }, []);
-
-  useEffect(() => {
-    if (index === null) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") {
-        e.stopImmediatePropagation(); // close just the viewer
-        setIndex(null);
-      } else if (e.key === "ArrowRight") go(1);
-      else if (e.key === "ArrowLeft") go(-1);
-    };
-    document.addEventListener("keydown", onKey, true);
-    return () => document.removeEventListener("keydown", onKey, true);
-  });
-
-  // Keep the current thumbnail in view
-  useEffect(() => {
-    stripRef.current?.querySelector("[aria-current='true']")?.scrollIntoView({ block: "nearest", inline: "center" });
-  }, [index]);
-
-  if (index === null) return null;
-
-  const add = async (files) => {
-    setBusy(true);
-    try {
-      for (const file of files) await savePictureFile(file, "photo");
-    } catch {
-      /* a file that isn't a picture is skipped */
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="os-ui no-print photo-viewer fixed inset-0 z-[73] flex flex-col" role="dialog" aria-modal="true" aria-label="Photo gallery">
-      <div className="flex items-center gap-3 px-4 py-3 text-[13px] text-white/80">
-        <button type="button" onClick={() => setIndex(null)} aria-label="Close the photo gallery" title="Close" className="os-round-btn os-win-close">
-          <X className="h-3.5 w-3.5" strokeWidth={2.2} />
-        </button>
-        <span className="min-w-0 flex-1 truncate font-semibold text-white">{current ? current.name.replace(/\.[^.]+$/, "") : "photo gallery"}</span>
-        {count > 0 && (
-          <span className="tabular-nums">
-            {Math.min(index, count - 1) + 1} / {count}
-          </span>
-        )}
-        <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} className="photo-viewer-btn">
-          {busy ? "adding…" : "add photos…"}
-        </button>
-        {current && (
-          <button
-            type="button"
-            onClick={() => {
-              deletePicture(current.id);
-              setIndex((i) => Math.max(0, Math.min(i, count - 2)));
-            }}
-            className="photo-viewer-btn"
-          >
-            remove
-          </button>
-        )}
-      </div>
-
-      <div className="relative flex min-h-0 flex-1 items-center justify-center px-4" onMouseDown={(e) => e.target === e.currentTarget && setIndex(null)}>
-        {current ? (
-          url && <img src={url} alt={current.name} className="max-h-full max-w-full rounded-lg object-contain shadow-2xl" />
-        ) : (
-          <div className="text-center text-white/80">
-            <ImageIcon className="mx-auto h-10 w-10" strokeWidth={1.3} aria-hidden="true" />
-            <p className="mt-2 text-[14px]">No photos yet.</p>
-          </div>
-        )}
-        {count > 1 && (
-          <>
-            <button type="button" onClick={() => go(-1)} className="photo-viewer-arrow left-3" aria-label="Previous photo">
-              <ChevronRight className="h-5 w-5 rotate-180" />
-            </button>
-            <button type="button" onClick={() => go(1)} className="photo-viewer-arrow right-3" aria-label="Next photo">
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          </>
-        )}
-      </div>
-
-      {count > 0 && (
-        <div ref={stripRef} className="flex gap-2 overflow-x-auto px-4 py-3" role="list" aria-label="Photos">
-          {photos.map((p, i) => (
-            <button
-              key={p.id}
-              type="button"
-              role="listitem"
-              aria-current={i === Math.min(index, count - 1)}
-              aria-label={p.name}
-              onClick={() => setIndex(i)}
-              className={`photo-viewer-thumb ${i === Math.min(index, count - 1) ? "photo-viewer-thumb-on" : ""}`}
-            >
-              <img src={p.thumb} alt="" className="h-full w-full object-cover" />
-            </button>
-          ))}
-        </div>
-      )}
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        multiple
-        className="sr-only"
-        tabIndex={-1}
-        onChange={(e) => {
-          add([...(e.target.files || [])]);
-          e.target.value = "";
-        }}
-      />
-    </div>
-  );
-}
-
-/* ---------- Convert, Sticky Notes, Translator, Flight Tracker, Stocks ---------- */
-
-const widgetSelect =
-  "min-w-0 rounded-md bg-[var(--os-card)] px-1.5 py-1 text-[12px] ring-1 ring-[var(--w-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]";
-const widgetInput =
-  "w-full min-w-0 rounded-md bg-[var(--os-card)] px-2 py-1 text-[13px] ring-1 ring-[var(--w-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]";
-
 // Every copy of a widget (desktop, dashboard, its settings popup) follows the same saved value
 function useStoredJSON(key, fallback) {
   const [value, setValue] = useState(() => readJSON(key, fallback));
@@ -4981,648 +4315,9 @@ function useStoredJSON(key, fallback) {
   return [value, update];
 }
 
-/* Convert: units on the device; currencies from Frankfurter (European Central Bank reference rates) */
-const UNIT_GROUPS = {
-  length: { label: "length", units: { mm: 0.001, cm: 0.01, m: 1, km: 1000, in: 0.0254, ft: 0.3048, yd: 0.9144, mi: 1609.344, "nmi": 1852 }, from: "mi", to: "km" },
-  weight: { label: "weight", units: { mg: 1e-6, g: 0.001, kg: 1, t: 1000, oz: 0.028349523125, lb: 0.45359237, st: 6.35029318 }, from: "lb", to: "kg" },
-  volume: {
-    label: "volume",
-    units: { ml: 0.001, l: 1, "US cup": 0.2365882365, "US fl oz": 0.0295735295625, "US qt": 0.946352946, "US gal": 3.785411784, "UK gal": 4.54609 },
-    from: "US gal",
-    to: "l",
-  },
-  speed: { label: "speed", units: { "m/s": 1, "km/h": 1 / 3.6, mph: 0.44704, kn: 1852 / 3600 }, from: "mph", to: "km/h" },
-  area: { label: "area", units: { "m²": 1, "km²": 1e6, ha: 1e4, "ft²": 0.09290304, acre: 4046.8564224, "mi²": 2589988.110336 }, from: "acre", to: "m²" },
-  temperature: { label: "temperature", units: { "°F": null, "°C": null, K: null }, from: "°F", to: "°C" },
-  currency: { label: "currency", units: null, from: "USD", to: "EUR" },
-};
-
-function convertTemperature(value, from, to) {
-  const celsius = from === "°C" ? value : from === "°F" ? ((value - 32) * 5) / 9 : value - 273.15;
-  return to === "°C" ? celsius : to === "°F" ? (celsius * 9) / 5 + 32 : celsius + 273.15;
-}
-
-const currencyCache = { names: null, rates: new Map() }; // rates: "USD>EUR" -> { rate, date, at }
-
-async function loadCurrencies() {
-  if (currencyCache.names) return currencyCache.names;
-  const response = await fetch("https://api.frankfurter.dev/v1/currencies");
-  if (!response.ok) throw new Error("rates");
-  currencyCache.names = await response.json();
-  return currencyCache.names;
-}
-
-async function loadRate(from, to) {
-  const key = `${from}>${to}`;
-  const cached = currencyCache.rates.get(key);
-  if (cached && Date.now() - cached.at < 60 * 60 * 1000) return cached;
-  const response = await fetch(`https://api.frankfurter.dev/v1/latest?base=${from}&symbols=${to}`);
-  if (!response.ok) throw new Error("rates");
-  const json = await response.json();
-  const entry = { rate: json.rates[to], date: json.date, at: Date.now() };
-  currencyCache.rates.set(key, entry);
-  return entry;
-}
-
-const formatNumber = (n, locale) =>
-  Number.isFinite(n) ? n.toLocaleString(locale, { maximumSignificantDigits: Math.abs(n) >= 1 ? 10 : 6, maximumFractionDigits: 6 }) : "—";
-
-function ConvertWidget() {
-  const [region] = usePrefs(REGION_PREFS);
-  const [saved, setSaved] = useStoredJSON("comcen_convert", { group: "currency", value: "1", from: "USD", to: "EUR" });
-  const [currencies, setCurrencies] = useState(currencyCache.names);
-  const [rate, setRate] = useState(null); // { key, rate, date } | { key, error }
-  const group = UNIT_GROUPS[saved.group] ? saved.group : "currency";
-  const isCurrency = group === "currency";
-  const options = isCurrency ? Object.keys(currencies || { USD: "", EUR: "", ILS: "", GBP: "" }) : Object.keys(UNIT_GROUPS[group].units);
-  const from = options.includes(saved.from) ? saved.from : UNIT_GROUPS[group].from;
-  const to = options.includes(saved.to) ? saved.to : UNIT_GROUPS[group].to;
-  const value = Number.parseFloat(String(saved.value).replace(",", "."));
-  const rateKey = `${from}>${to}`;
-
-  useEffect(() => {
-    if (!isCurrency || currencies) return;
-    let cancelled = false;
-    loadCurrencies()
-      .then((names) => !cancelled && setCurrencies(names))
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [isCurrency, currencies]);
-
-  useEffect(() => {
-    if (!isCurrency || from === to) return;
-    let cancelled = false;
-    loadRate(from, to)
-      .then((r) => !cancelled && setRate({ key: rateKey, rate: r.rate, date: r.date }))
-      .catch(() => !cancelled && setRate({ key: rateKey, error: true }));
-    return () => {
-      cancelled = true;
-    };
-  }, [isCurrency, from, to, rateKey]);
-
-  let result = Number.NaN;
-  let footnote = "";
-  if (Number.isFinite(value)) {
-    if (isCurrency) {
-      if (from === to) result = value;
-      else if (rate?.key === rateKey && !rate.error) {
-        result = value * rate.rate;
-        footnote = `ECB rate, ${rate.date}`;
-      } else footnote = rate?.key === rateKey ? "Rates aren't available right now." : "Getting today's rate…";
-    } else if (group === "temperature") result = convertTemperature(value, from, to);
-    else result = (value * UNIT_GROUPS[group].units[from]) / UNIT_GROUPS[group].units[to];
-  }
-
-  const set = (patch) => setSaved((s) => ({ ...s, ...patch }));
-  // Pickers show codes to stay compact; currency names are spelled out under the result
-  const names = isCurrency && currencies?.[from] && currencies?.[to] ? `${currencies[from]} → ${currencies[to]}` : "";
-
-  return (
-    <section className="widget widget-convert px-3.5 pb-3.5 pt-3" aria-label="Convert">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--os-ink-3)]">convert</span>
-        <select
-          value={group}
-          onChange={(e) => set({ group: e.target.value, from: UNIT_GROUPS[e.target.value].from, to: UNIT_GROUPS[e.target.value].to })}
-          className={widgetSelect}
-          aria-label="What to convert"
-        >
-          {Object.entries(UNIT_GROUPS).map(([id, g]) => (
-            <option key={id} value={id}>
-              {g.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <input
-        value={saved.value}
-        onChange={(e) => set({ value: e.target.value.slice(0, 18) })}
-        inputMode="decimal"
-        aria-label="Amount"
-        className={`${widgetInput} mt-2.5 text-[15px] tabular-nums`}
-      />
-      <div className="mt-2 flex items-center gap-1">
-        <select value={from} onChange={(e) => set({ from: e.target.value })} className={`${widgetSelect} flex-1`} aria-label="From">
-          {options.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
-        <button type="button" onClick={() => set({ from: to, to: from })} className="widget-mini-btn shrink-0" aria-label="Swap" title="Swap">
-          ⇄
-        </button>
-        <select value={to} onChange={(e) => set({ to: e.target.value })} className={`${widgetSelect} flex-1`} aria-label="To">
-          {options.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="mt-3 truncate text-[26px] font-light leading-none tracking-tight tabular-nums" aria-live="polite">
-        {formatNumber(result, region.locale)}
-        <span className="ml-1 text-[13px] font-medium text-[var(--os-ink-3)]">{to}</span>
-      </div>
-      <div className="mt-1.5 truncate text-[10.5px] text-[var(--os-ink-2)]">{names}</div>
-      <div className="h-[14px] truncate text-[10.5px] text-[var(--os-ink-3)]">{footnote}</div>
-    </section>
-  );
-}
-
-/* Sticky Notes: several notes in five colors, saved as you type */
-const NOTES_KEY = "comcen_notes";
-const NOTE_COLORS = { yellow: "#f2c94c", orange: "#f08a5d", green: "#8fb07a", blue: "#7fa6c4", grey: "#c9c4b8" };
-
-const freshNote = (color = "yellow") => ({ id: `n${Date.now().toString(36)}`, text: "", color });
-
-function cleanNotes(saved) {
-  const list = Array.isArray(saved) ? saved.filter((n) => n && typeof n.text === "string") : [];
-  if (list.length) return list.map((n) => ({ id: String(n.id), text: n.text.slice(0, 2000), color: NOTE_COLORS[n.color] ? n.color : "yellow" }));
-  // The single note from before Sticky Notes becomes the first one
-  return [{ id: "n1", text: readStore("localStorage", NOTE_KEY) || "", color: "yellow" }];
-}
-
-function NotesWidget() {
-  const [saved, save] = useStoredJSON(NOTES_KEY, null);
-  const notes = cleanNotes(saved);
-  const [index, setIndex] = useState(0);
-  const at = Math.min(index, notes.length - 1);
-  const current = notes[at];
-  const update = (patch) => save(notes.map((n) => (n.id === current.id ? { ...n, ...patch } : n)));
-  const add = () => {
-    const next = [...notes, freshNote(Object.keys(NOTE_COLORS)[notes.length % 5])];
-    save(next);
-    setIndex(next.length - 1);
-  };
-  const remove = () => {
-    const next = notes.filter((n) => n.id !== current.id);
-    save(next.length ? next : [freshNote()]);
-    setIndex((i) => Math.max(0, Math.min(i, next.length - 1)));
-  };
-
-  return (
-    <section className="widget widget-notes" aria-label="Sticky notes" style={{ "--note": NOTE_COLORS[current.color] }}>
-      <textarea
-        value={current.text}
-        maxLength={2000}
-        onChange={(e) => update({ text: e.target.value })}
-        placeholder="Write a note…"
-        aria-label={`Note ${at + 1} of ${notes.length}`}
-        spellCheck
-        dir="auto"
-        className="widget-notes-text"
-      />
-      <div className="widget-notes-bar">
-        <button type="button" disabled={at === 0} onClick={() => setIndex(at - 1)} className="widget-notes-btn" aria-label="Previous note">
-          ‹
-        </button>
-        <span className="tabular-nums">
-          {at + 1}/{notes.length}
-        </span>
-        <button type="button" disabled={at >= notes.length - 1} onClick={() => setIndex(at + 1)} className="widget-notes-btn" aria-label="Next note">
-          ›
-        </button>
-        <span className="ml-auto flex gap-1" role="radiogroup" aria-label="Note color">
-          {Object.entries(NOTE_COLORS).map(([name, color]) => (
-            <button
-              key={name}
-              type="button"
-              role="radio"
-              aria-checked={current.color === name}
-              aria-label={name}
-              onClick={() => update({ color: name })}
-              className={`h-3 w-3 rounded-full ${current.color === name ? "ring-2 ring-[var(--os-ink)] ring-offset-1 ring-offset-transparent" : ""}`}
-              style={{ background: color }}
-            />
-          ))}
-        </span>
-        <button type="button" onClick={add} className="widget-notes-btn" aria-label="New note" title="New note">
-          +
-        </button>
-        <button type="button" onClick={remove} className="widget-notes-btn" aria-label="Delete this note" title="Delete this note">
-          ×
-        </button>
-      </div>
-    </section>
-  );
-}
-
-/* Translator: Chrome's on-device translator when it's there (nothing leaves your computer), otherwise MyMemory */
-const TRANSLATE_LANGS = [
-  ["en", "English"],
-  ["he", "עברית"],
-  ["es", "Español"],
-  ["fr", "Français"],
-  ["de", "Deutsch"],
-  ["it", "Italiano"],
-  ["pt", "Português"],
-  ["ru", "Русский"],
-  ["ar", "العربية"],
-  ["zh", "中文"],
-  ["ja", "日本語"],
-];
-const TRANSLATE_MAX = 450; // MyMemory's free limit is 500 bytes a request
-
-const decodeEntities = (text) => new DOMParser().parseFromString(`<!doctype html><body>${text}`, "text/html").body.textContent || "";
-
-async function translateText(text, from, to) {
-  if (typeof self !== "undefined" && "Translator" in self) {
-    try {
-      const availability = await self.Translator.availability({ sourceLanguage: from, targetLanguage: to });
-      if (availability === "available") {
-        const translator = await self.Translator.create({ sourceLanguage: from, targetLanguage: to });
-        return { text: await translator.translate(text), via: "on this device" };
-      }
-    } catch {
-      /* fall through to MyMemory */
-    }
-  }
-  const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${from}|${to}`);
-  const json = await response.json().catch(() => null);
-  if (!response.ok || !json?.responseData || json.quotaFinished) throw new Error("translate");
-  return { text: decodeEntities(json.responseData.translatedText), via: "MyMemory" };
-}
-
-function TranslatorWidget() {
-  const [langs, setLangs] = useStoredJSON("comcen_translate", { from: "en", to: "he" });
-  const [text, setText] = useState("");
-  const [result, setResult] = useState(null); // { text, via } | { error } | "working"
-
-  const run = async () => {
-    const input = text.trim();
-    if (!input) return;
-    setResult("working");
-    try {
-      setResult(await translateText(input, langs.from, langs.to));
-    } catch {
-      setResult({ error: "Couldn't translate right now. Try again in a little while." });
-    }
-  };
-
-  return (
-    <section className="widget widget-translate px-3.5 pb-3 pt-3" aria-label="Translator">
-      <div className="flex items-center gap-1">
-        <select value={langs.from} onChange={(e) => setLangs((l) => ({ ...l, from: e.target.value }))} className={`${widgetSelect} flex-1`} aria-label="From language">
-          {TRANSLATE_LANGS.map(([code, name]) => (
-            <option key={code} value={code}>
-              {name}
-            </option>
-          ))}
-        </select>
-        <button type="button" onClick={() => setLangs((l) => ({ from: l.to, to: l.from }))} className="widget-mini-btn shrink-0" aria-label="Swap languages" title="Swap">
-          ⇄
-        </button>
-        <select value={langs.to} onChange={(e) => setLangs((l) => ({ ...l, to: e.target.value }))} className={`${widgetSelect} flex-1`} aria-label="To language">
-          {TRANSLATE_LANGS.map(([code, name]) => (
-            <option key={code} value={code}>
-              {name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value.slice(0, TRANSLATE_MAX))}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            run();
-          }
-        }}
-        placeholder="Type, then press Enter"
-        aria-label="Text to translate"
-        dir="auto"
-        rows={3}
-        className={`${widgetInput} mt-2 resize-none leading-snug`}
-      />
-      <div className="mt-2 min-h-[54px] rounded-md bg-[var(--os-hover)] px-2 py-1.5 text-[13px] leading-snug select-text" aria-live="polite" dir="auto" data-nodrag>
-        {result === "working" ? (
-          <span className="text-[var(--os-ink-3)]">Translating…</span>
-        ) : result?.error ? (
-          <span className="text-[12px] text-[var(--os-warn)]">{result.error}</span>
-        ) : result ? (
-          result.text
-        ) : (
-          <span className="text-[var(--os-ink-3)]">The translation appears here.</span>
-        )}
-      </div>
-      <div className="mt-1.5 flex items-center justify-end gap-2 text-[10px] text-[var(--os-ink-3)]">
-        <span className="mr-auto truncate">{result?.via ? `by ${result.via}` : ""}</span>
-        <button type="button" onClick={run} disabled={!text.trim() || result === "working"} className="rounded-full px-2 py-0.5 text-[11px] ring-1 ring-[var(--w-line)] hover:bg-[var(--os-hover)] disabled:opacity-40">
-          translate
-        </button>
-      </div>
-    </section>
-  );
-}
-
-/* Flight Tracker: a flight's airline and route from adsbdb, a photo from Planespotters, and a live map at ADS-B Exchange */
-// Two-letter airline codes the route database doesn't take on their own (it wants the three-letter ones)
-const AIRLINE_ICAO = {
-  AA: "AAL", UA: "UAL", DL: "DAL", WN: "SWA", B6: "JBU", AS: "ASA", NK: "NKS", F9: "FFT", HA: "HAL", LY: "ELY", BA: "BAW", VS: "VIR",
-  LH: "DLH", AF: "AFR", KL: "KLM", IB: "IBE", AY: "FIN", SK: "SAS", LX: "SWR", OS: "AUA", TK: "THY", EK: "UAE", QR: "QTR", EY: "ETD",
-  FR: "RYR", U2: "EZY", AC: "ACA", AM: "AMX", AV: "AVA", CM: "CMP", LA: "LAN", SQ: "SIA", CX: "CPA", NH: "ANA", JL: "JAL", QF: "QFA",
-};
-
-function flightCandidates(raw) {
-  const flight = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const match = flight.match(/^([A-Z0-9]{2})(\d{1,4})$/);
-  const icao = match && AIRLINE_ICAO[match[1]] ? `${AIRLINE_ICAO[match[1]]}${match[2]}` : null;
-  return [...new Set([flight, icao].filter(Boolean))];
-}
-
-async function lookupFlight(raw) {
-  for (const callsign of flightCandidates(raw)) {
-    const response = await fetch(`https://api.adsbdb.com/v0/callsign/${callsign}`).catch(() => null);
-    if (!response) throw new Error("offline");
-    if (response.status === 404 || response.status === 400) continue;
-    const route = (await response.json())?.response?.flightroute;
-    if (route) return route;
-  }
-  throw new Error("unknown");
-}
-
-function FlightWidget() {
-  const [saved, setSaved] = useStoredJSON("comcen_flight", { flight: "LY1" });
-  const [draft, setDraft] = useState(saved.flight);
-  const [state, setState] = useState({ flight: null, route: null, error: null });
-  const flight = saved.flight;
-  const [region] = usePrefs(REGION_PREFS);
-
-  useEffect(() => {
-    if (!flight) return;
-    let cancelled = false;
-    lookupFlight(flight)
-      .then((route) => !cancelled && setState({ flight, route, error: null }))
-      .catch((e) => !cancelled && setState({ flight, route: null, error: e.message }));
-    return () => {
-      cancelled = true;
-    };
-  }, [flight]);
-
-  const current = state.flight === flight ? state : { route: null, error: null };
-  const route = current.route;
-  const km = route ? pathTo({ lat: route.origin.latitude, lon: route.origin.longitude }, { lat: route.destination.latitude, lon: route.destination.longitude }).km : 0;
-  const distance = region.temperature === "f" ? `${Math.round(km * 0.621371).toLocaleString(region.locale)} mi` : `${Math.round(km).toLocaleString(region.locale)} km`;
-  const callsign = route?.callsign_icao || flight;
-
-  return (
-    <section className="widget widget-flight px-3.5 pb-3.5 pt-3" aria-label="Flight tracker">
-      <form
-        className="flex items-center gap-1.5"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const next = draft.trim().toUpperCase();
-          if (next) setSaved({ flight: next });
-        }}
-      >
-        <Plane className="h-3.5 w-3.5 shrink-0 text-[var(--os-ink-3)]" aria-hidden="true" />
-        <input value={draft} onChange={(e) => setDraft(e.target.value.slice(0, 10))} placeholder="Flight, e.g. LY1" aria-label="Flight number" className={`${widgetInput} font-mono uppercase`} />
-        <button type="submit" className="widget-mini-btn shrink-0 ring-1 ring-[var(--w-line)]" aria-label="Look up flight" title="Look up">
-          ↵
-        </button>
-      </form>
-
-      {route ? (
-        <>
-          <div className="mt-2.5 truncate text-[12px] font-semibold">{route.airline?.name || "Flight"}</div>
-          <div className="text-[10.5px] text-[var(--os-ink-3)]">
-            {[route.callsign_iata, route.callsign_icao].filter(Boolean).join(" · ")}
-          </div>
-          <div className="mt-2.5 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-[22px] font-semibold leading-none tracking-tight">{route.origin.iata_code}</div>
-              <div className="truncate text-[10.5px] text-[var(--os-ink-3)]">{route.origin.municipality}</div>
-            </div>
-            <div className="widget-flight-path" aria-hidden="true">
-              <Plane className="h-3.5 w-3.5 rotate-45 text-[var(--os-accent)]" />
-            </div>
-            <div className="min-w-0 text-right">
-              <div className="text-[22px] font-semibold leading-none tracking-tight">{route.destination.iata_code}</div>
-              <div className="truncate text-[10.5px] text-[var(--os-ink-3)]">{route.destination.municipality}</div>
-            </div>
-          </div>
-          <div className="mt-2 text-center text-[10.5px] text-[var(--os-ink-3)]">{distance} great-circle</div>
-          <a
-            href={`https://globe.adsbexchange.com/?callsign=${encodeURIComponent(callsign)}`}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-2 flex items-center justify-center gap-1 rounded-full py-1 text-[11.5px] ring-1 ring-[var(--w-line)] hover:bg-[var(--os-hover)]"
-          >
-            track live <ExternalLink className="h-3 w-3" aria-hidden="true" />
-          </a>
-        </>
-      ) : (
-        <div className="flex h-[150px] items-center justify-center px-2 text-center text-[12px] text-[var(--os-ink-3)]">
-          {current.error === "unknown"
-            ? `No route found for ${flight}. Try the airline's code, like LY1 or ELY1.`
-            : current.error
-              ? "Couldn't reach the flight database."
-              : "Looking up the route…"}
-        </div>
-      )}
-    </section>
-  );
-}
-
-/* Stocks: crypto from CoinGecko (no key needed); stocks from Finnhub with your own free key */
+// Stocks: the watchlist, and your Finnhub key kept apart so it stays out of settings exports (see widgetStorage)
 const STOCKS_KEY = "comcen_stocks"; // { symbols }
 const FINNHUB_KEY = "comcen_finnhub"; // your Finnhub API key, kept in this browser and left out of exports
-const CRYPTO_IDS = { BTC: "bitcoin", ETH: "ethereum", SOL: "solana", XRP: "ripple", DOGE: "dogecoin", ADA: "cardano", LTC: "litecoin", BNB: "binancecoin" };
-const STOCKS_DEFAULT = "AAPL, MSFT, NVDA, TSLA, BTC, ETH";
-const STOCKS_REFRESH_MS = 60 * 1000;
-
-const readWatchlist = () =>
-  String(readJSON(STOCKS_KEY, { symbols: STOCKS_DEFAULT }).symbols || STOCKS_DEFAULT)
-    .toUpperCase()
-    .split(/[\s,]+/)
-    .filter((s) => /^[A-Z0-9.^-]{1,10}$/.test(s))
-    .slice(0, 8);
-
-const stocksCache = { data: null, at: 0, key: "" };
-
-async function loadQuotes(symbols, apiKey) {
-  const crypto = symbols.filter((s) => CRYPTO_IDS[s]);
-  const stocks = symbols.filter((s) => !CRYPTO_IDS[s]);
-  const quotes = {};
-  if (crypto.length) {
-    const ids = crypto.map((s) => CRYPTO_IDS[s]).join(",");
-    const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`).catch(() => null);
-    const json = response?.ok ? await response.json() : {};
-    crypto.forEach((s) => {
-      const q = json[CRYPTO_IDS[s]];
-      if (q) quotes[s] = { price: q.usd, change: q.usd_24h_change };
-    });
-  }
-  if (stocks.length && apiKey) {
-    await Promise.all(
-      stocks.map(async (s) => {
-        const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(s)}&token=${encodeURIComponent(apiKey)}`).catch(() => null);
-        if (response?.status === 401) quotes[s] = { error: "key" };
-        else if (response?.ok) {
-          const q = await response.json();
-          if (q && q.c) quotes[s] = { price: q.c, change: q.dp };
-        }
-      }),
-    );
-  }
-  return quotes;
-}
-
-function useStockSettings() {
-  const [settings, setSettings] = useState(() => ({ symbols: readWatchlist(), key: readStore("localStorage", FINNHUB_KEY) || "" }));
-  useEffect(() => {
-    const onChanged = () => setSettings({ symbols: readWatchlist(), key: readStore("localStorage", FINNHUB_KEY) || "" });
-    window.addEventListener("mh-stocks-changed", onChanged);
-    return () => window.removeEventListener("mh-stocks-changed", onChanged);
-  }, []);
-  return settings;
-}
-
-function StocksWidget() {
-  const { symbols, key } = useStockSettings();
-  const cacheKey = `${symbols.join(",")}|${key ? "k" : ""}`;
-  const [state, setState] = useState(() => (stocksCache.key === cacheKey ? { key: cacheKey, data: stocksCache.data } : { key: cacheKey, data: null }));
-  const [region] = usePrefs(REGION_PREFS);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = () =>
-      loadQuotes(symbols, key).then((data) => {
-        Object.assign(stocksCache, { data, at: Date.now(), key: cacheKey });
-        if (!cancelled) setState({ key: cacheKey, data });
-      });
-    const age = stocksCache.key === cacheKey ? Date.now() - stocksCache.at : Infinity;
-    let id;
-    const first = setTimeout(
-      () => {
-        load();
-        id = setInterval(load, STOCKS_REFRESH_MS);
-      },
-      Math.max(0, STOCKS_REFRESH_MS - age),
-    );
-    return () => {
-      cancelled = true;
-      clearTimeout(first);
-      clearInterval(id);
-    };
-  }, [cacheKey, symbols, key]);
-
-  const data = state.key === cacheKey ? state.data : null;
-  const needsKey = !key && symbols.some((s) => !CRYPTO_IDS[s]);
-  const money = (n) => n.toLocaleString(region.locale, { style: "currency", currency: "USD", maximumFractionDigits: n >= 1000 ? 0 : 2 });
-
-  return (
-    <section className="widget widget-stocks px-3.5 pb-3 pt-3" aria-label="Stocks">
-      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-[var(--os-ink-3)]">
-        <span>stocks</span>
-        <button type="button" onClick={() => openWidgetSettings("stocks")} className="normal-case tracking-normal underline-offset-2 hover:underline">
-          edit
-        </button>
-      </div>
-      <ul className="mt-1.5 divide-y divide-[var(--w-line)]">
-        {symbols.map((s) => {
-          const q = data?.[s];
-          const up = q?.change >= 0;
-          return (
-            <li key={s} className="flex items-center justify-between gap-2 py-[5px] text-[12.5px] tabular-nums">
-              <span className="w-12 shrink-0 font-semibold">{s}</span>
-              <span className="min-w-0 flex-1 truncate text-right">{q?.price ? money(q.price) : q?.error ? "key?" : "—"}</span>
-              <span className={`w-[52px] shrink-0 rounded px-1 text-right text-[11px] ${q?.price ? (up ? "stock-up" : "stock-down") : "text-[var(--os-ink-3)]"}`}>
-                {q?.price && Number.isFinite(q.change) ? `${up ? "+" : ""}${q.change.toFixed(2)}%` : ""}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-      <p className="mt-1.5 text-[10px] leading-snug text-[var(--os-ink-3)]">
-        {needsKey ? "Add a free Finnhub key in settings for stock prices." : "Prices may be delayed."}
-      </p>
-    </section>
-  );
-}
-
-// Widgets pane: the stock watchlist and Finnhub key
-function StocksSettings() {
-  const [symbols, setSymbols] = useState(() => String(readJSON(STOCKS_KEY, { symbols: STOCKS_DEFAULT }).symbols || STOCKS_DEFAULT));
-  const [key, setKey] = useState(() => readStore("localStorage", FINNHUB_KEY) || "");
-  const [saved, setSaved] = useState(false);
-  const input = "w-full rounded-lg bg-[var(--os-card)] px-2.5 py-1.5 ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]";
-
-  const save = () => {
-    writeStore("localStorage", STOCKS_KEY, JSON.stringify({ symbols }));
-    if (key.trim()) writeStore("localStorage", FINNHUB_KEY, key.trim());
-    else {
-      try {
-        localStorage.removeItem(FINNHUB_KEY);
-      } catch {
-        /* ignore */
-      }
-    }
-    window.dispatchEvent(new Event("mh-stocks-changed"));
-    setSaved(true);
-  };
-
-  return (
-    <>
-      <div className="mt-6 text-[13px] font-semibold">stocks</div>
-      <form
-        className="mt-2 grid gap-3 text-[13px] sm:grid-cols-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          save();
-        }}
-      >
-        <label className="flex flex-col gap-1.5">
-          <span>watchlist (up to 8)</span>
-          <input
-            value={symbols}
-            onChange={(e) => {
-              setSymbols(e.target.value.toUpperCase());
-              setSaved(false);
-            }}
-            placeholder={STOCKS_DEFAULT}
-            autoComplete="off"
-            spellCheck={false}
-            className={`${input} font-mono`}
-          />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span>Finnhub API key</span>
-          <input
-            type="password"
-            value={key}
-            onChange={(e) => {
-              setKey(e.target.value);
-              setSaved(false);
-            }}
-            placeholder="for stock prices"
-            autoComplete="off"
-            spellCheck={false}
-            className={`${input} font-mono`}
-          />
-        </label>
-        <div className="flex items-center justify-between gap-2 sm:col-span-2">
-          <span className="text-[12px] text-[var(--os-ink-3)]">
-            {saved ? "Saved." : "Crypto (BTC, ETH, SOL…) works without a key. "}
-            {!saved && (
-              <a href="https://finnhub.io/register" target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-[var(--os-ink)]">
-                Get a free Finnhub key
-              </a>
-            )}
-          </span>
-          <button type="submit" className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
-            save
-          </button>
-        </div>
-      </form>
-      <p className="mt-2 text-[12px] text-[var(--os-ink-3)]">The key stays in this browser and is left out of exported settings.</p>
-    </>
-  );
-}
 
 /* ---------- Menu bar: the status items on the right, in an order you can change ---------- */
 
@@ -10190,701 +8885,12 @@ function useDashboardOpen() {
    settings live in this site's per-user storage, links open in a new tab, and the radio goes through the site's
    sound system. widgets-pack.json records which pack release they match. */
 
-// Country flags as emoji. Windows has no flag emoji, so there they come from a bundled Twemoji font.
-polyfillCountryFlagEmojis("Twemoji Country Flags", flagFont);
 
-const flagEmoji = (code) =>
-  /^[A-Z]{2}$/.test(code || "") ? String.fromCodePoint(...[...code].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65)) : "";
-
-// Every country and territory the system can name, sorted by name in the given language
-const NOT_PLACES = new Set(["EU", "EZ", "UN", "QO", "XA", "XB", "ZZ"]);
-function countries(locale) {
-  let names;
-  try {
-    names = new Intl.DisplayNames([locale, "en"], { type: "region", fallback: "none" });
-  } catch {
-    return [];
-  }
-  const list = [];
-  for (let a = 65; a <= 90; a++) {
-    for (let b = 65; b <= 90; b++) {
-      const code = String.fromCharCode(a, b);
-      if (NOT_PLACES.has(code)) continue;
-      const name = names.of(code);
-      if (name && name !== code) list.push({ code, name });
-    }
-  }
-  return list.sort((x, y) => x.name.localeCompare(y.name, locale));
-}
-
-// Colors a widget can be given: Braun-palette swatches, or any color from the system picker. "" means the default.
-const isColor = (value) => /^#[0-9a-f]{6}$/i.test(value || "");
-
-const ACCENTS = [
-  ["#e8591a", "orange"],
-  ["#f2b200", "yellow"],
-  ["#c8371a", "red"],
-  ["#3f7f33", "green"],
-  ["#46687a", "blue"],
-  ["#7a5aa6", "violet"],
-  ["#262624", "black"],
-];
-
-const CASES = [
-  ["#f3f1ec", "warm white"],
-  ["#201f1d", "graphite"],
-  ["#e8591a", "orange"],
-  ["#f2b200", "yellow"],
-  ["#8a9a6b", "olive"],
-  ["#5d7f93", "blue"],
-  ["#d9d4c7", "stone"],
-];
-
-function ColorChoice({ label, value, onChange, presets = ACCENTS }) {
-  const current = isColor(value) ? value.toLowerCase() : "";
-  const isCustom = current && !presets.some(([c]) => c === current);
-  return (
-    <div className="text-[13px]" role="radiogroup" aria-label={label}>
-      <div className="mb-1.5">{label}</div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <button
-          type="button"
-          role="radio"
-          aria-checked={!current}
-          onClick={() => onChange("")}
-          className={`rounded-full px-2.5 py-0.5 text-[12px] ring-1 ${!current ? "bg-[var(--os-hover)] ring-[var(--os-accent)]" : "ring-[var(--os-line)] hover:bg-[var(--os-hover)]"}`}
-        >
-          default
-        </button>
-        {presets.map(([color, name]) => (
-          <button
-            key={color}
-            type="button"
-            role="radio"
-            aria-checked={current === color}
-            aria-label={name}
-            title={name}
-            onClick={() => onChange(color)}
-            className={`wp-swatch ${current === color ? "wp-swatch-on" : ""}`}
-            style={{ background: color }}
-          />
-        ))}
-        <label className={`wp-swatch wp-swatch-custom ${isCustom ? "wp-swatch-on" : ""}`} title="Any color" style={isCustom ? { background: current } : undefined}>
-          <input type="color" value={current || "#e8591a"} onChange={(e) => onChange(e.target.value)} className="sr-only" aria-label={`${label}: any color`} />
-        </label>
-      </div>
-    </div>
-  );
-}
-
-// Style for a widget case in any color, with text that stays readable on it
-function caseStyle(color) {
-  if (!isColor(color)) return undefined;
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
-  const dark = 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.3;
-  const ink = dark ? "#eeebe4" : "#262624";
-  return {
-    "--w-case": color,
-    "--os-ink": ink,
-    "--os-ink-2": `color-mix(in oklab, ${ink} 80%, ${color})`,
-    "--os-ink-3": `color-mix(in oklab, ${ink} 60%, ${color})`,
-    "--w-line": `color-mix(in oklab, ${ink} 18%, ${color})`,
-    "--os-hover": `color-mix(in oklab, ${ink} 8%, transparent)`,
-  };
-}
-
-// A widget's own settings, kept per user like the rest (cleaned against defaults and allowed values, as the pack does)
-function useWidgetPrefs({ key, defaults, allowed = {} }) {
-  const [saved, setSaved] = useStoredJSON(key, {});
-  const source = saved && typeof saved === "object" ? saved : {};
-  const prefs = Object.fromEntries(
-    Object.entries(defaults).map(([name, value]) => {
-      const candidate = source[name];
-      const ok = typeof candidate === typeof value && (!allowed[name] || allowed[name].includes(candidate));
-      return [name, ok ? candidate : value];
-    }),
-  );
-  const update = (patch) => setSaved((current) => ({ ...(current && typeof current === "object" ? current : {}), ...patch }));
-  return [prefs, update];
-}
-
-// Opens a widget's settings popup (Widgets preferences → Settings, or a widget's own "edit" / "set up…")
-const openWidgetSettings = (id) => window.dispatchEvent(new CustomEvent("mh-widget-settings-open", { detail: id }));
-
-// A select and a labeled field, styled like the site's preferences
-const prefSelect = "w-full rounded-lg bg-[var(--os-card)] px-2.5 py-1.5 ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]";
-
-/* Clock: after the Braun ABW 41 wall clock. Flat black hands, yellow sweep hand with a round counterweight.
-   An optional name and country flag sit on the face, under the 12; without one, the site's "comcen" mark does. */
-const CLOCK_WIDGET_PREFS = {
-  key: "comcen_clock_widget",
-  defaults: { timeZone: "auto", seconds: true, name: "", flag: "", ticker: "" },
-  allowed: { timeZone: TIME_ZONES.map((z) => z.id) },
-};
-
-function ClockWidget() {
-  const now = useClock();
-  const [time] = usePrefs(TIME_PREFS);
-  const [region] = usePrefs(REGION_PREFS);
-  const [prefs] = useWidgetPrefs(CLOCK_WIDGET_PREFS);
-  // "automatic" follows the site's Date & Time setting
-  const clockTime = prefs.timeZone === "auto" ? time : { ...time, timeZone: prefs.timeZone };
-  const parts = clockParts(now, clockTime);
-  const s = parts.s;
-  const m = parts.m + s / 60;
-  const h = (parts.h % 12) + m / 60;
-  const hand = (deg, length, tail, width, color) => (
-    <line x1="100" y1={100 + tail} x2="100" y2={100 - length} stroke={color} strokeWidth={width} transform={`rotate(${deg} 100 100)`} />
-  );
-  const open = () => openWidgetSettings("clock");
-
-  return (
-    // Click (or press Enter) for its settings; dragging it still moves it
-    <section
-      className="widget widget-clock cursor-pointer"
-      style={isColor(prefs.ticker) ? { "--w-yellow": prefs.ticker } : undefined}
-      role="button"
-      tabIndex={0}
-      aria-label={`${prefs.name || "Clock"}: ${formatTime(now, { region, time: clockTime })}. Open clock settings.`}
-      title="Clock settings"
-      onClick={open}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          open();
-        }
-      }}
-    >
-      <svg viewBox="0 0 200 200" className="block h-full w-full" aria-hidden="true">
-        <circle cx="100" cy="100" r="90" fill="var(--w-face)" />
-        {Array.from({ length: 60 }, (_, i) =>
-          i % 5 === 0 ? null : (
-            <line key={i} x1="100" y1="13" x2="100" y2="17" stroke="var(--w-mark)" strokeWidth="1" transform={`rotate(${i * 6} 100 100)`} />
-          ),
-        )}
-        {Array.from({ length: 12 }, (_, i) => {
-          const n = i + 1;
-          const a = (n * 30 * Math.PI) / 180;
-          return (
-            <text key={n} x={100 + Math.sin(a) * 72} y={100 - Math.cos(a) * 72} textAnchor="middle" dominantBaseline="central" className="widget-clock-num">
-              {n}
-            </text>
-          );
-        })}
-        {prefs.flag || prefs.name ? (
-          <text x="100" y="62" textAnchor="middle" dominantBaseline="central" className="widget-clock-label">
-            {prefs.flag && <tspan>{flagEmoji(prefs.flag)}</tspan>}
-            {prefs.flag && prefs.name ? " " : ""}
-            {prefs.name.slice(0, 18)}
-          </text>
-        ) : (
-          <text x="100" y="62" textAnchor="middle" className="widget-clock-brand">
-            comcen
-          </text>
-        )}
-        {hand(h * 30, 46, 10, 6, "var(--w-hand)")}
-        {hand(m * 6, 70, 12, 4, "var(--w-hand)")}
-        {prefs.seconds && (
-          <g transform={`rotate(${s * 6} 100 100)`}>
-            <line x1="100" y1="124" x2="100" y2="20" stroke="var(--w-yellow)" strokeWidth="1.6" />
-            <circle cx="100" cy="122" r="5" fill="var(--w-yellow)" />
-          </g>
-        )}
-        <circle cx="100" cy="100" r="4" fill={prefs.seconds ? "var(--w-yellow)" : "var(--w-hand)"} />
-      </svg>
-    </section>
-  );
-}
-
-function ClockSettings() {
-  const [prefs, setPrefs] = useWidgetPrefs(CLOCK_WIDGET_PREFS);
-  const [region] = usePrefs(REGION_PREFS);
-  const places = useMemo(() => countries(region.locale), [region.locale]);
-  return (
-    <div className="flex flex-col gap-4 p-5 text-[13px]">
-      <label className="flex flex-col gap-1.5">
-        <span>name on the face</span>
-        <input className={prefSelect} value={prefs.name} onChange={(e) => setPrefs({ name: e.target.value.slice(0, 18) })} placeholder="e.g. Home, Office, Mom" maxLength={18} />
-      </label>
-      <label className="flex flex-col gap-1.5">
-        <span>flag</span>
-        <select className={prefSelect} style={{ fontFamily: '"Twemoji Country Flags", inherit' }} value={prefs.flag} onChange={(e) => setPrefs({ flag: e.target.value })}>
-          <option value="">none</option>
-          {places.map((c) => (
-            <option key={c.code} value={c.code}>
-              {flagEmoji(c.code)} {c.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <ColorChoice
-        label="second hand"
-        value={prefs.ticker}
-        onChange={(ticker) => setPrefs({ ticker })}
-        presets={[["#f2b200", "yellow"], ...ACCENTS.filter(([c]) => c !== "#f2b200")]}
-      />
-      <label className="flex flex-col gap-1.5">
-        <span>time zone</span>
-        <select className={prefSelect} value={prefs.timeZone} onChange={(e) => setPrefs({ timeZone: e.target.value })}>
-          {TIME_ZONES.map((z) => (
-            <option key={z.id} value={z.id}>
-              {z.id === "auto" ? "automatic (Date & Time)" : z.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <PrefChoice
-        label="second hand"
-        value={prefs.seconds ? "on" : "off"}
-        onChange={(v) => setPrefs({ seconds: v === "on" })}
-        options={[
-          { id: "on", label: "on" },
-          { id: "off", label: "off" },
-        ]}
-      />
-    </div>
-  );
-}
-
-/* Radio: after the Braun T3 pocket radio. Perforated grille on top, a tuning wheel you turn to change stations.
-   Public and listener-supported stations from around the world, plus Galgalatz and two Miami favorites. */
-const RADIO_STATIONS = [
-  { id: "rp", name: "Radio Paradise", genre: "eclectic mix · California", stream: "https://stream.radioparadise.com/mp3-128", site: "https://radioparadise.com/" },
-  { id: "rp-mellow", name: "RP Mellow", genre: "mellow mix · California", stream: "https://stream.radioparadise.com/mellow-128", site: "https://radioparadise.com/" },
-  {
-    id: "kexp",
-    name: "KEXP",
-    genre: "indie and alternative · Seattle",
-    stream: "https://kexp.streamguys1.com/kexp160.aac",
-    site: "https://www.kexp.org/",
-    nowPlaying: async () => {
-      const play = (await (await fetch("https://api.kexp.org/v2/plays/?limit=1")).json()).results?.[0];
-      return play?.play_type === "trackplay" && play.artist ? `${play.artist} — ${play.song}` : null;
-    },
-  },
-  { id: "fip", name: "FIP", genre: "eclectic · Paris", stream: "https://icecast.radiofrance.fr/fip-midfi.mp3", site: "https://www.radiofrance.fr/fip" },
-  { id: "fip-jazz", name: "FIP Jazz", genre: "jazz · Paris", stream: "https://icecast.radiofrance.fr/fipjazz-midfi.mp3", site: "https://www.radiofrance.fr/fip" },
-  {
-    id: "nts",
-    name: "NTS 1",
-    genre: "underground radio · London",
-    stream: "https://stream-relay-geo.ntslive.net/stream",
-    site: "https://www.nts.live/",
-    nowPlaying: async () => {
-      const live = (await (await fetch("https://www.nts.live/api/v2/live")).json()).results?.find((c) => c.channel_name === "1");
-      return live?.now?.broadcast_title || null;
-    },
-  },
-  {
-    id: "galgalatz",
-    name: "Galgalatz",
-    genre: "Israeli and international pop · Tel Aviv",
-    stream: "https://glzicylv01.bynetcdn.com/glglz_mp3",
-    site: "https://glz.co.il/",
-  },
-  {
-    id: "kiss-country",
-    name: "Kiss Country 99.9",
-    genre: "country · Miami",
-    stream: "https://live.amperwave.net/direct/audacy-wkisfmaac-imc",
-    site: "https://www.audacy.com/stations/kisscountry999",
-  },
-  {
-    id: "revolution",
-    name: "Revolution 93.5",
-    genre: "dance and electronic · Miami",
-    stream: "https://centova87.shoutcastservices.com/proxy/revolution935/stream",
-    site: "https://www.revolution935.com/",
-  },
-];
-const RADIO_KEY = "comcen_radio_station"; // the station's id, so adding or removing stations never changes the one playing
-const RADIO_OWN_KEY = "comcen_radio_stations";
-const RADIO_LEVEL = 0.7; // under the site volume, so it never drowns out system sounds
-
-/* Your own stations, after the built-in ones. The dial has room for 16 in all. */
-const MAX_STATIONS = 16;
-const MAX_OWN = MAX_STATIONS - RADIO_STATIONS.length;
-const isStreamUrl = (url) => /^https?:\/\/[^\s"']+$/i.test(url);
-
-function cleanOwnStations(saved) {
-  return (Array.isArray(saved) ? saved : [])
-    .filter((s) => s && typeof s.id === "string" && typeof s.name === "string" && isStreamUrl(s.stream || ""))
-    .slice(0, MAX_OWN)
-    .map((s) => ({
-      id: s.id,
-      name: s.name.slice(0, 40),
-      genre: typeof s.genre === "string" && s.genre ? s.genre.slice(0, 60) : "your station",
-      stream: s.stream,
-      site: typeof s.site === "string" && /^https:\/\/[^\s"']+$/.test(s.site) ? s.site : null,
-      own: true,
-    }));
-}
-
-// Older versions saved the station's position on the dial
-function readRadioStation() {
-  const saved = readStore("localStorage", RADIO_KEY) || "";
-  return /^\d+$/.test(saved) ? RADIO_STATIONS[Number(saved)]?.id || RADIO_STATIONS[0].id : saved;
-}
-
-// One radio for the whole site, outside React, so it keeps playing as you move between pages.
-const radio = {
-  own: cleanOwnStations(readJSON(RADIO_OWN_KEY, [])),
-  stationId: readRadioStation(),
-  status: "off", // "off" | "tuning" | "on" | "error"
-  audio: null,
-  listeners: new Set(),
-};
-
-const newStationId = () => `own-${Date.now().toString(36)}`;
-const radioStations = () => [...RADIO_STATIONS, ...radio.own];
-const radioIndex = () => Math.max(0, radioStations().findIndex((s) => s.id === radio.stationId));
-const radioCurrent = () => radioStations()[radioIndex()];
-
-function setRadio(patch) {
-  Object.assign(radio, patch);
-  radio.listeners.forEach((listener) => listener());
-}
-
-function useRadio() {
-  const [, rerender] = useState(0);
-  useEffect(() => {
-    const listener = () => rerender((n) => n + 1);
-    radio.listeners.add(listener);
-    return () => radio.listeners.delete(listener);
-  }, []);
-  return radio;
-}
-
-function radioAudio() {
-  if (!radio.audio) {
-    const audio = new Audio();
-    audio.preload = "none";
-    audio._mhBase = RADIO_LEVEL;
-    audio.addEventListener("playing", () => setRadio({ status: "on" }));
-    audio.addEventListener("waiting", () => radio.status !== "off" && setRadio({ status: "tuning" }));
-    audio.addEventListener("error", () => radio.status !== "off" && setRadio({ status: "error" }));
-    radio.audio = audio;
-  }
-  return radio.audio;
-}
-
-function radioStart() {
-  discPause(); // one sound source at a time
-  const audio = radioAudio();
-  audio.src = radioCurrent().stream;
-  applyMedia(audio);
-  liveMedia.add(audio);
-  setRadio({ status: "tuning" });
-  // Tuning again before a station answers interrupts this play request; that's not a lost signal
-  audio.play().catch((e) => e?.name !== "AbortError" && radio.status !== "off" && setRadio({ status: "error" }));
-}
-
-function radioStop() {
-  setRadio({ status: "off" });
-  const audio = radio.audio;
-  if (!audio) return;
-  audio.pause();
-  audio.removeAttribute("src");
-  audio.load();
-  liveMedia.delete(audio);
-}
-
-// Choose a station; it plays right away if the radio is on
-function radioSelect(stationId) {
-  writeStore("localStorage", RADIO_KEY, stationId);
-  setRadio({ stationId });
-  if (radio.status !== "off") radioStart();
-}
-
-function radioTune(step) {
-  const stations = radioStations();
-  const n = stations.length;
-  radioSelect(stations[(radioIndex() + step + n) % n].id);
-}
-
-function radioSaveOwn(list) {
-  const own = cleanOwnStations(list);
-  writeStore("localStorage", RADIO_OWN_KEY, JSON.stringify(own));
-  const playingGone = !own.some((s) => s.id === radio.stationId) && !RADIO_STATIONS.some((s) => s.id === radio.stationId);
-  setRadio({ own });
-  if (playingGone) radioSelect(RADIO_STATIONS[0].id);
-}
-
-// Tries a stream silently before it's added: "ok" if it starts, "bad" if the browser can't play it at all
-// (a web page, a playlist file, a wrong address), "unknown" if it doesn't answer in time
-function testStream(url) {
-  return new Promise((resolve) => {
-    const a = new Audio();
-    a.muted = true;
-    a.preload = "auto";
-    let done = false;
-    const finish = (result) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      a.pause();
-      a.removeAttribute("src");
-      a.load();
-      resolve(result);
-    };
-    const timer = setTimeout(() => finish("unknown"), 10000);
-    a.addEventListener("canplay", () => finish("ok"), { once: true });
-    a.addEventListener("playing", () => finish("ok"), { once: true });
-    a.addEventListener("error", () => finish("bad"), { once: true });
-    a.src = url;
-    // Muted playback is the surest test; if the browser won't allow it, loading alone has to do
-    a.play().catch((e) => e?.name !== "NotAllowedError" && e?.name !== "AbortError" && finish("bad"));
-  });
-}
-
-// What's on now, for the stations that publish it
-function useNowPlaying(station, active) {
-  const [track, setTrack] = useState(null); // { stationId, text }
-  useEffect(() => {
-    if (!active || !station.nowPlaying) return;
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const text = await station.nowPlaying();
-        if (!cancelled) setTrack({ stationId: station.id, text });
-      } catch {
-        /* the station description is enough */
-      }
-    };
-    load();
-    const id = setInterval(load, 30000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [station, active]);
-  return active && track?.stationId === station.id ? track.text : null;
-}
-
-function RadioWidget() {
-  const { status } = useRadio();
-  const sound = useSound();
-  const stations = radioStations();
-  const station = radioIndex();
-  const current = stations[station];
-  const playing = status !== "off";
-  const track = useNowPlaying(current, status === "on");
-  const n = stations.length;
-
-  const statusLabel = !playing
-    ? "off"
-    : status === "error"
-      ? "no signal"
-      : status === "tuning"
-        ? "tuning…"
-        : sound.on
-          ? "on air"
-          : "muted";
-
-  return (
-    <section className="widget widget-radio" aria-label="Radio">
-      <div className="widget-radio-grille" aria-hidden="true" />
-      <div className="px-3.5 pt-3">
-        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-[var(--os-ink-3)]">
-          <span className={`widget-led ${status === "on" && sound.on ? "widget-led-on" : ""}`} aria-hidden="true" />
-          <span aria-live="polite">{statusLabel}</span>
-          <span className="ml-auto tabular-nums">
-            {station + 1}/{n}
-          </span>
-        </div>
-        <div className="mt-1 truncate text-[15px] font-semibold tracking-tight">{current.name}</div>
-        <div className="truncate text-[11px] text-[var(--os-ink-3)]" title={track || current.genre}>
-          {playing && !sound.on ? (
-            <button type="button" className="underline underline-offset-2 hover:text-[var(--os-ink)]" onClick={() => saveSound({ ...sound, on: true })}>
-              turn sound on
-            </button>
-          ) : (
-            track || current.genre
-          )}
-        </div>
-      </div>
-      <div className="flex items-end justify-between px-3.5 pb-4 pt-2.5">
-        {/* Tuning wheel: click for the next station, shift-click or arrow keys to go back */}
-        <button
-          type="button"
-          className="widget-radio-dial"
-          onClick={(e) => radioTune(e.shiftKey ? -1 : 1)}
-          onKeyDown={(e) => {
-            if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
-              e.preventDefault();
-              radioTune(-1);
-            } else if (e.key === "ArrowRight" || e.key === "ArrowUp") {
-              e.preventDefault();
-              radioTune(1);
-            }
-          }}
-          aria-label={`Station ${station + 1} of ${n}: ${current.name}. Turn to change station.`}
-          title="Turn to change station"
-        >
-          <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden="true">
-            <g className="widget-radio-wheel" style={{ transform: `rotate(${(-station * 360) / n}deg)` }}>
-              <circle cx="32" cy="32" r="30" fill="var(--w-face)" />
-              {Array.from({ length: 36 }, (_, i) => (
-                <line key={i} x1="32" y1="3" x2="32" y2="6.5" stroke="var(--w-mark)" strokeWidth="0.8" transform={`rotate(${i * 10} 32 32)`} />
-              ))}
-              {stations.map((s, i) => {
-                const deg = (i * 360) / n;
-                const a = deg * (Math.PI / 180);
-                const x = 32 + Math.sin(a) * 19;
-                const y = 32 - Math.cos(a) * 19;
-                return (
-                  <text key={s.id} x={x} y={y} textAnchor="middle" dominantBaseline="central" transform={`rotate(${deg} ${x} ${y})`} className="widget-radio-num" style={n > 12 ? { fontSize: "6.5px" } : undefined}>
-                    {i + 1}
-                  </text>
-                );
-              })}
-              <circle cx="32" cy="32" r="7" fill="var(--w-case)" stroke="var(--w-mark)" strokeWidth="0.6" />
-            </g>
-            <path d="M32 0 L35 5 L29 5 Z" fill="var(--os-accent)" />
-          </svg>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => (playing ? radioStop() : radioStart())}
-          aria-pressed={playing}
-          aria-label={playing ? "Turn radio off" : "Turn radio on"}
-          title={playing ? "Off" : "On"}
-          className={`os-knob widget-radio-power ${playing ? "os-knob-power" : ""}`}
-        >
-          {playing ? <Square className="h-3.5 w-3.5" fill="currentColor" strokeWidth={0} /> : <Play className="ml-0.5 h-4 w-4" fill="currentColor" strokeWidth={0} />}
-        </button>
-      </div>
-      {current.site && (
-        <a href={current.site} target="_blank" rel="noreferrer" className="widget-credit">
-          {current.name}
-        </a>
-      )}
-    </section>
-  );
-}
-
-function RadioSettings() {
-  const { stationId, own } = useRadio();
-  const stations = radioStations();
-  const current = stations.some((s) => s.id === stationId) ? stationId : stations[0].id;
-  const [name, setName] = useState("");
-  const [stream, setStream] = useState("");
-  const [state, setState] = useState(null); // { kind: "testing" | "ok" | "error", text }
-  const button = "rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] disabled:opacity-40";
-
-  const add = async () => {
-    const url = stream.trim();
-    const title = name.trim();
-    if (!title || !isStreamUrl(url)) {
-      setState({ kind: "error", text: "Give it a name and a stream address starting with http:// or https://." });
-      return;
-    }
-    if (stations.some((s) => s.stream === url)) {
-      setState({ kind: "error", text: "That stream is already on the dial." });
-      return;
-    }
-    setState({ kind: "testing", text: "Tuning in…" });
-    const result = await testStream(url);
-    if (result === "bad") {
-      setState({
-        kind: "error",
-        text: "That stream didn't play. Use the direct stream address (often ending in /stream, .mp3, or .aac), not a .pls or .m3u playlist or a web page.",
-      });
-      return;
-    }
-    const id = newStationId();
-    radioSaveOwn([...radio.own, { id, name: title, stream: url }]);
-    radioSelect(id);
-    setName("");
-    setStream("");
-    setState({
-      kind: "ok",
-      text: result === "ok" ? `Added ${title} as station ${stations.length + 1}.` : `Added ${title} as station ${stations.length + 1}. It was slow to answer, so check that it plays.`,
-    });
-  };
-
-  return (
-    <div className="flex flex-col gap-4 p-5 text-[13px]">
-      <label className="flex flex-col gap-1.5">
-        <span>station</span>
-        <select className={prefSelect} value={current} onChange={(e) => radioSelect(e.target.value)}>
-          {stations.map((s, i) => (
-            <option key={s.id} value={s.id}>
-              {i + 1}. {s.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <p className="text-[12px] text-[var(--os-ink-3)]">
-        Volume and mute:{" "}
-        <button type="button" className="underline underline-offset-2 hover:text-[var(--os-ink)]" onClick={() => openPreferences("sound")}>
-          Sound preferences
-        </button>
-        .
-      </p>
-
-      <div className="flex flex-col gap-2 border-t border-[var(--os-line)] pt-4">
-        <span className="font-semibold">your stations</span>
-        {own.length > 0 && (
-          <ul className="flex flex-col gap-1">
-            {own.map((s) => (
-              <li key={s.id} className="flex items-center gap-2">
-                <span className="tabular-nums text-[var(--os-ink-3)]">{stations.findIndex((x) => x.id === s.id) + 1}.</span>
-                <span className="min-w-0 flex-1 truncate" title={s.stream}>
-                  {s.name}
-                </span>
-                <button type="button" onClick={() => radioSaveOwn(radio.own.filter((x) => x.id !== s.id))} className="widget-mini-btn h-6 w-6" aria-label={`Remove ${s.name}`} title="Remove">
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {own.length < MAX_OWN ? (
-          <form
-            className="flex flex-col gap-1.5"
-            onSubmit={(e) => {
-              e.preventDefault();
-              add();
-            }}
-          >
-            <input className={prefSelect} value={name} onChange={(e) => setName(e.target.value.slice(0, 40))} placeholder="Name, e.g. WLRN" aria-label="Station name" />
-            <input
-              className={prefSelect}
-              value={stream}
-              onChange={(e) => setStream(e.target.value)}
-              placeholder="https://…/stream"
-              aria-label="Stream address"
-              inputMode="url"
-              autoComplete="off"
-              spellCheck={false}
-            />
-            <div className="flex justify-end">
-              <button type="submit" className={button} disabled={!name.trim() || !stream.trim() || state?.kind === "testing"}>
-                {state?.kind === "testing" ? "testing…" : "add station"}
-              </button>
-            </div>
-          </form>
-        ) : (
-          <p className="text-[12px] text-[var(--os-ink-3)]">The dial is full ({MAX_STATIONS} stations). Remove one to add another.</p>
-        )}
-        {state && state.kind !== "testing" && (
-          <p className={`text-[12px] leading-snug ${state.kind === "error" ? "text-[var(--os-warn)]" : "text-[var(--os-ink-2)]"}`} aria-live="polite">
-            {state.text}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /* Weather: a Braun-style weather station. Miami until you pick a city; the locate button switches to where you are
    (with the browser's permission) and back. Forecasts and city search come from Open-Meteo. */
 const WEATHER_HOME = { name: "Miami", lat: 25.7617, lon: -80.1918 };
 const WEATHER_KEY = "comcen_weather";
-const WEATHER_REFRESH_MS = 15 * 60 * 1000;
-const WEATHER_LOOK = { key: "comcen_weather_look", defaults: { accent: "" } };
 
 const validPlace = (p) => p && typeof p.name === "string" && Number.isFinite(p.lat) && Number.isFinite(p.lon);
 
@@ -10897,295 +8903,209 @@ function useWeatherPlaces() {
   return { home, here, save: (patch) => save({ home, here, ...patch }) };
 }
 
-// WMO weather codes, as Open-Meteo reports them
-function describeWeather(code, day = true) {
-  if (code === 0) return { label: day ? "Clear" : "Clear night", Icon: day ? Sun : Moon };
-  if (code === 1) return { label: "Mostly clear", Icon: day ? Sun : Moon };
-  if (code === 2) return { label: "Partly cloudy", Icon: day ? CloudSun : CloudMoon };
-  if (code === 3) return { label: "Overcast", Icon: Cloud };
-  if (code === 45 || code === 48) return { label: "Fog", Icon: CloudFog };
-  if (code >= 51 && code <= 57) return { label: "Drizzle", Icon: CloudDrizzle };
-  if (code >= 61 && code <= 67) return { label: "Rain", Icon: CloudRain };
-  if (code >= 71 && code <= 77) return { label: "Snow", Icon: CloudSnow };
-  if (code >= 80 && code <= 82) return { label: "Showers", Icon: CloudRain };
-  if (code === 85 || code === 86) return { label: "Snow showers", Icon: CloudSnow };
-  if (code >= 95) return { label: "Thunderstorms", Icon: CloudLightning };
-  return { label: "—", Icon: Cloud };
+/* ---------- Widgets: from Widgets Pack (github.com/maxhayim/widgets-pack) ----------
+   The widgets themselves come from the pack, pinned to a release in package.json; a daily GitHub Action moves the pin
+   to each new release and redeploys. This is the site's side of it: where their settings are kept, the site's
+   language, units, and time zone, its sound system, the photos kept in this browser, and the comcen mark on the
+   clock. Dragging, the dashboard, and the gallery in Widgets preferences are the site's own. */
+
+// Pack settings → this site's keys. The names are the ones earlier site versions used, so saved settings carry over.
+const WIDGET_STORE_KEYS = {
+  clock: "comcen_clock_widget",
+  calendar: "comcen_calendar_widget",
+  "world-clock": "comcen_worldclock",
+  weather: "comcen_weather",
+  "weather-look": "comcen_weather_look",
+  "radio-stations": "comcen_radio_stations",
+  notes: "comcen_notes",
+  convert: "comcen_convert",
+  translator: "comcen_translate",
+  flight: "comcen_flight",
+  meshmonitor: MESHMONITOR_KEY,
+};
+const RADIO_KEY = "comcen_radio_station"; // the station's id
+const RADIO_LEVEL = 0.7; // under the site volume, so it never drowns out system sounds
+// Before stations were saved by id, the site saved their position on the dial
+const OLD_RADIO_STATIONS = ["rp", "rp-mellow", "kexp", "fip", "fip-jazz", "nts", "galgalatz", "kiss-country", "revolution"];
+const widgetStoreKey = (key) => WIDGET_STORE_KEYS[key] || `comcen_wp_${key}`;
+
+function removeStore(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
 }
 
-// Last forecast per place and unit, so the widgets don't reload it each time they move between desktop and dashboard
-const weatherCache = new Map(); // key -> { data, at }
+// A cookie's JSON value, for settings older site versions kept in cookies
+function readCookieJSON(name) {
+  try {
+    const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+    return match ? JSON.parse(decodeURIComponent(match[1])) : null;
+  } catch {
+    return null;
+  }
+}
 
-function useWeather(place, unit) {
-  const key = `${place.lat},${place.lon},${unit}`;
-  const [state, setState] = useState(() => ({ data: weatherCache.get(key)?.data ?? null, error: false, key }));
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      const params = new URLSearchParams({
-        latitude: place.lat.toFixed(3),
-        longitude: place.lon.toFixed(3),
-        current: "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day",
-        daily: "weather_code,temperature_2m_max,temperature_2m_min",
-        forecast_days: "5",
-        timezone: "auto",
-        temperature_unit: unit === "c" ? "celsius" : "fahrenheit",
-        wind_speed_unit: unit === "c" ? "kmh" : "mph",
-      });
-      try {
-        const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
-        if (!response.ok) throw new Error("weather");
-        const json = await response.json();
-        weatherCache.set(key, { data: json, at: Date.now() });
-        if (!cancelled) setState({ data: json, error: false, key });
-      } catch {
-        if (!cancelled) setState((s) => ({ data: s.key === key ? s.data : null, error: true, key }));
+const widgetStorage = {
+  get(key) {
+    // Radio: the station alone, so older versions' saved station still works
+    if (key === "radio") {
+      const id = readStore("localStorage", RADIO_KEY);
+      if (!id) return null;
+      return JSON.stringify({ station: /^\d+$/.test(id) ? OLD_RADIO_STATIONS[Number(id)] || "rp" : id });
+    }
+    // Stocks: the watchlist and the Finnhub key are kept apart, so the key stays out of settings exports
+    if (key === "stocks") {
+      const saved = readJSON(STOCKS_KEY, null);
+      const apiKey = readStore("localStorage", FINNHUB_KEY);
+      return saved || apiKey ? JSON.stringify({ symbols: saved?.symbols || "", key: apiKey || "" }) : null;
+    }
+    const raw = readStore("localStorage", widgetStoreKey(key));
+    if (key === "weather" && raw) {
+      // Older versions kept one { place }; "Here" was your own location
+      const saved = readJSON(widgetStoreKey(key), {});
+      if (saved.place && !saved.home) {
+        const here = saved.place.name === "Here";
+        return JSON.stringify({ home: here ? undefined : saved.place, here: here ? { ...saved.place, name: "you" } : null });
       }
-    };
-    const cached = weatherCache.get(key);
-    const age = cached ? Date.now() - cached.at : Infinity;
-    let id;
-    // Fetch now if there's nothing fresh, then every 15 minutes
-    const first = setTimeout(
-      () => {
-        load();
-        id = setInterval(load, WEATHER_REFRESH_MS);
-      },
-      Math.max(0, WEATHER_REFRESH_MS - age),
-    );
-    return () => {
-      cancelled = true;
-      clearTimeout(first);
-      clearInterval(id);
-    };
-  }, [key, place.lat, place.lon, unit]);
-  // Only report what belongs to this place and unit, so switching never shows stale numbers
-  if (state.key === key) return state;
-  return { data: weatherCache.get(key)?.data ?? null, error: false };
-}
-
-function WeatherWidget() {
-  const { home, here, save } = useWeatherPlaces();
-  const [region, setRegion] = usePrefs(REGION_PREFS); // °F or °C lives in the Language pane
-  const [look] = useWidgetPrefs(WEATHER_LOOK);
-  const [locating, setLocating] = useState(false);
-  const unit = region.temperature;
-  const { data, error } = useWeather(here || home, unit);
-
-  const locate = () => {
-    if (here) {
-      save({ here: null });
+    }
+    if (raw !== null) return raw;
+    if (key === "notes") {
+      // The single note from before Sticky Notes
+      const note = readStore("localStorage", NOTE_KEY);
+      return note ? JSON.stringify([{ id: "n1", text: note, color: "yellow" }]) : null;
+    }
+    if (key === "world-clock") {
+      const old = readCookieJSON("comcen_worldclock");
+      return old ? JSON.stringify(old) : null;
+    }
+    return null;
+  },
+  set(key, value) {
+    if (key === "radio") {
+      const station = value ? JSON.parse(value).station : null;
+      if (station) writeStore("localStorage", RADIO_KEY, station);
+      else removeStore(RADIO_KEY);
       return;
     }
-    if (!navigator.geolocation) return;
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocating(false);
-        // Rounded to about a kilometer: plenty for a forecast
-        save({ here: { name: "Here", lat: Math.round(pos.coords.latitude * 100) / 100, lon: Math.round(pos.coords.longitude * 100) / 100 } });
-      },
-      () => setLocating(false),
-      { maximumAge: 30 * 60 * 1000, timeout: 10000 },
-    );
+    if (key === "stocks") {
+      const next = value ? JSON.parse(value) : {};
+      writeStore("localStorage", STOCKS_KEY, JSON.stringify({ symbols: next.symbols || "" }));
+      if (next.key) writeStore("localStorage", FINNHUB_KEY, next.key);
+      else removeStore(FINNHUB_KEY);
+      return;
+    }
+    const name = widgetStoreKey(key);
+    if (value === null) removeStore(name);
+    else writeStore("localStorage", name, value);
+    // The site's own readers of these keys follow along (Privacy shows whether the weather uses your location)
+    window.dispatchEvent(new CustomEvent("mh-stored", { detail: { key: name, value: value === null ? null : JSON.parse(value) } }));
+  },
+  // Changes made by the site itself, or in another tab
+  subscribe(key, onChange) {
+    const names = key === "radio" ? [RADIO_KEY] : key === "stocks" ? [STOCKS_KEY, FINNHUB_KEY] : [widgetStoreKey(key)];
+    const onStorage = (e) => names.includes(e.key) && onChange();
+    const onSite = (e) => names.includes(e.detail?.key) && onChange();
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("mh-stored", onSite);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("mh-stored", onSite);
+    };
+  },
+};
+
+// Language, units, 12/24 hours, and time zone come from Language and Date & Time preferences
+function useWidgetShared() {
+  const [region, setRegion] = usePrefs(REGION_PREFS);
+  const [time, setTime] = usePrefs(TIME_PREFS);
+  const shared = { locale: region.locale, temperature: region.temperature, clock: time.clock, theme: "auto", timeZone: time.timeZone };
+  const update = (patch) => {
+    if (patch.locale || patch.temperature) setRegion({ ...(patch.locale && { locale: patch.locale }), ...(patch.temperature && { temperature: patch.temperature }) });
+    if (patch.clock) setTime({ clock: patch.clock });
   };
-
-  const current = data?.current;
-  const daily = data?.daily;
-  const now = current ? describeWeather(current.weather_code, current.is_day === 1) : null;
-  const days = daily
-    ? daily.time.map((date, i) => ({
-        date,
-        hi: Math.round(daily.temperature_2m_max[i]),
-        lo: Math.round(daily.temperature_2m_min[i]),
-        code: daily.weather_code[i],
-      }))
-    : [];
-  const lowest = Math.min(...days.map((d) => d.lo));
-  const highest = Math.max(...days.map((d) => d.hi));
-  const span = Math.max(1, highest - lowest);
-  const weekday = (date) => {
-    const d = new Date(`${date}T12:00:00`);
-    const short = d.toLocaleDateString(region.locale, { weekday: "short" }).replace(".", "");
-    // Latin scripts: two letters (Th, Fr). Hebrew, Japanese: the narrow form (ה׳, 木)
-    return /^[A-Za-zÀ-ÿ]/.test(short) ? short.slice(0, 2) : d.toLocaleDateString(region.locale, { weekday: "narrow" });
-  };
-
-  return (
-    <section className="widget widget-weather px-3.5 pb-3 pt-3" style={isColor(look.accent) ? { "--os-accent": look.accent } : undefined} aria-label="Weather">
-      <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.16em] text-[var(--os-ink-3)]">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className={`widget-led ${current ? "widget-led-on" : ""}`} aria-hidden="true" />
-          <span className="truncate">{here ? "near you" : home.name}</span>
-        </span>
-        <button
-          type="button"
-          onClick={locate}
-          disabled={locating}
-          className={`widget-mini-btn ${here ? "widget-mini-btn-on" : ""}`}
-          aria-label={here ? `Back to ${home.name}` : "Show weather near you"}
-          title={here ? `Back to ${home.name}` : "Near me"}
-        >
-          <LocateFixed className={`h-3.5 w-3.5 ${locating ? "animate-pulse" : ""}`} strokeWidth={2} />
-        </button>
-      </div>
-
-      {current ? (
-        <>
-          <div className="mt-1.5 flex items-start justify-between">
-            <button
-              type="button"
-              onClick={() => setRegion({ temperature: unit === "f" ? "c" : "f" })}
-              className="widget-weather-temp"
-              aria-label={`${Math.round(current.temperature_2m)} degrees ${unit === "f" ? "Fahrenheit" : "Celsius"}. Switch to ${unit === "f" ? "Celsius" : "Fahrenheit"}.`}
-              title={`Switch to °${unit === "f" ? "C" : "F"}`}
-            >
-              {Math.round(current.temperature_2m)}
-              <span className="widget-weather-unit">°{unit.toUpperCase()}</span>
-            </button>
-            <now.Icon className="mt-1.5 h-8 w-8 text-[var(--os-ink-2)]" strokeWidth={1.4} aria-hidden="true" />
-          </div>
-          <div className="truncate text-[12px] font-semibold">{now.label}</div>
-          <div className="truncate text-[11px] tabular-nums text-[var(--os-ink-3)]">
-            feels {Math.round(current.apparent_temperature)}° · {Math.round(current.relative_humidity_2m)}% · {Math.round(current.wind_speed_10m)} {unit === "c" ? "km/h" : "mph"}
-          </div>
-
-          {/* Five-day range meter: each bar runs from the day's low to its high on a shared scale */}
-          <div className="mt-2.5 grid grid-cols-5 gap-1 border-t border-[var(--w-line)] pt-2" role="list" aria-label="Five-day forecast">
-            {days.map((d, i) => {
-              const { label } = describeWeather(d.code);
-              return (
-                <div key={d.date} role="listitem" className="flex flex-col items-center text-[10px] tabular-nums" aria-label={`${weekday(d.date)}: ${label}, high ${d.hi}, low ${d.lo}`}>
-                  <span className={`uppercase tracking-[0.08em] ${i === 0 ? "font-semibold text-[var(--os-ink)]" : "text-[var(--os-ink-3)]"}`}>{weekday(d.date)}</span>
-                  <span className="mt-0.5 text-[var(--os-ink-2)]">{d.hi}</span>
-                  <span className="widget-weather-track" aria-hidden="true">
-                    <span
-                      className="widget-weather-range"
-                      style={{ top: `${((highest - d.hi) / span) * 100}%`, bottom: `${((d.lo - lowest) / span) * 100}%` }}
-                    />
-                  </span>
-                  <span className="text-[var(--os-ink-3)]">{d.lo}</span>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      ) : (
-        <div className="flex h-[150px] items-center justify-center text-[12px] text-[var(--os-ink-3)]">
-          {error ? "No forecast right now." : "Reading the sky…"}
-        </div>
-      )}
-      <a href="https://open-meteo.com/" target="_blank" rel="noreferrer" className="widget-credit">
-        Open-Meteo
-      </a>
-    </section>
-  );
+  return [shared, update];
 }
 
-// Pick the city: Open-Meteo's place search
-function WeatherSettings() {
-  const { home, save } = useWeatherPlaces();
-  const [region] = usePrefs(REGION_PREFS);
-  const [look, setLook] = useWidgetPrefs(WEATHER_LOOK);
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState(null); // null | "searching" | "error" | [{ name, detail, lat, lon }]
+const WIDGET_HOST = {
+  storage: widgetStorage,
+  useShared: useWidgetShared,
+  // The radio plays through the site's sound: its volume and mute, and one source at a time
+  sound: {
+    attach(audio) {
+      discPause();
+      audio._mhBase = RADIO_LEVEL;
+      applyMedia(audio);
+      liveMedia.add(audio);
+    },
+    detach(audio) {
+      liveMedia.delete(audio);
+    },
+    openSettings: () => openPreferences("sound"),
+  },
+  // Photos are the site's pictures in IndexedDB, kept per user
+  photos: {
+    usePhotos: () => usePictures("photo"),
+    add: async (files) => {
+      for (const file of files) await savePictureFile(file, "photo").catch(() => {}); // a file that isn't a picture is skipped
+    },
+    remove: (id) => deletePicture(id),
+  },
+  clockMark: "comcen",
+};
 
-  const search = async () => {
-    const q = query.trim();
-    if (!q) return;
-    setResults("searching");
-    try {
-      const params = new URLSearchParams({ name: q, count: "6", language: region.locale.split("-")[0], format: "json" });
-      const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${params}`);
-      if (!response.ok) throw new Error("search");
-      const json = await response.json();
-      setResults(
-        (json.results || []).map((r) => ({
-          name: r.name,
-          detail: [r.admin1, r.country].filter(Boolean).join(", "),
-          lat: Math.round(r.latitude * 1000) / 1000,
-          lon: Math.round(r.longitude * 1000) / 1000,
-        })),
-      );
-    } catch {
-      setResults("error");
-    }
-  };
+// Opens a widget's settings popup (Widgets preferences → Settings, a widget's "edit", or clicking the clock or calendar)
+const openWidgetSettings = (id) => window.dispatchEvent(new CustomEvent("mh-widget-settings-open", { detail: id }));
 
-  return (
-    <div className="flex flex-col gap-4 p-5 text-[13px]">
-      <ColorChoice label="temperature bars" value={look.accent} onChange={(accent) => setLook({ accent })} />
-      <div className="flex flex-col gap-1.5">
-        <span>
-          city: <strong>{home.name}</strong>
-        </span>
-        <form
-          className="flex gap-1.5"
-          onSubmit={(e) => {
+/* A pack widget on this site. Its "edit" and "set up…" buttons open its settings here; with `clickable`, so does a
+   click anywhere on it (the clock and calendar), as they always have. */
+function packWidget(Pack, { openSettings, clickable = false } = {}) {
+  const PackWidget = Pack.Widget;
+  function SiteWidget({ id }) {
+    const open = openSettings || (() => openWidgetSettings(id));
+    if (!clickable) return <PackWidget openSettings={open} />;
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        className="cursor-pointer rounded-[22px]"
+        aria-label={`${Pack.label} settings`}
+        title={`${Pack.label} settings`}
+        onClick={open}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            search();
-          }}
-        >
-          <input className={prefSelect} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a city" aria-label="Find a city" />
-          <button type="submit" className="shrink-0 rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] disabled:opacity-40" disabled={!query.trim()}>
-            find
-          </button>
-        </form>
-        {results === "searching" && <p className="text-[12px] text-[var(--os-ink-3)]">Searching…</p>}
-        {results === "error" && <p className="text-[12px] text-[var(--os-warn)]">Couldn't search right now.</p>}
-        {Array.isArray(results) &&
-          (results.length ? (
-            <ul className="flex flex-col gap-0.5">
-              {results.map((r) => (
-                <li key={`${r.lat},${r.lon}`}>
-                  <button
-                    type="button"
-                    className="w-full truncate rounded-md px-2 py-1 text-left hover:bg-[var(--os-hover)]"
-                    onClick={() => {
-                      save({ home: { name: r.name, lat: r.lat, lon: r.lon }, here: null });
-                      setResults(null);
-                      setQuery("");
-                    }}
-                  >
-                    <span className="font-semibold">{r.name}</span> <span className="text-[var(--os-ink-3)]">{r.detail}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-[12px] text-[var(--os-ink-3)]">No places by that name.</p>
-          ))}
+            open();
+          }
+        }}
+      >
+        <PackWidget openSettings={open} />
       </div>
-      <p className="text-[12px] text-[var(--os-ink-3)]">
-        °F or °C:{" "}
-        <button type="button" className="underline underline-offset-2 hover:text-[var(--os-ink)]" onClick={() => openPreferences("language")}>
-          Language preferences
-        </button>
-        , or click the temperature.
-      </p>
-    </div>
-  );
+    );
+  }
+  return SiteWidget;
 }
 
 /* Which widgets are out and where they sit. Positions are kept as a share of the free width (so a widget on the
    right stays on the right when the screen changes size) plus a distance from the top. */
 const WIDGET_KINDS = [
-  // settings: the preferences pane each widget follows, linked from Widgets preferences
-  { id: "clock", label: "Clock", note: "after the Braun ABW 41 wall clock", Icon: Clock3, Component: ClockWidget },
-  { id: "radio", label: "Radio", note: "after the Braun T3 pocket radio", Icon: Radio, Component: RadioWidget },
-  { id: "weather", label: "Weather", note: "Miami, or wherever you are", Icon: CloudSun, Component: WeatherWidget },
+  // Settings: the widget's own in a popup (WIDGET_SETTINGS), or `settings`, a preferences pane (Mesh lives in Mesh Radio)
+  { id: "clock", label: "Clock", note: "after the Braun ABW 41 wall clock", Icon: Clock3, Component: packWidget(packClock, { clickable: true }) },
+  { id: "radio", label: "Radio", note: "after the Braun T3 pocket radio", Icon: Radio, Component: packWidget(packRadio) },
+  { id: "weather", label: "Weather", note: "Miami, or wherever you are", Icon: CloudSun, Component: packWidget(packWeather) },
   // Off until you connect a MeshMonitor in Mesh Radio
-  { id: "mesh", label: "Mesh", note: "live from your MeshMonitor", Icon: RadioTower, Component: MeshWidget, defaultShown: false, settings: "mesh" },
+  { id: "mesh", label: "Mesh", note: "live from your MeshMonitor", Icon: RadioTower, Component: packWidget(packMesh, { openSettings: () => openPreferences("mesh") }), defaultShown: false, settings: "mesh" },
   // More in Widgets preferences
-  { id: "calculator", label: "Calculator", note: "after the Braun ET66 by Dieter Rams", Icon: Calculator, Component: CalculatorWidget, defaultShown: false },
-  { id: "calendar", label: "Calendar", note: "this month, in your language", Icon: CalendarDays, Component: CalendarWidget, defaultShown: false },
-  { id: "notes", label: "Sticky Notes", note: "notes in five colors that save as you type", Icon: StickyNote, Component: NotesWidget, defaultShown: false },
-  { id: "worldclock", label: "World Clock", note: "three cities at a glance", Icon: Globe, Component: WorldClockWidget, defaultShown: false, settings: "widgets" },
-  { id: "photos", label: "Photo Gallery", note: "your own photos, in a frame", Icon: ImageIcon, Component: PhotosWidget, defaultShown: false, settings: "widgets" },
-  { id: "convert", label: "Convert", note: "units and currencies", Icon: RefreshCw, Component: ConvertWidget, defaultShown: false },
-  { id: "translator", label: "Translator", note: "eleven languages, including Hebrew", Icon: Globe, Component: TranslatorWidget, defaultShown: false },
-  { id: "flight", label: "Flight Tracker", note: "any flight's airline and route", Icon: Plane, Component: FlightWidget, defaultShown: false },
-  { id: "stocks", label: "Stocks", note: "your watchlist, with crypto", Icon: Activity, Component: StocksWidget, defaultShown: false, settings: "widgets" },
+  { id: "calculator", label: "Calculator", note: "after the Braun ET66 by Dieter Rams", Icon: Calculator, Component: packWidget(packCalculator), defaultShown: false },
+  { id: "calendar", label: "Calendar", note: "this month, in your language", Icon: CalendarDays, Component: packWidget(packCalendar, { clickable: true }), defaultShown: false },
+  { id: "notes", label: "Sticky Notes", note: "notes in five colors that save as you type", Icon: StickyNote, Component: packWidget(packNotes), defaultShown: false },
+  { id: "worldclock", label: "World Clock", note: "three cities at a glance", Icon: Globe, Component: packWidget(packWorldClock), defaultShown: false },
+  { id: "photos", label: "Photo Gallery", note: "your own photos, in a frame", Icon: ImageIcon, Component: packWidget(packPhotos), defaultShown: false },
+  { id: "convert", label: "Convert", note: "units and currencies", Icon: RefreshCw, Component: packWidget(packConvert), defaultShown: false },
+  { id: "translator", label: "Translator", note: "eleven languages, including Hebrew", Icon: Globe, Component: packWidget(packTranslator), defaultShown: false },
+  { id: "flight", label: "Flight Tracker", note: "any flight's airline and route", Icon: Plane, Component: packWidget(packFlight), defaultShown: false },
+  { id: "stocks", label: "Stocks", note: "your watchlist, with crypto", Icon: Activity, Component: packWidget(packStocks), defaultShown: false },
 ];
 const WIDGET_WIDTH = 196;
 const WIDGET_GAP = 16;
@@ -11222,7 +9142,7 @@ function setWidgetLayout(patch) {
 }
 
 function setWidgetShown(id, on) {
-  if (!on && id === "radio") radioStop(); // nothing left to switch it off with
+  if (!on && id === "radio") stopRadio(); // nothing left to switch it off with
   setWidgetLayout({ shown: { ...widgetLayout.shown, [id]: on } });
 }
 
@@ -11290,27 +9210,25 @@ function WidgetsPane() {
 
 // Settings that belong to the widget itself open in a popup over System Preferences.
 // The rest (Clock, Calendar, Radio, Weather) follow system preferences, so Settings switches to that page.
+// Each widget's own settings, from the pack, in the popup that Widgets preferences' Settings opens
+const packSettings = (Pack) => {
+  const PackSettings = Pack.Settings;
+  function Settings() {
+    return (
+      <div className="wp-settings-page p-5">
+        <PackSettings />
+      </div>
+    );
+  }
+  return Settings;
+};
 const WIDGET_SETTINGS = {
-  clock: ClockSettings,
-  radio: RadioSettings,
-  weather: WeatherSettings,
-  calendar: CalendarSettings,
-  worldclock: WorldClockSettings,
-  mesh: () => (
-    <div className="p-5">
-      <MeshMonitorSettings />
-    </div>
-  ),
-  photos: () => (
-    <div className="p-5">
-      <PhotosSettings />
-    </div>
-  ),
-  stocks: () => (
-    <div className="px-5 pb-5">
-      <StocksSettings />
-    </div>
-  ),
+  clock: packSettings(packClock),
+  radio: packSettings(packRadio),
+  weather: packSettings(packWeather),
+  calendar: packSettings(packCalendar),
+  worldclock: packSettings(packWorldClock),
+  stocks: packSettings(packStocks),
 };
 
 function WidgetSettingsPopup() {
@@ -11563,7 +9481,7 @@ function Widgets({ disabled }) {
         onClickCapture={onClickCapture}
         onContextMenu={(e) => editing && e.preventDefault()}
       >
-        <Body />
+        <Body id={id} />
         {editing && (
           <button
             type="button"
@@ -11701,7 +9619,8 @@ export default function App() {
     );
 
   return (
-    <>
+    // The widgets (and their previews in Widgets preferences) keep their settings here and follow the site's language and sound
+    <WidgetHost host={WIDGET_HOST}>
       <MenuBar />
       {page}
       <Widgets disabled={booting} />
@@ -11709,7 +9628,6 @@ export default function App() {
       <NightShift />
       <PointerTrails />
       <WidgetSettingsPopup />
-      <PhotoGalleryViewer />
       {booting && (
         <BootScreen
           key={bootMode}
@@ -11720,6 +9638,6 @@ export default function App() {
           }}
         />
       )}
-    </>
+    </WidgetHost>
   );
 }

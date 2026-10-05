@@ -1,5 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:wdth,wght@75..100,400..700&family=VT323&display=swap");
 @import "tailwindcss";
+/* The widgets come from Widgets Pack and use Tailwind classes too */
+@source "../node_modules/widgets-pack/lib";
 
 /* ---------- MaXHyM System 6: Braun-timeline theme ---------- */
 
@@ -526,208 +528,34 @@
 }
 .os-dot-on { background: var(--os-accent); }
 
-/* ---------- Widgets: Braun-style clock, radio, and weather station ---------- */
-.widget {
-  --w-case: var(--os-case);
-  --w-face: var(--os-card);
-  --w-mark: var(--os-ink-3);
-  --w-hand: var(--os-ink);
-  --w-line: var(--os-line);
-  --w-yellow: #f2b200;
-  position: relative;
-  width: 196px;
-  flex-shrink: 0;
-  overflow: hidden;
-  border-radius: 26px;
-  background: linear-gradient(var(--w-case), color-mix(in oklab, var(--w-case) 92%, var(--os-ink)));
-  border: 1px solid var(--w-line);
-  box-shadow: var(--os-shadow);
-  color: var(--os-ink);
-}
-.widget-clock { height: 196px; padding: 6px; }
-.widget-clock-num { font-size: 14px; font-weight: 500; fill: var(--w-hand); letter-spacing: -0.02em; }
-.widget-clock-brand { font-size: 7.5px; font-weight: 600; letter-spacing: 0.18em; fill: var(--w-mark); text-transform: uppercase; }
-
-/* T3 grille: rows of round perforations */
-.widget-radio-grille {
-  height: 72px;
-  margin: 14px 14px 0;
-  border-radius: 12px;
-  background-color: color-mix(in oklab, var(--w-case) 70%, var(--os-ink) 4%);
-  background-image: radial-gradient(circle, color-mix(in oklab, var(--os-ink) 55%, transparent) 2.1px, transparent 2.6px);
-  background-size: 9px 9px;
-  background-position: center;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
-}
-.widget-radio-dial {
-  width: 76px;
-  height: 76px;
-  flex-shrink: 0;
-  border-radius: 999px;
-  box-shadow: 0 0 0 1px var(--w-line), 0 2px 5px rgba(0, 0, 0, 0.14);
-}
-.widget-radio-dial:focus-visible { outline: 2px solid var(--os-accent); outline-offset: 2px; }
-.widget-radio-wheel { transform-origin: 32px 32px; transition: transform 0.45s cubic-bezier(0.3, 0, 0.2, 1); }
-.widget-radio-num { font-size: 8px; font-weight: 600; fill: var(--w-hand); }
-.os-knob.widget-radio-power { width: 40px; height: 40px; flex-shrink: 0; margin-bottom: 4px; }
-
-.widget-led {
-  width: 6px;
-  height: 6px;
-  flex-shrink: 0;
-  border-radius: 999px;
-  background: var(--w-line);
-}
+/* ---------- Widgets: they come from Widgets Pack (widgets-pack/widgets.css, imported in App.jsx) ----------
+   What's here is the site's own: the update light in Updates, release notes, "+ add widgets", and where the
+   Photo Gallery's large view opens on this page. */
 .update-led {
   background: var(--os-accent);
   box-shadow: 0 0 0 2.5px color-mix(in oklab, var(--os-accent) 22%, transparent);
 }
 .release summary::-webkit-details-marker { display: none; }
 .release-notes code { font-size: 12px; padding: 0 4px; border-radius: 4px; background: var(--os-hover); }
-.widget-led-on {
-  background: var(--os-ok);
-  box-shadow: 0 0 0 2.5px color-mix(in oklab, var(--os-ok) 20%, transparent);
-}
 
-.widget-mini-btn {
-  display: inline-flex;
-  width: 24px;
-  height: 24px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  color: var(--os-ink-3);
-}
-.widget-mini-btn:hover { background: var(--os-hover); color: var(--os-ink); }
-.widget-mini-btn-on { color: var(--os-accent); }
-
-.widget-weather-temp {
-  font-size: 44px;
-  font-weight: 300;
-  line-height: 1;
-  letter-spacing: -0.04em;
-  font-variant-numeric: tabular-nums;
-  border-radius: 8px;
-}
-.widget-weather-temp:hover .widget-weather-unit { color: var(--os-accent); }
-.widget-weather-unit { margin-left: 2px; font-size: 15px; font-weight: 500; letter-spacing: 0; vertical-align: top; color: var(--os-ink-3); }
-.widget-weather-track {
-  position: relative;
-  display: block;
-  width: 6px;
-  height: 30px;
-  margin: 3px 0;
-  border-radius: 999px;
-  background: var(--os-hover);
-  box-shadow: inset 0 0 0 1px var(--w-line);
-}
-.widget-weather-range {
-  position: absolute;
-  left: 0;
-  right: 0;
-  min-height: 6px;
-  border-radius: 999px;
-  background: var(--os-accent);
-}
-
-.widget-credit {
-  position: absolute;
-  right: 14px;
-  bottom: 4px;
-  font-size: 8.5px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--os-ink-3);
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.widget:hover .widget-credit,
-.widget-credit:focus-visible { opacity: 0.8; }
-.widget-weather { padding-bottom: 16px; }
-
-/* Calculator: after the Braun ET66, a dark body with round keys and a yellow equals */
-.widget-calc {
-  --w-case: #2b2926;
-  padding: 14px;
-  color: #f1ede4;
-  background: linear-gradient(#34312d, #24221f);
-  border-color: #1a1917;
-}
-.widget-calc:focus-visible { outline: 2px solid var(--os-accent); outline-offset: 2px; }
-.widget-calc-lcd {
-  position: relative;
-  height: 46px;
-  padding: 0 10px;
-  border-radius: 8px;
-  font-size: 26px;
-  font-weight: 300;
-  line-height: 46px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-  color: #23251f;
-  background: linear-gradient(#b9bba8, #a7aa95);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.45);
-  overflow: hidden;
-  white-space: nowrap;
-}
-.widget-calc-op { position: absolute; left: 8px; top: 4px; font-size: 11px; line-height: 1; opacity: 0.7; }
-.widget-calc-keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-top: 12px; }
-.widget-calc-key {
-  height: 31px;
-  border-radius: 999px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #f1ede4;
-  background: linear-gradient(#4b443d, #3a342f);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 2px 3px rgba(0, 0, 0, 0.45);
-}
-.widget-calc-key:active { transform: translateY(1px); box-shadow: 0 1px 1px rgba(0, 0, 0, 0.4); }
-.widget-calc-fn { color: #e9d6b0; background: linear-gradient(#5a4e43, #463c33); }
-.widget-calc-clear { color: #fff; background: linear-gradient(color-mix(in oklab, var(--os-accent) 88%, white), var(--os-accent)); }
-.widget-calc-equals { color: #2b2926; background: linear-gradient(#f6c94a, #e8ae16); }
-
-.widget-calendar { min-height: 196px; }
-
-/* Notes: lined paper */
-.widget-notes { display: flex; height: 216px; flex-direction: column; background: color-mix(in oklab, var(--note, #f2c94c) 22%, var(--os-card)); }
-.widget-notes-bar { display: flex; align-items: center; gap: 6px; padding: 6px 10px 9px; font-size: 11px; color: var(--os-ink-3); border-top: 1px solid color-mix(in oklab, var(--os-ink) 10%, transparent); }
-.widget-notes-btn { display: inline-flex; width: 18px; height: 18px; align-items: center; justify-content: center; border-radius: 999px; font-size: 14px; line-height: 1; color: var(--os-ink-2); }
-.widget-notes-btn:hover:not(:disabled) { background: var(--os-hover); color: var(--os-ink); }
-.widget-notes-btn:disabled { opacity: 0.3; }
-.widget-notes-text {
-  display: block;
-  width: 100%;
-  min-height: 0;
-  flex: 1;
-  padding: 16px 16px 12px;
-  resize: none;
-  border: 0;
-  outline: none;
-  font-size: 13px;
-  line-height: 22px;
-  color: var(--os-ink);
-  background: repeating-linear-gradient(transparent 0 21px, color-mix(in oklab, var(--os-ink) 12%, transparent) 21px 22px);
-  background-position: 0 15px;
-  background-attachment: local;
-}
-.widget-notes-text::placeholder { color: var(--os-ink-3); }
-
-/* Photo Gallery: a picture in a frame */
-.widget-photos { height: 196px; padding: 10px; }
-.widget-photos-frame { display: block; width: 100%; height: 100%; overflow: hidden; border-radius: 16px; box-shadow: inset 0 0 0 1px var(--w-line); background: var(--os-hover); }
-.widget-photos-dots { position: absolute; left: 0; right: 0; bottom: 16px; display: flex; justify-content: center; gap: 4px; pointer-events: none; }
-.widget-photos-dots span { width: 5px; height: 5px; border-radius: 999px; background: rgba(255, 255, 255, 0.55); box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); }
-.widget-photos-dots span.on { background: #fff; }
+/* A widget's own settings in the site's popup: spaced like the pack's settings side in Zebar */
+.wp-settings-page { display: grid; gap: 16px; font-size: 13px; }
 
 .widget-add { background: var(--os-case); color: var(--os-ink); box-shadow: 0 0 0 1px var(--os-line), 0 6px 16px -6px rgba(0, 0, 0, 0.4); }
 
-/* Stocks and Flight Tracker */
-.stock-up { color: var(--os-ok); background: color-mix(in oklab, var(--os-ok) 14%, transparent); }
-.stock-down { color: var(--os-warn); background: color-mix(in oklab, var(--os-warn) 14%, transparent); }
-.widget-flight-path { position: relative; display: flex; flex: 1; align-items: center; justify-content: center; height: 16px; }
-.widget-flight-path::before { content: ""; position: absolute; inset: 50% 4px auto; border-top: 1.5px dashed var(--w-line); }
-.widget-flight-path svg { position: relative; background: var(--w-case); }
+/* The large view is 640×480 in the pack (Zebar grows the widget's window). Here it opens over the screen: its slot
+   drops its grid transform so the view can be placed on the screen, and keeps the frame's height so nothing moves. */
+.widget-slot:has(.widget-photos-big) { z-index: 3; height: 196px; transform: none !important; }
+.widget-slot .widget-photos-big {
+  position: fixed;
+  z-index: 80;
+  top: 50%;
+  left: 50%;
+  width: min(640px, calc(100vw - 32px));
+  height: min(480px, calc(100vh - 140px));
+  translate: -50% -50%;
+  box-shadow: 0 0 0 100vmax rgba(10, 10, 9, 0.35), 0 24px 60px -20px rgba(0, 0, 0, 0.6);
+}
 
 /* Screen Saver preferences: a monitor with the saver on it, and grouped controls */
 .saver-monitor { width: min(100%, 300px); }
@@ -752,12 +580,6 @@
 .saver-group { padding: 10px 14px 14px; border-radius: 12px; border: 1px solid var(--os-line); }
 .saver-group legend { padding: 0 6px; font-size: 12px; font-weight: 600; color: var(--os-ink-2); }
 
-/* Color swatches in widget settings (as in Widgets Pack) */
-.wp-swatch { position: relative; display: inline-block; width: 20px; height: 20px; border-radius: 999px; cursor: pointer; box-shadow: 0 0 0 1px var(--os-line); }
-.wp-swatch-on { box-shadow: 0 0 0 2px var(--os-case), 0 0 0 4px var(--os-accent); }
-.wp-swatch-custom { background: conic-gradient(#e8591a, #f2b200, #3f7f33, #46687a, #7a5aa6, #c8371a, #e8591a); }
-.widget-clock-label { font-size: 8.5px; font-weight: 600; fill: var(--w-mark); font-family: "Twemoji Country Flags", inherit; }
-
 /* Widget gallery */
 .gallery-card { padding: 10px; border-radius: 16px; box-shadow: inset 0 0 0 1px var(--os-line); }
 .gallery-card-on { box-shadow: inset 0 0 0 1.5px var(--os-accent); }
@@ -767,16 +589,6 @@
 .gallery-toggle:hover { background: var(--os-hover); }
 .gallery-toggle-on { color: #fff; background: var(--os-accent); box-shadow: none; }
 .gallery-toggle-on:hover { background: var(--os-warn); }
-
-/* Photo gallery viewer */
-.photo-viewer { background: rgba(10, 10, 9, 0.94); animation: widget-dashboard-in 0.18s ease-out; }
-.photo-viewer-btn { padding: 4px 12px; border-radius: 999px; color: #fff; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25); }
-.photo-viewer-btn:hover { background: rgba(255, 255, 255, 0.1); }
-.photo-viewer-arrow { position: absolute; top: 50%; display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: 999px; color: #fff; background: rgba(0, 0, 0, 0.45); transform: translateY(-50%); }
-.photo-viewer-arrow:hover { background: rgba(0, 0, 0, 0.7); }
-.photo-viewer-thumb { width: 64px; height: 64px; flex-shrink: 0; overflow: hidden; border-radius: 8px; opacity: 0.55; }
-.photo-viewer-thumb:hover { opacity: 0.85; }
-.photo-viewer-thumb-on { opacity: 1; box-shadow: 0 0 0 2px var(--os-accent); }
 
 /* Widget areas: the desktop layer (under the window) and the dashboard (over it) share one layout */
 .widget-desk { pointer-events: none; }

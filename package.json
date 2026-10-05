@@ -1,7 +1,7 @@
 {
   "name": "maxhayim.github.io",
   "private": true,
-  "version": "2.20.0",
+  "version": "2.21.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,11 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "country-flag-emoji-polyfill": "^0.1.10",
     "framer-motion": "^12.38.0",
     "lucide-react": "^0.577.0",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "widgets-pack": "github:maxhayim/widgets-pack#v1.4.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
