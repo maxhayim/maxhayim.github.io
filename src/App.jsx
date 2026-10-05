@@ -976,7 +976,7 @@ function DesktopMenu() {
 
   if (!menu) return null;
   const width = 230;
-  const height = 314;
+  const height = 346;
   const zoom = pageZoom();
   const left = Math.max(8, Math.min(menu.x / zoom, window.innerWidth / zoom - width - 8));
   const top = Math.max(52, Math.min(menu.y / zoom, window.innerHeight / zoom - height - 8));
@@ -1023,6 +1023,17 @@ function DesktopMenu() {
         }}
       >
         widget gallery…
+      </button>
+      <button
+        role="menuitem"
+        type="button"
+        className={on}
+        onClick={() => {
+          setMenu(null);
+          window.dispatchEvent(new Event("mh-saver-gallery-open"));
+        }}
+      >
+        screen saver gallery…
       </button>
       {divider}
       <button role="menuitem" type="button" aria-disabled="true" className={off}>
@@ -5886,6 +5897,121 @@ function DesktopApps({ title, intro, apps }) {
   );
 }
 
+/* Screen saver gallery: each saver large and live, to use, try full screen, or get for your computer */
+const SAVER_DETAILS = {
+  mesh: { note: "A mesh-radio network: nodes drift, links join the ones in reach, and orange packets hop between them.", repo: "screensaver-mesh" },
+  starfield: { note: "A 90s flight through space, with streaks like a CRT's afterglow and the odd orange star.", repo: "screensaver-starfield" },
+};
+
+function ScreenSaverGallery() {
+  const [open, setOpen] = useState(false);
+  const [settings, setSettings] = useState(readScreensaver);
+
+  useEffect(() => {
+    const onOpen = () => {
+      setSettings(readScreensaver());
+      setOpen(true);
+    };
+    const onChanged = (e) => setSettings(e.detail);
+    window.addEventListener("mh-saver-gallery-open", onOpen);
+    window.addEventListener("mh-screensaver-changed", onChanged);
+    return () => {
+      window.removeEventListener("mh-saver-gallery-open", onOpen);
+      window.removeEventListener("mh-screensaver-changed", onChanged);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.stopImmediatePropagation(); // close just the gallery
+        setOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [open]);
+
+  if (!open) return null;
+  const use = (saver) => {
+    const next = { ...readScreensaver(), saver };
+    saveScreensaver(next);
+    setSettings(next);
+  };
+
+  return (
+    <div className="os-ui no-print fixed inset-0 z-[72] flex items-center justify-center bg-black/30 p-3 sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
+      <div role="dialog" aria-modal="true" aria-labelledby="saver-gallery-title" className="os-window prefs-window flex max-h-[calc(100vh-24px)] w-full max-w-[880px] flex-col overflow-hidden">
+        <div className="relative flex shrink-0 items-center gap-3 border-b border-[var(--os-line)] px-4 py-2.5">
+          <button type="button" onClick={() => setOpen(false)} aria-label="Close screen saver gallery" title="Close" className="os-round-btn os-win-close">
+            <X className="h-3.5 w-3.5" strokeWidth={2.2} />
+          </button>
+          <h2 id="saver-gallery-title" className="pointer-events-none absolute inset-x-0 text-center font-semibold tracking-tight">
+            screen saver gallery
+          </h2>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              openPreferences("screensaver");
+            }}
+            className="relative ml-auto rounded-full px-3 py-1 text-[13px] ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
+          >
+            screen saver settings…
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+          <p className="mb-4 text-[13px] text-[var(--os-ink-3)]">Use one here, try it full screen, or get it for your computer: real screen savers for macOS, Windows, and Linux, free and open source.</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {SCREENSAVERS.map((sv) => {
+              const details = SAVER_DETAILS[sv.id] || {};
+              const inUse = settings.saver === sv.id;
+              const app = DESKTOP_SAVERS.find((d) => d.repo === details.repo);
+              return (
+                <div key={sv.id} className={`gallery-card ${inUse ? "gallery-card-on" : ""}`}>
+                  <div className="relative aspect-video overflow-hidden rounded-xl bg-[#0b0b0a]">
+                    <SaverCanvas saver={sv.id} compact />
+                  </div>
+                  <div className="mt-3 flex items-start justify-between gap-2">
+                    <span className="min-w-0">
+                      <span className="block text-[15px] font-semibold">{sv.label}</span>
+                      <span className="block text-[12px] leading-snug text-[var(--os-ink-3)]">{details.note}</span>
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px]">
+                    {inUse ? (
+                      <span className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-[var(--os-accent)] ring-1 ring-[var(--os-accent)]">
+                        <Check className="h-3.5 w-3.5" strokeWidth={2.6} aria-hidden="true" /> in use
+                      </span>
+                    ) : (
+                      <button type="button" onClick={() => use(sv.id)} className="rounded-full bg-[var(--os-accent)] px-3 py-1 font-semibold text-white hover:brightness-105">
+                        use
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => window.dispatchEvent(new CustomEvent("mh-screensaver-start", { detail: { saver: sv.id } }))}
+                      className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]"
+                    >
+                      test
+                    </button>
+                  </div>
+                  {app && (
+                    <ul className="mt-3 rounded-xl ring-1 ring-[var(--os-line)]">
+                      <DesktopAppCard {...app} name="for your computer" note="macOS, Windows, and Linux." />
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const PREF_SECTIONS = [
   {
     title: "Desk",
@@ -6851,15 +6977,17 @@ function SaverCanvas({ saver, compact = false }) {
 function ScreenSaverHost({ disabled }) {
   const [settings, setSettings] = useState(readScreensaver);
   const [active, setActive] = useState(false);
+  const [trying, setTrying] = useState(null); // a saver being tried from the gallery, without changing the setting
   const [now, setNow] = useState(() => new Date());
   const startedAtRef = useRef(0);
   const pointerRef = useRef(null);
 
   useEffect(() => {
     const onChanged = (e) => setSettings(e.detail);
-    const onStart = () => {
+    const onStart = (e) => {
       startedAtRef.current = performance.now();
       pointerRef.current = null;
+      setTrying(e.detail?.saver || null);
       setActive(true);
     };
     window.addEventListener("mh-screensaver-changed", onChanged);
@@ -6878,6 +7006,7 @@ function ScreenSaverHost({ disabled }) {
       clearTimeout(timer);
       timer = setTimeout(() => {
         if (document.hidden) return arm();
+        setTrying(null);
         startedAtRef.current = performance.now();
         pointerRef.current = null;
         setActive(true);
@@ -6927,7 +7056,7 @@ function ScreenSaverHost({ disabled }) {
   if (!active) return null;
   return (
     <div className="screensaver fixed inset-0 z-[90] cursor-none bg-[#0b0b0a]" role="presentation" aria-hidden="true">
-      <SaverCanvas saver={settings.saver} />
+      <SaverCanvas saver={trying || settings.saver} />
       <div className="os-ui pointer-events-none absolute bottom-8 left-8" style={{ color: "#eeebe4" }}>
         <div className="text-5xl font-semibold tabular-nums tracking-tight opacity-80">
           {formatTime(now)}
@@ -6979,7 +7108,7 @@ function ScreenSaverPane() {
               );
             })}
           </div>
-          <div className="mt-2 flex items-center justify-end text-[13px]">
+          <div className="mt-2 flex flex-wrap items-center justify-end gap-2 text-[13px]">
             <button
               type="button"
               onClick={() => window.dispatchEvent(new Event("mh-screensaver-start"))}
@@ -6987,6 +7116,13 @@ function ScreenSaverPane() {
               className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]"
             >
               test
+            </button>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event("mh-saver-gallery-open"))}
+              className="rounded-full px-3 py-1 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]"
+            >
+              screen saver gallery…
             </button>
           </div>
         </div>
@@ -7024,11 +7160,6 @@ function ScreenSaverPane() {
         </div>
       </div>
 
-      <DesktopApps
-        title="for your computer"
-        intro="The same screen savers as real ones for macOS, Windows, and Linux. Free and open source."
-        apps={DESKTOP_SAVERS}
-      />
     </div>
   );
 }
@@ -11273,6 +11404,7 @@ export default function App() {
       <NightShift />
       <PointerTrails />
       <WidgetGallery />
+      <ScreenSaverGallery />
       <PhotoGalleryViewer />
       {booting && (
         <BootScreen
