@@ -19,6 +19,8 @@ import {
   worldClock as packWorldClock,
 } from "widgets-pack";
 import "widgets-pack/widgets.css";
+import * as meshSaver from "screensaver-mesh";
+import * as starfieldSaver from "screensaver-starfield";
 import {
   Radar,
   Star,
@@ -1230,6 +1232,8 @@ const STORED_ITEMS = [
   { label: "theme", key: "comcen_theme" },
   { label: "wallpaper", key: "comcen_wallpaper" },
   { label: "screen saver", key: "comcen_screensaver" },
+  { label: "Mesh screen saver settings", key: "comcen_saver_mesh" },
+  { label: "Starfield screen saver settings", key: "comcen_saver_starfield" },
   { label: "sound", key: "comcen_sound" },
   { label: "dock", key: "comcen_dock" },
   { label: "windows", key: "comcen_windows" },
@@ -5232,257 +5236,205 @@ function saveScreensaver(settings) {
   window.dispatchEvent(new CustomEvent("mh-screensaver-changed", { detail: settings }));
 }
 
-// Drifting radio nodes that link up when close; orange packets hop node to node.
-function MeshCanvas({ compact = false }) {
-  const canvasRef = useRef(null);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    const slow = prefersReducedMotion();
-    let width = 0;
-    let height = 0;
-    let nodes = [];
-    let packets = [];
-    let frame = 0;
-    let last = 0;
-    let lastSpawn = 0;
+/* ---------- Screen savers: from their own projects (github.com/maxhayim/screensaver-mesh, screensaver-starfield) ----------
+   Each saver is installed from its repo, pinned to a release in package.json (the daily GitHub Action moves the pins to
+   new releases): the same C core as the downloads, compiled to WebAssembly, with the downloads' settings. The site keeps
+   each saver's settings, gives Mesh the MeshMonitor connection from Mesh Radio, and puts "comcen os" under the clock
+   until you change it. */
+const SAVER_PACKAGES = { mesh: meshSaver, starfield: starfieldSaver };
+const saverSettingsKey = (id) => `comcen_saver_${id}`;
+// Mesh's MeshMonitor settings are the Mesh Radio connection, so there's one connection and its token stays out of exports
+const SAVER_CONNECTION_KEYS = ["server", "token", "source"];
 
-    const setup = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const rect = canvas.getBoundingClientRect();
-      width = rect.width;
-      height = rect.height;
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const count = Math.max(14, Math.min(90, Math.round((width * height) / (compact ? 2600 : 16000))));
-      const speed = (compact ? 9 : 16) * (slow ? 0.35 : 1);
-      nodes = Array.from({ length: count }, () => {
-        const angle = Math.random() * Math.PI * 2;
-        const v = speed * (0.4 + Math.random() * 0.6);
-        return { x: Math.random() * width, y: Math.random() * height, vx: Math.cos(angle) * v, vy: Math.sin(angle) * v, r: compact ? 1.4 : 2 + Math.random() * 1.2 };
-      });
-      packets = [];
-    };
+// Until you change them: the site's name under the clock, and the site's 12/24-hour choice
+const siteSaverDefaults = () => ({ label: "custom", labelText: "comcen os", use24Hour: readPrefs(TIME_PREFS).clock === "24" });
 
-    const linkDistance = () => (compact ? 46 : 150);
-
-    const neighbors = (i) => {
-      const reach = linkDistance();
-      const out = [];
-      for (let j = 0; j < nodes.length; j++) {
-        if (j === i) continue;
-        const dx = nodes[j].x - nodes[i].x;
-        const dy = nodes[j].y - nodes[i].y;
-        if (dx * dx + dy * dy < reach * reach) out.push(j);
-      }
-      return out;
-    };
-
-    const draw = (time) => {
-      const dt = last ? Math.min(0.05, (time - last) / 1000) : 0;
-      last = time;
-
-      for (const n of nodes) {
-        n.x += n.vx * dt;
-        n.y += n.vy * dt;
-        if (n.x < -20) n.x = width + 20;
-        if (n.x > width + 20) n.x = -20;
-        if (n.y < -20) n.y = height + 20;
-        if (n.y > height + 20) n.y = -20;
-      }
-
-      ctx.fillStyle = "#0b0b0a";
-      ctx.fillRect(0, 0, width, height);
-
-      const reach = linkDistance();
-      ctx.lineWidth = compact ? 0.6 : 1;
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const dx = nodes[j].x - nodes[i].x;
-          const dy = nodes[j].y - nodes[i].y;
-          const d2 = dx * dx + dy * dy;
-          if (d2 > reach * reach) continue;
-          const alpha = (1 - Math.sqrt(d2) / reach) * 0.35;
-          ctx.strokeStyle = `rgba(238, 235, 228, ${alpha})`;
-          ctx.beginPath();
-          ctx.moveTo(nodes[i].x, nodes[i].y);
-          ctx.lineTo(nodes[j].x, nodes[j].y);
-          ctx.stroke();
-        }
-      }
-
-      ctx.fillStyle = "rgba(238, 235, 228, 0.75)";
-      for (const n of nodes) {
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Send a new packet every so often from a random node
-      if (time - lastSpawn > (slow ? 2400 : 900) && packets.length < 6) {
-        lastSpawn = time;
-        const from = Math.floor(Math.random() * nodes.length);
-        const next = neighbors(from);
-        if (next.length) packets.push({ from, to: next[Math.floor(Math.random() * next.length)], t: 0, hops: 0 });
-      }
-
-      packets = packets.filter((p) => {
-        p.t += dt * (slow ? 0.6 : 1.6);
-        if (p.t >= 1) {
-          p.hops += 1;
-          const next = neighbors(p.to).filter((j) => j !== p.from);
-          if (!next.length || p.hops > 7) {
-            // arrival flash
-            const n = nodes[p.to];
-            ctx.strokeStyle = "rgba(240, 106, 42, 0.6)";
-            ctx.beginPath();
-            ctx.arc(n.x, n.y, compact ? 5 : 12, 0, Math.PI * 2);
-            ctx.stroke();
-            return false;
-          }
-          p.from = p.to;
-          p.to = next[Math.floor(Math.random() * next.length)];
-          p.t = 0;
-        }
-        const a = nodes[p.from];
-        const b = nodes[p.to];
-        const x = a.x + (b.x - a.x) * p.t;
-        const y = a.y + (b.y - a.y) * p.t;
-        ctx.strokeStyle = "rgba(240, 106, 42, 0.55)";
-        ctx.lineWidth = compact ? 1 : 1.6;
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(x, y);
-        ctx.stroke();
-        ctx.fillStyle = "#f06a2a";
-        ctx.beginPath();
-        ctx.arc(x, y, compact ? 2 : 3.4, 0, Math.PI * 2);
-        ctx.fill();
-        return true;
-      });
-
-      frame = requestAnimationFrame(draw);
-    };
-
-    setup();
-    frame = requestAnimationFrame(draw);
-    const ro = new ResizeObserver(setup);
-    ro.observe(canvas);
-    return () => {
-      cancelAnimationFrame(frame);
-      ro.disconnect();
-    };
-  }, [compact]);
-
-  return <canvas ref={canvasRef} className="block h-full w-full" aria-hidden="true" />;
+function readSaverSettings(id) {
+  const saver = SAVER_PACKAGES[id] || meshSaver;
+  const saved = readJSON(saverSettingsKey(id), null);
+  const own = saved && typeof saved === "object" ? saved : siteSaverDefaults();
+  if (id !== "mesh") return saver.cleanSettings(own);
+  const conn = readJSON(MESHMONITOR_KEY, null) || {};
+  return saver.cleanSettings({ ...own, server: conn.url || "", token: conn.token || "", source: conn.source || "default" });
 }
 
-
-// A 90s flight through space, in the comcen palette: warm white stars, the odd orange one.
-function StarfieldCanvas({ compact = false }) {
-  const canvasRef = useRef(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    const slow = prefersReducedMotion();
-    let width = 0;
-    let height = 0;
-    let stars = [];
-    let frame = 0;
-    let last = 0;
-
-    const spawn = (star, far = true) => {
-      star.x = (Math.random() * 2 - 1) * 1.2;
-      star.y = (Math.random() * 2 - 1) * 1.2;
-      star.z = far ? 1 : 0.2 + Math.random() * 0.8;
-      star.px = null;
-      star.py = null;
-      star.orange = Math.random() < 0.07;
-      return star;
-    };
-
-    const setup = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const rect = canvas.getBoundingClientRect();
-      width = rect.width;
-      height = rect.height;
-      canvas.width = Math.round(width * dpr);
-      canvas.height = Math.round(height * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const count = compact ? 110 : Math.max(220, Math.min(520, Math.round((width * height) / 4200)));
-      stars = Array.from({ length: count }, () => spawn({}, false));
-      ctx.fillStyle = "#0b0b0a";
-      ctx.fillRect(0, 0, width, height);
-    };
-
-    const draw = (time) => {
-      const dt = last ? Math.min(0.05, (time - last) / 1000) : 0;
-      last = time;
-      const speed = (slow ? 0.12 : 0.34) * dt;
-      const cx = width / 2;
-      const cy = height / 2;
-      const scale = Math.max(width, height) * 0.5;
-
-      // Leave faint trails, like a CRT's afterglow
-      ctx.fillStyle = "rgba(11, 11, 10, 0.42)";
-      ctx.fillRect(0, 0, width, height);
-
-      for (const star of stars) {
-        star.z -= speed;
-        if (star.z <= 0.02) {
-          spawn(star);
-          continue;
-        }
-        const sx = cx + (star.x / star.z) * scale;
-        const sy = cy + (star.y / star.z) * scale;
-        if (sx < -10 || sx > width + 10 || sy < -10 || sy > height + 10) {
-          spawn(star);
-          continue;
-        }
-        const nearness = 1 - star.z;
-        const size = (compact ? 0.4 : 0.6) + nearness * (compact ? 1.6 : 2.8);
-        const color = star.orange ? `rgba(240, 106, 42, ${0.4 + nearness * 0.6})` : `rgba(238, 235, 228, ${0.25 + nearness * 0.75})`;
-        if (star.px !== null) {
-          ctx.strokeStyle = color;
-          ctx.lineWidth = size;
-          ctx.lineCap = "round";
-          ctx.beginPath();
-          ctx.moveTo(star.px, star.py);
-          ctx.lineTo(sx, sy);
-          ctx.stroke();
-        } else {
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.arc(sx, sy, size / 2, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        star.px = sx;
-        star.py = sy;
-      }
-
-      frame = requestAnimationFrame(draw);
-    };
-
-    setup();
-    frame = requestAnimationFrame(draw);
-    const ro = new ResizeObserver(setup);
-    ro.observe(canvas);
-    return () => {
-      cancelAnimationFrame(frame);
-      ro.disconnect();
-    };
-  }, [compact]);
-
-  return <canvas ref={canvasRef} className="block h-full w-full" aria-hidden="true" />;
+function saveSaverSettings(id, settings) {
+  const own = Object.fromEntries(Object.entries(settings).filter(([key]) => !(id === "mesh" && SAVER_CONNECTION_KEYS.includes(key))));
+  writeStore("localStorage", saverSettingsKey(id), JSON.stringify(own));
+  if (id === "mesh") {
+    const conn = { url: settings.server.trim(), token: settings.token.trim(), source: settings.source.trim() || "default" };
+    if (conn.url || conn.token) writeStore("localStorage", MESHMONITOR_KEY, JSON.stringify(conn));
+    else removeStore(MESHMONITOR_KEY);
+  }
+  window.dispatchEvent(new CustomEvent("mh-saver-settings", { detail: { id } }));
 }
+
+function useSaverSettings(id) {
+  const [settings, setSettings] = useState(() => readSaverSettings(id));
+  const [shownId, setShownId] = useState(id);
+  if (shownId !== id) {
+    setShownId(id);
+    setSettings(readSaverSettings(id));
+  }
+  useEffect(() => {
+    const onChange = (e) => e.detail?.id === id && setSettings(readSaverSettings(id));
+    window.addEventListener("mh-saver-settings", onChange);
+    return () => window.removeEventListener("mh-saver-settings", onChange);
+  }, [id]);
+  const update = (patch) => {
+    const next = (SAVER_PACKAGES[id] || meshSaver).cleanSettings({ ...settings, ...patch });
+    setSettings(next);
+    saveSaverSettings(id, next);
+  };
+  return [settings, update];
+}
+
+// "Your name" under the clock: the signed-in user here (a web page can't read the computer's account)
+const currentUserName = () => readUsers().find((u) => u.id === currentUserId())?.name || OWNER.name;
 
 function SaverCanvas({ saver, compact = false }) {
-  return saver === "starfield" ? <StarfieldCanvas compact={compact} /> : <MeshCanvas compact={compact} />;
+  const canvasRef = useRef(null);
+  const runningRef = useRef(null);
+  const [settings] = useSaverSettings(saver);
+  useEffect(() => {
+    const running = (SAVER_PACKAGES[saver] || meshSaver).createSaver(canvasRef.current, {
+      settings: readSaverSettings(saver),
+      compact,
+      reducedMotion: prefersReducedMotion(),
+      userName: currentUserName(),
+    });
+    runningRef.current = running;
+    return () => {
+      running.destroy();
+      runningRef.current = null;
+    };
+  }, [saver, compact]);
+  // Settings changed in Screensavers preferences show up right away
+  useEffect(() => {
+    runningRef.current?.update(settings);
+  }, [settings]);
+  return <canvas ref={canvasRef} className="block h-full w-full" aria-hidden="true" />;
+}
+
+// One setting from a saver's SETTINGS list, drawn like the site's other preferences
+function SaverSetting({ field, settings, onChange, saver }) {
+  const control = "w-full rounded-lg bg-[var(--os-card)] px-2.5 py-1.5 ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)]";
+  const value = settings[field.key];
+  if (field.type === "toggle") return <PrefSwitch label={field.label} checked={!!value} onChange={(on) => onChange({ [field.key]: on })} />;
+  if (field.type === "preset") {
+    const current = saver.presetOf(settings);
+    return (
+      <label className="flex items-center justify-between gap-3 text-[13px]">
+        <span>{field.label}</span>
+        <select
+          className={`${control} max-w-[220px]`}
+          value={current}
+          onChange={(e) => {
+            const preset = field.presets.find((p) => p.name === e.target.value);
+            if (preset) onChange({ [field.key]: preset.name, ...preset.colors });
+          }}
+        >
+          {field.presets.map((p) => (
+            <option key={p.name} value={p.name}>
+              {p.name}
+            </option>
+          ))}
+          {!field.presets.some((p) => p.name === current) && <option value={current}>Custom</option>}
+        </select>
+      </label>
+    );
+  }
+  if (field.type === "color")
+    return (
+      <label className="flex items-center justify-between gap-3 text-[13px]">
+        <span>{field.label}</span>
+        <input type="color" value={value} onChange={(e) => onChange({ [field.key]: e.target.value })} className="h-7 w-12 cursor-pointer rounded-md bg-transparent" />
+      </label>
+    );
+  if (field.type === "range")
+    return (
+      <label className="flex flex-col gap-1 text-[13px]">
+        <span className="flex justify-between">
+          <span>{field.label}</span>
+          <span className="tabular-nums text-[var(--os-ink-3)]">
+            {value}
+            {field.unit || ""}
+          </span>
+        </span>
+        <input
+          type="range"
+          min={field.min}
+          max={field.max}
+          step={field.step || 1}
+          value={value}
+          onChange={(e) => onChange({ [field.key]: Number(e.target.value) })}
+          className="accent-[var(--os-accent)]"
+        />
+      </label>
+    );
+  if (field.type === "choice")
+    return (
+      <label className="flex items-center justify-between gap-3 text-[13px]">
+        <span>{field.label}</span>
+        <select className={`${control} max-w-[220px]`} value={value} onChange={(e) => onChange({ [field.key]: e.target.value })}>
+          {field.options.map(([id, label]) => (
+            <option key={id} value={id}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  // text and password
+  return (
+    <label className="flex flex-col gap-1 text-[13px]">
+      <span>{field.label}</span>
+      <input
+        type={field.type === "password" ? "password" : "text"}
+        className={control}
+        value={value}
+        maxLength={field.maxLength}
+        placeholder={field.placeholder}
+        autoComplete="off"
+        spellCheck={false}
+        dir="auto"
+        onChange={(e) => onChange({ [field.key]: e.target.value })}
+      />
+    </label>
+  );
+}
+
+// A saver's own settings, grouped as in its Options window on the computer
+function SaverSettings({ id }) {
+  const saver = SAVER_PACKAGES[id] || meshSaver;
+  const [settings, update] = useSaverSettings(id);
+  const shown = saver.SETTINGS.filter((f) => !f.showIf || Object.entries(f.showIf).every(([key, want]) => settings[key] === want));
+  const groups = [];
+  for (const field of shown) {
+    const name = field.group || `${saver.NAME} settings`;
+    const group = groups.find((g) => g.name === name) || groups[groups.push({ name, fields: [] }) - 1];
+    group.fields.push(field);
+  }
+  return groups.map((group) => (
+    <fieldset key={group.name} className="saver-group mt-4">
+      <legend>{group.name}</legend>
+      <div className="flex flex-col gap-3">
+        {group.fields.map((field) => (
+          <SaverSetting key={field.key} field={field} settings={settings} onChange={update} saver={saver} />
+        ))}
+        {group.name === "MeshMonitor" && (
+          <p className="text-[12px] leading-snug text-[var(--os-ink-3)]">
+            Leave these empty for a simulated mesh. They're the same connection as Mesh Radio, kept only in this browser. MeshMonitor&rsquo;s{" "}
+            <code className="font-mono">ALLOWED_ORIGINS</code> has to include <code className="font-mono">{window.location.origin}</code>.
+          </p>
+        )}
+        {group.fields.some((f) => f.key === "label") && (settings.label === "name" || settings.label === "user" || settings.label === "username") && (
+          <p className="text-[12px] text-[var(--os-ink-3)]">Your name here is the signed-in user&rsquo;s: {currentUserName()}.</p>
+        )}
+      </div>
+    </fieldset>
+  ));
 }
 
 // Starts the screen saver after the chosen idle time; any input ends it.
@@ -5490,7 +5442,6 @@ function ScreenSaverHost({ disabled }) {
   const [settings, setSettings] = useState(readScreensaver);
   const [active, setActive] = useState(false);
   const [trying, setTrying] = useState(null); // a saver being tried from the gallery, without changing the setting
-  const [now, setNow] = useState(() => new Date());
   const startedAtRef = useRef(0);
   const pointerRef = useRef(null);
 
@@ -5549,14 +5500,12 @@ function ScreenSaverHost({ disabled }) {
       e.preventDefault();
       wake();
     };
-    const tick = setInterval(() => setNow(new Date()), 1000);
     window.addEventListener("mousemove", onMove);
     window.addEventListener("keydown", onKey);
     window.addEventListener("mousedown", wake);
     window.addEventListener("touchstart", wake, { passive: true });
     window.addEventListener("wheel", wake, { passive: true });
     return () => {
-      clearInterval(tick);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("mousedown", wake);
@@ -5569,12 +5518,6 @@ function ScreenSaverHost({ disabled }) {
   return (
     <div className="screensaver fixed inset-0 z-[90] cursor-none bg-[#0b0b0a]" role="presentation" aria-hidden="true">
       <SaverCanvas saver={trying || settings.saver} />
-      <div className="os-ui pointer-events-none absolute bottom-8 left-8" style={{ color: "#eeebe4" }}>
-        <div className="text-5xl font-semibold tabular-nums tracking-tight opacity-80">
-          {formatTime(now)}
-        </div>
-        <div className="mt-1 text-sm opacity-50">comcen os</div>
-      </div>
     </div>
   );
 }
@@ -5652,6 +5595,8 @@ function ScreenSaverPane() {
           </select>
         </label>
       </fieldset>
+
+      {choice !== "none" && <SaverSettings id={settings.saver} />}
 
       <fieldset className="saver-group mt-4">
         <legend>Power</legend>

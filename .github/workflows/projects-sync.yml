@@ -1,0 +1,100 @@
+# Keeps the widgets and screen savers on their projects' latest releases:
+# github.com/maxhayim/widgets-pack, screensaver-mesh, and screensaver-starfield.
+# Daily (and on demand): for each one with a release newer than the one pinned in package.json, move the pin to it.
+# Then build, commit "Widgets Pack v1.4.3, Mesh v0.2.1" (whatever moved) to main, and deploy.
+# If the build fails, open an issue instead.
+name: Widgets and screen savers sync
+
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+concurrency:
+  group: widgets-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Find newer releases
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          updates=""   # "repo@tag" for each project with a newer release
+          names=""     # for the commit message and the issue
+          changes=""   # links for the issue
+          for entry in "widgets-pack:Widgets Pack" "screensaver-mesh:Mesh" "screensaver-starfield:Starfield"; do
+            repo="${entry%%:*}"; name="${entry#*:}"
+            pinned=$(jq -r --arg r "$repo" '.dependencies[$r]' package.json | sed 's/.*#//')
+            latest=$(gh api "repos/maxhayim/$repo/releases/latest" --jq .tag_name)
+            echo "$name: pinned $pinned, latest $latest"
+            newest=$(printf '%s\n%s\n' "${pinned#v}" "${latest#v}" | sort -V | tail -1)
+            if [ "$newest" != "${pinned#v}" ]; then
+              updates="$updates github:maxhayim/$repo#$latest"
+              names="${names:+$names, }$name $latest"
+              changes="$changes- $name: https://github.com/maxhayim/$repo/compare/$pinned...$latest\n"
+            fi
+          done
+          if [ -z "$updates" ]; then echo "All up to date."; fi
+          echo "updates=$updates" >> "$GITHUB_OUTPUT"
+          echo "names=$names" >> "$GITHUB_OUTPUT"
+          echo "changes=$changes" >> "$GITHUB_OUTPUT"
+
+      - name: Move the pins and build
+        id: build
+        if: steps.check.outputs.updates != ''
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          npm ci
+          npm install --save ${{ steps.check.outputs.updates }}
+          npm run build
+
+      - name: Commit, push, and deploy
+        if: steps.check.outputs.updates != '' && steps.build.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "${{ steps.check.outputs.names }}"
+          git push
+          # A push made with this workflow's token doesn't start other workflows, so start the deploy directly
+          gh workflow run deploy.yml --ref main
+
+      - name: Open an issue if the build failed
+        if: steps.check.outputs.updates != '' && steps.build.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          title="${{ steps.check.outputs.names }} doesn't build on the site"
+          if [ "$(gh issue list --state open --search "in:title \"$title\"" --json number --jq length)" != "0" ]; then
+            echo "An issue for this is already open."
+            exit 0
+          fi
+          {
+            echo "The daily sync tried to move the site to **${{ steps.check.outputs.names }}**, but the site didn't build, so nothing was pushed."
+            echo
+            echo "- Build log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            printf '%b' "${{ steps.check.outputs.changes }}"
+          } > body.md
+          gh issue create --title "$title" --body-file body.md

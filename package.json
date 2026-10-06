@@ -1,7 +1,7 @@
 {
   "name": "maxhayim.github.io",
   "private": true,
-  "version": "2.22.0",
+  "version": "2.23.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,6 +14,8 @@
     "lucide-react": "^0.577.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "screensaver-mesh": "github:maxhayim/screensaver-mesh#v0.2.0",
+    "screensaver-starfield": "github:maxhayim/screensaver-starfield#v0.4.0",
     "widgets-pack": "github:maxhayim/widgets-pack#v1.4.2"
   },
   "devDependencies": {
