@@ -9043,6 +9043,9 @@ const WIDGET_HOST = {
       liveMedia.delete(audio);
     },
     openSettings: () => openPreferences("sound"),
+    // While the site's sound is off, the radio says "muted" and offers "turn sound on"
+    useMuted: () => !useSound().on,
+    unmute: () => saveSound({ ...soundState, on: true }),
   },
   // Photos are the site's pictures in IndexedDB, kept per user
   photos: {
@@ -9229,6 +9232,7 @@ const WIDGET_SETTINGS = {
   calendar: packSettings(packCalendar),
   worldclock: packSettings(packWorldClock),
   stocks: packSettings(packStocks),
+  photos: packSettings(packPhotos),
 };
 
 function WidgetSettingsPopup() {
