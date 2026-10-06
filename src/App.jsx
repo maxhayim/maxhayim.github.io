@@ -1231,6 +1231,8 @@ function saveAnalyticsOn(on) {
 const STORED_ITEMS = [
   { label: "theme", key: "comcen_theme" },
   { label: "wallpaper", key: "comcen_wallpaper" },
+  { label: "wallpaper changes", key: "comcen_wallpaper_rotate" },
+  { label: "when the wallpaper last changed", key: "comcen_wallpaper_changed" },
   { label: "screen saver", key: "comcen_screensaver" },
   { label: "Mesh screen saver settings", key: "comcen_saver_mesh" },
   { label: "Starfield screen saver settings", key: "comcen_saver_starfield" },
@@ -4185,6 +4187,132 @@ function CustomWallpapers({ current }) {
   );
 }
 
+/* Change picture, as on macOS: every so often (or each visit), in order or randomly, through every wallpaper,
+   the built-in ones and your own. When it last changed is kept, so "every day" carries across visits. */
+const WALLPAPER_EVERY = [
+  { id: "visit", label: "each visit", ms: null },
+  { id: "5s", label: "every 5 seconds", ms: 5 * 1000 },
+  { id: "1m", label: "every minute", ms: 60 * 1000 },
+  { id: "5m", label: "every 5 minutes", ms: 5 * 60 * 1000 },
+  { id: "15m", label: "every 15 minutes", ms: 15 * 60 * 1000 },
+  { id: "30m", label: "every 30 minutes", ms: 30 * 60 * 1000 },
+  { id: "1h", label: "every hour", ms: 60 * 60 * 1000 },
+  { id: "1d", label: "every day", ms: 24 * 60 * 60 * 1000 },
+];
+const WALLPAPER_ROTATE_PREFS = {
+  cookie: "comcen_wallpaper_rotate",
+  event: "mh-wallpaper-rotate-changed",
+  defaults: { on: false, every: "30m", random: false },
+  allowed: { every: WALLPAPER_EVERY.map((e) => e.id) },
+};
+const WALLPAPER_CHANGED_KEY = "comcen_wallpaper_changed"; // when the picture last changed (ms)
+let wallpaperRotatedThisVisit = false;
+
+// The next wallpaper: the one after the current, or a random different one
+function nextWallpaper(ids, current, random) {
+  if (ids.length < 2) return null;
+  if (random) {
+    const others = ids.filter((id) => id !== current);
+    return others[Math.floor(Math.random() * others.length)];
+  }
+  return ids[(ids.indexOf(current) + 1) % ids.length];
+}
+
+function WallpaperRotator() {
+  const [rotate] = usePrefs(WALLPAPER_ROTATE_PREFS);
+  const pictures = usePictures("wallpaper");
+  const ids = useMemo(() => [...WALLPAPERS.map((w) => w.id), ...pictures.map((p) => `custom-${p.id}`)], [pictures]);
+
+  // Any change of picture, by hand or by the timer, starts the wait over
+  useEffect(() => {
+    const onChanged = () => writeStore("localStorage", WALLPAPER_CHANGED_KEY, String(Date.now()));
+    window.addEventListener("mh-wallpaper-changed", onChanged);
+    return () => window.removeEventListener("mh-wallpaper-changed", onChanged);
+  }, []);
+
+  useEffect(() => {
+    if (!rotate.on) return;
+    const advance = () => {
+      const next = nextWallpaper(ids, readWallpaperCookie(), rotate.random);
+      if (next) saveWallpaper(next);
+    };
+    const every = WALLPAPER_EVERY.find((e) => e.id === rotate.every);
+    if (!every.ms) {
+      // Each visit: once when the page opens (your own pictures may still be loading, so wait for them)
+      if (wallpaperRotatedThisVisit) return;
+      const timer = setTimeout(() => {
+        wallpaperRotatedThisVisit = true;
+        advance();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+    let timer;
+    const arm = () => {
+      clearTimeout(timer);
+      const last = Number(readStore("localStorage", WALLPAPER_CHANGED_KEY)) || 0;
+      const wait = Math.max(0, last + every.ms - Date.now());
+      // While the page is hidden, wait; the change happens when you come back
+      timer = setTimeout(() => (document.hidden ? null : advance()), wait);
+    };
+    arm();
+    window.addEventListener("mh-wallpaper-changed", arm);
+    document.addEventListener("visibilitychange", arm);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("mh-wallpaper-changed", arm);
+      document.removeEventListener("visibilitychange", arm);
+    };
+  }, [rotate.on, rotate.every, rotate.random, ids]);
+
+  return null;
+}
+
+// Wallpaper pane: Change picture, under the pictures (as on macOS)
+function WallpaperRotateSettings() {
+  const [rotate, setRotate] = usePrefs(WALLPAPER_ROTATE_PREFS);
+  const control = "rounded-lg bg-[var(--os-card)] px-2.5 py-1.5 ring-1 ring-[var(--os-line)] focus-visible:outline-2 focus-visible:outline-[var(--os-accent)] disabled:opacity-40";
+  return (
+    <div className="mt-6 flex flex-col gap-3 border-t border-[var(--os-line)] pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 text-[13px]">
+        <span>
+          <span className="block">change picture</span>
+          <span className="block text-[12px] text-[var(--os-ink-3)]">Goes through all the wallpapers above, including your own.</span>
+        </span>
+        <span className="flex items-center gap-2">
+          <select
+            value={rotate.every}
+            disabled={!rotate.on}
+            onChange={(e) => setRotate({ every: e.target.value })}
+            aria-label="How often the picture changes"
+            className={control}
+          >
+            {WALLPAPER_EVERY.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={rotate.on}
+            aria-label="Change picture"
+            onClick={() => {
+              // Turning it on starts the wait now, as on macOS, rather than changing the picture right away
+              if (!rotate.on) writeStore("localStorage", WALLPAPER_CHANGED_KEY, String(Date.now()));
+              setRotate({ on: !rotate.on });
+            }}
+            className={`os-switch ${rotate.on ? "os-switch-on" : ""} shrink-0 cursor-pointer`}
+          />
+        </span>
+      </div>
+      <div className={rotate.on ? "" : "pointer-events-none opacity-50"}>
+        <PrefSwitch label="randomly" hint="Off: in order, one after another." checked={rotate.random} onChange={(random) => setRotate({ random })} />
+      </div>
+    </div>
+  );
+}
+
 /* ---------- More widgets: Calculator, Calendar, Notes, World Clock, Photos ---------- */
 
 const CALC_KEYS = ["C", "±", "%", "÷", "7", "8", "9", "×", "4", "5", "6", "−", "1", "2", "3", "+", "0", ".", "="];
@@ -4886,6 +5014,7 @@ function PrefsWindow({ panelRef, drag, pane, paneInfo, setPane, current }) {
                 })}
               </div>
               <CustomWallpapers current={current} />
+              <WallpaperRotateSettings />
             </div>
           )}
         </div>
@@ -9619,6 +9748,7 @@ export default function App() {
       <MenuBar />
       {page}
       <Widgets disabled={booting} />
+      <WallpaperRotator />
       <ScreenSaverHost disabled={booting} />
       <NightShift />
       <PointerTrails />

@@ -299,6 +299,10 @@
   background-size: cover;
   background-position: var(--os-wallpaper-position);
   background-attachment: fixed;
+  transition: background-image 0.8s ease; /* a soft fade when the picture changes (where the browser supports it) */
+}
+@media (prefers-reduced-motion: reduce) {
+  .os-desk { transition: none; }
 }
 @supports (-webkit-touch-callout: none) {
   .os-desk { background-attachment: scroll; }
