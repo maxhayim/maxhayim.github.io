@@ -5405,6 +5405,47 @@ function SaverSetting({ field, settings, onChange, saver }) {
   );
 }
 
+// A saver's settings in their own window, like its Options sheet on macOS and Settings dialog on Windows
+function SaverSettingsWindow({ id, onClose }) {
+  const saver = SAVER_PACKAGES[id] || meshSaver;
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.stopImmediatePropagation(); // close just this window, not System Preferences behind it
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+  return (
+    <div className="os-ui no-print fixed inset-0 z-[74] flex items-center justify-center bg-black/25 p-3 sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div role="dialog" aria-modal="true" aria-labelledby="saver-settings-title" className="os-window prefs-window flex max-h-[calc(100vh-48px)] w-full max-w-[560px] flex-col overflow-hidden">
+        <div className="relative flex shrink-0 items-center gap-3 border-b border-[var(--os-line)] px-4 py-2.5">
+          <button type="button" onClick={onClose} aria-label={`Close ${saver.NAME} settings`} title="Close" className="os-round-btn os-win-close">
+            <X className="h-3.5 w-3.5" strokeWidth={2.2} />
+          </button>
+          <h2 id="saver-settings-title" className="pointer-events-none absolute inset-x-0 text-center font-semibold tracking-tight">
+            {saver.NAME.toLowerCase()} settings
+          </h2>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-4">
+          {/* A small preview, so changes show while this window covers the monitor */}
+          <div className="saver-settings-preview mx-auto overflow-hidden rounded-lg" aria-hidden="true">
+            <SaverCanvas saver={id} compact />
+          </div>
+          <SaverSettings id={id} />
+        </div>
+        <div className="flex shrink-0 justify-end border-t border-[var(--os-line)] px-4 py-2.5">
+          <button type="button" onClick={onClose} className="rounded-full bg-[var(--os-accent)] px-4 py-1 text-[13px] font-semibold text-white hover:brightness-105">
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // A saver's own settings, grouped as in its Options window on the computer
 function SaverSettings({ id }) {
   const saver = SAVER_PACKAGES[id] || meshSaver;
@@ -5526,6 +5567,8 @@ function ScreenSaverHost({ disabled }) {
 // then a "Screen saver" group (pick one, preview, download, wait) and a "Power" group
 function ScreenSaverPane() {
   const [settings, setSettings] = useState(readScreensaver);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const update = (next) => {
     const merged = { ...settings, ...next };
     setSettings(merged);
@@ -5565,6 +5608,9 @@ function ScreenSaverPane() {
               </option>
             ))}
           </select>
+          <button type="button" disabled={choice === "none"} onClick={() => setSettingsOpen(true)} className={button}>
+            Settings…
+          </button>
           <button
             type="button"
             disabled={choice === "none"}
@@ -5596,7 +5642,7 @@ function ScreenSaverPane() {
         </label>
       </fieldset>
 
-      {choice !== "none" && <SaverSettings id={settings.saver} />}
+      {settingsOpen && choice !== "none" && <SaverSettingsWindow id={settings.saver} onClose={closeSettings} />}
 
       <fieldset className="saver-group mt-4">
         <legend>Power</legend>
