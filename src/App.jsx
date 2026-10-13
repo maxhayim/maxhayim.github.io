@@ -98,6 +98,13 @@ import {
   Calculator,
   CalendarDays,
   PanelTop,
+  Folder,
+  ChevronLeft,
+  List,
+  Search,
+  Link2,
+  Download,
+  Settings as Cog,
 } from "lucide-react";
 import { version as OS_VERSION } from "../package.json";
 
@@ -269,6 +276,8 @@ function useHashRoute() {
     if (hash === "#/internet") return "internet";
     if (hash === "#/about") return "about";
     if (hash === "#/contact") return "contact";
+    if (hash === "#/finder") return "finder";
+    if (hash === "#/terminal") return "terminal";
     return "home";
   };
 
@@ -295,6 +304,8 @@ const PAGE_TITLES = {
   about: "About — comcen os",
   internet: "Internet — comcen os",
   contact: "Contact — comcen os",
+  finder: "Finder — comcen os",
+  terminal: "Terminal — comcen os",
 };
 
 function usePageMeta(page = "home") {
@@ -360,6 +371,9 @@ const OS_PAGES = [
   { page: "internet", label: "internet", href: "#/internet", Icon: Globe },
   { page: "about", label: "about", href: "#/about", Icon: FileText },
   { page: "contact", label: "contact", href: "#/contact", Icon: Mail },
+  // Apps: after the pages, set apart in the dock
+  { page: "finder", label: "finder", href: "#/finder", Icon: Folder, app: true },
+  { page: "terminal", label: "terminal", href: "#/terminal", Icon: Terminal, app: true },
 ];
 
 // Same machine the BIOS detects on boot.
@@ -872,24 +886,27 @@ function Dock({ currentPage, windowState, onMinimize, onRestore }) {
             title={dock.stay ? "Drag the dock anywhere; it settles onto the grid." : "Drag the dock; it springs back when you let go."}
             aria-hidden="true"
           />
-          {OS_PAGES.map(({ page, label, href, Icon }) => {
+          {OS_PAGES.map(({ page, label, href, Icon, app }, i) => {
             const active = page === currentPage && !minimized;
             return (
-              <a
-                key={page}
-                href={href}
-                onClick={() => page === currentPage && onRestore()}
-                aria-current={page === currentPage ? "page" : undefined}
-                className="os-dock-item"
-              >
-                <span className="os-knob">
-                  <Icon className="h-[18px] w-[18px]" strokeWidth={1.6} />
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className={`os-dot ${active ? "os-dot-on" : ""}`} aria-hidden="true" />
-                  <span className="os-dock-label">{label}</span>
-                </span>
-              </a>
+              <React.Fragment key={page}>
+                {/* The apps are set apart from the pages */}
+                {app && !OS_PAGES[i - 1].app && <span className="os-dock-sep mb-5 h-8 w-px bg-[var(--os-line)]" aria-hidden="true" />}
+                <a
+                  href={href}
+                  onClick={() => page === currentPage && onRestore()}
+                  aria-current={page === currentPage ? "page" : undefined}
+                  className="os-dock-item"
+                >
+                  <span className="os-knob">
+                    <Icon className="h-[18px] w-[18px]" strokeWidth={1.6} />
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className={`os-dot ${active ? "os-dot-on" : ""}`} aria-hidden="true" />
+                    <span className="os-dock-label">{label}</span>
+                  </span>
+                </a>
+              </React.Fragment>
             );
           })}
           <span className="os-dock-sep mb-5 h-8 w-px bg-[var(--os-line)]" aria-hidden="true" />
@@ -1232,6 +1249,8 @@ const STORED_ITEMS = [
   { label: "theme", key: "comcen_theme" },
   { label: "wallpaper", key: "comcen_wallpaper" },
   { label: "wallpaper changes", key: "comcen_wallpaper_rotate" },
+  { label: "Finder view", key: "comcen_finder" },
+  { label: "Terminal history", key: "comcen_terminal_history" },
   { label: "when the wallpaper last changed", key: "comcen_wallpaper_changed" },
   { label: "screen saver", key: "comcen_screensaver" },
   { label: "Mesh screen saver settings", key: "comcen_saver_mesh" },
@@ -3393,7 +3412,7 @@ function PowerPane() {
 
 /* Keyboard: shortcuts that work anywhere on the desktop, plus a key tester */
 const SHORTCUTS = [
-  { keys: "1 – 5", label: "home, gits, internet, about, contact", match: (e) => /^Digit[1-5]$/.test(e.code) },
+  { keys: "1 – 7", label: "home, gits, internet, about, contact, finder, terminal", match: (e) => /^Digit[1-7]$/.test(e.code) },
   { keys: "W", label: "show or put away widgets", match: (e) => e.code === "KeyW" },
   { keys: ",", label: "system preferences", match: (e) => e.code === "Comma" },
   { keys: "R", label: "radio on or off", match: (e) => e.code === "KeyR" },
@@ -7519,6 +7538,1158 @@ function InternetWindow() {
   );
 }
 
+/* ---------- Files: Finder and Terminal, over one read-only file system ----------
+   The folders and files are the site's own things: Max's GitHub repos and their READMEs, the wallpapers and your
+   pictures, your sticky notes, the screen savers and widgets you can download, and the apps. You can look around,
+   preview, and open; nothing runs, nothing is changed, and nothing is uploaded. */
+
+const HOST_NAME = "comcen";
+
+// Your home folder's name: the owner's handle, or a visitor's name made path-friendly
+const homeName = (user) => user.handle || user.name.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 16) || user.id;
+function currentUser() {
+  const users = readUsers();
+  const id = currentUserId(users);
+  return users.find((u) => u.id === id) || OWNER;
+}
+const homePath = () => `/Users/${homeName(currentUser())}`;
+
+// Max's GitHub repos, loaded once a visit (the list built into the site if GitHub can't be reached)
+let reposPromise = null;
+function loadRepos() {
+  reposPromise ||= fetch("https://api.github.com/users/maxhayim/repos?per_page=100&sort=updated")
+    .then((response) => (response.ok ? response.json() : Promise.reject(new Error("github"))))
+    .then((list) =>
+      list
+        .filter((repo) => !repo.fork && repo.name !== "maxhayim" && repo.name !== "maxhayim.github.io")
+        .map((repo) => ({
+          name: repo.name,
+          html_url: repo.html_url,
+          description: repoDescriptions[repo.name] || repo.description || "",
+          language: repo.language || "",
+          updated_at: repo.pushed_at || repo.updated_at,
+        })),
+    )
+    .catch(() => [])
+    .then((list) => (list.length ? list : fallbackRepos));
+  return reposPromise;
+}
+
+const readmes = new Map(); // repo -> Promise<string>
+function loadReadme(repo) {
+  if (!readmes.has(repo)) {
+    readmes.set(
+      repo,
+      fetch(`https://raw.githubusercontent.com/maxhayim/${repo}/HEAD/README.md`)
+        .then((response) => (response.ok ? response.text() : "This project has no README."))
+        .catch(() => "The README couldn't be loaded. Check your connection."),
+    );
+  }
+  return readmes.get(repo);
+}
+
+/* A file system entry:
+   folder – list() resolves to its entries     text – read() resolves to its text
+   image  – src, or a blob from your pictures   link – url, opened in a new tab
+   app    – run() opens it                      locked – another user's home folder
+   Any entry can have modified (a date), size (bytes), Icon, and note (shown in Get Info and list view). */
+const fsFolder = (name, list, extra) => ({ name, kind: "folder", list, ...extra });
+const fsText = (name, text, extra) => ({ name, kind: "text", read: typeof text === "function" ? text : async () => text, ...extra });
+const fsLink = (name, url, extra) => ({ name, kind: "link", url, ...extra });
+const fsApp = (name, run, Icon, extra) => ({ name, kind: "app", run, Icon, ...extra });
+
+const goTo = (hash) => () => {
+  window.location.hash = hash;
+};
+
+const FS_APPLICATIONS = () => [
+  fsApp("Finder.app", goTo("/finder"), Folder),
+  fsApp("Gits.app", goTo("/gits"), Github),
+  fsApp("Internet.app", goTo("/internet"), Globe),
+  fsApp("Screen Saver.app", () => window.dispatchEvent(new CustomEvent("mh-screensaver-start")), MonitorPlay),
+  fsApp("System Preferences.app", () => openPreferences("all"), Cog),
+  fsApp("Terminal.app", goTo("/terminal"), Terminal),
+  fsApp("Widgets.app", toggleDashboard, LayoutDashboard),
+];
+
+const FS_README = `Welcome to comcen os.
+
+This is Finder. The folders and files here are the site's own things:
+Max's GitHub projects (in Gits), the wallpapers and your own pictures,
+your sticky notes, and the screen savers and widgets you can download.
+
+Open a folder by double-clicking it. Select a file and press Space to
+preview it. A picture can become your wallpaper from its preview.
+
+Everything here is read-only. comcen os can't run programs, and nothing
+you do in Finder or Terminal changes or uploads anything.
+
+Terminal (in Applications) looks at the same files. Type "help" there to
+see what it can do.
+`;
+
+// Your sticky notes, as text files named by their first line
+function fsNotes() {
+  const notes = readJSON("comcen_notes", []);
+  const list = Array.isArray(notes) ? notes.filter((n) => n && typeof n.text === "string" && n.text.trim()) : [];
+  const taken = new Set();
+  return list.map((note, i) => {
+    let base = note.text.trim().split("\n")[0].replace(/[/\\:]/g, " ").trim().slice(0, 28) || `Note ${i + 1}`;
+    while (taken.has(base)) base = `${base} ${i + 1}`;
+    taken.add(base);
+    return fsText(`${base}.txt`, note.text, { size: new Blob([note.text]).size });
+  });
+}
+
+// A picture from your library (IndexedDB): wallpapers can be set from their preview
+const fsPicture = (picture, kind) => ({
+  name: /\.[a-z0-9]+$/i.test(picture.name) ? picture.name : `${picture.name}.jpg`,
+  kind: "image",
+  blob: picture.blob,
+  thumb: picture.thumb,
+  wallpaper: kind === "wallpaper" ? `custom-${picture.id}` : null,
+  modified: picture.added ? new Date(picture.added) : null,
+  size: picture.blob?.size ?? null,
+});
+
+function fsHome(user) {
+  return fsFolder(
+    homeName(user),
+    async () => [
+      fsFolder("Desktop", async () => [fsText("Read Me.txt", FS_README, { size: FS_README.length })]),
+      fsFolder("Documents", async () => [fsFolder("Sticky Notes", async () => fsNotes(), { Icon: StickyNote })]),
+      fsFolder("Downloads", async () => [
+        ...DESKTOP_SAVERS.map((s) => fsLink(`${s.name} screen saver`, `https://github.com/maxhayim/${s.repo}`, { note: s.note })),
+        fsLink(WIDGETS_PACK.name, `https://github.com/maxhayim/${WIDGETS_PACK.repo}`, { note: WIDGETS_PACK.note }),
+      ]),
+      fsFolder("Pictures", async () => [
+        fsFolder("Photos", async () => (await listPictures("photo").catch(() => [])).map((p) => fsPicture(p, "photo"))),
+        ...(await listPictures("wallpaper").catch(() => [])).map((p) => fsPicture(p, "wallpaper")),
+      ]),
+    ],
+    { Icon: House },
+  );
+}
+
+function fsRoot() {
+  return fsFolder(
+    "comcen HD",
+    async () => [
+      fsFolder("Applications", async () => FS_APPLICATIONS()),
+      fsFolder(
+        "Gits",
+        async () =>
+          (await loadRepos()).map((repo) =>
+            fsFolder(
+              repo.name,
+              async () => [
+                fsText("README.md", () => loadReadme(repo.name), { modified: repo.updated_at ? new Date(repo.updated_at) : null, url: repo.html_url }),
+                fsLink(`${repo.name} on GitHub`, repo.html_url),
+              ],
+              { modified: repo.updated_at ? new Date(repo.updated_at) : null, note: repo.description },
+            ),
+          ),
+        { Icon: Github },
+      ),
+      fsFolder("Library", async () => [
+        fsFolder("Screen Savers", async () =>
+          SCREENSAVERS.map((sv) => fsApp(`${sv.label}.saver`, () => window.dispatchEvent(new CustomEvent("mh-screensaver-start", { detail: { saver: sv.id } })), MonitorPlay, { note: SAVER_DETAILS[sv.id]?.note })),
+        ),
+        fsFolder("Wallpapers", async () => WALLPAPERS.map((w) => ({ name: `${w.label}.jpg`, kind: "image", src: w.src, thumb: w.thumb, wallpaper: w.id }))),
+      ]),
+      fsFolder("Users", async () => {
+        const me = currentUser();
+        return readUsers().map((u) => (u.id === me.id ? fsHome(u) : { name: homeName(u), kind: "locked", Icon: Lock }));
+      }),
+    ],
+    { Icon: HardDrive },
+  );
+}
+
+class FsError extends Error {}
+
+// A path typed by you (relative, ~, .., .) as an absolute one
+function resolvePath(cwd, input) {
+  let path = input.trim();
+  if (!path || path === "~") return homePath();
+  if (path.startsWith("~/")) path = homePath() + path.slice(1);
+  else if (!path.startsWith("/")) path = `${cwd}/${path}`;
+  const parts = [];
+  for (const part of path.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") parts.pop();
+    else parts.push(part);
+  }
+  return `/${parts.join("/")}`;
+}
+
+const pathParts = (path) => path.split("/").filter(Boolean);
+const parentPath = (path) => `/${pathParts(path).slice(0, -1).join("/")}`;
+const baseName = (path) => pathParts(path).at(-1) || "comcen HD";
+const joinPath = (dir, name) => (dir === "/" ? `/${name}` : `${dir}/${name}`);
+// "/Users/maxhayim/Pictures" → "~/Pictures"
+function prettyPath(path) {
+  const home = homePath();
+  return path === home ? "~" : path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+}
+
+// The entry at a path; names match without regard to case, as on macOS
+async function fsLookup(path) {
+  let node = fsRoot();
+  for (const part of pathParts(path)) {
+    if (node.kind === "locked") throw new FsError("Permission denied");
+    if (node.kind !== "folder") throw new FsError("Not a directory");
+    const entries = await node.list();
+    const next = entries.find((e) => e.name === part) || entries.find((e) => e.name.toLowerCase() === part.toLowerCase());
+    if (!next) throw new FsError("No such file or directory");
+    node = next;
+  }
+  if (node.kind === "locked") throw new FsError("Permission denied");
+  return node;
+}
+
+async function fsList(path) {
+  const node = await fsLookup(path);
+  if (node.kind !== "folder") throw new FsError("Not a directory");
+  return node.list();
+}
+
+const FS_KINDS = { folder: "Folder", locked: "Folder", app: "Application", image: "Picture", text: "Text document", link: "Web link" };
+const fsKind = (node) => (node.kind === "app" && node.name.endsWith(".saver") ? "Screen saver" : node.kind === "text" && node.name.endsWith(".md") ? "Markdown document" : FS_KINDS[node.kind]);
+
+function fsSize(bytes) {
+  if (bytes == null) return "--";
+  if (bytes < 1000) return `${bytes} bytes`;
+  if (bytes < 1e6) return `${Math.round(bytes / 1000)} KB`;
+  return `${(bytes / 1e6).toFixed(1)} MB`;
+}
+
+// Opens an entry the way Finder would. quickLook previews pictures and text; showFolder goes into a folder.
+function fsOpen(node, path, { showFolder, quickLook, onError }) {
+  if (node.kind === "folder") showFolder(path);
+  else if (node.kind === "locked") onError(`You don't have permission to see the contents of "${node.name}".`);
+  else if (node.kind === "app") node.run();
+  else if (node.kind === "link") window.open(node.url, "_blank", "noopener");
+  else quickLook(node);
+}
+
+// Something Terminal asked Finder to show: a folder, and a file in it to select or preview
+let finderRequest = null;
+function openInFinder(path, { select = null, preview = false } = {}) {
+  finderRequest = { path, select, preview };
+  if (window.location.hash === "#/finder") window.dispatchEvent(new Event("mh-finder-request"));
+  else window.location.hash = "/finder";
+}
+
+// A folder's entries for a component; reloads when your pictures or notes change
+function useFolderEntries(path) {
+  const [state, setState] = useState({ path: null, entries: [], error: null, version: -1 });
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    const bump = () => setVersion((v) => v + 1);
+    const onStored = (e) => e.detail?.key === "comcen_notes" && bump();
+    window.addEventListener("mh-pictures-changed", bump);
+    window.addEventListener("mh-stored", onStored);
+    return () => {
+      window.removeEventListener("mh-pictures-changed", bump);
+      window.removeEventListener("mh-stored", onStored);
+    };
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    fsList(path)
+      .then((entries) => !cancelled && setState({ path, entries, error: null, version }))
+      .catch((e) => !cancelled && setState({ path, entries: [], error: e.message, version }));
+    return () => {
+      cancelled = true;
+    };
+  }, [path, version]);
+  return state.path === path ? { ...state, loading: false } : { entries: [], error: null, loading: true };
+}
+
+// An entry's icon: a picture's thumbnail, or a symbol for its kind
+function FsIcon({ node, size = "large" }) {
+  const box = size === "large" ? "h-14 w-14" : "h-5 w-5";
+  if (node.kind === "image" && node.thumb) return <img src={node.thumb} alt="" className={`${box} rounded-md object-cover ring-1 ring-[var(--os-line)]`} />;
+  const Icon = node.Icon || (node.kind === "folder" || node.kind === "locked" ? Folder : node.kind === "link" ? Link2 : node.kind === "app" ? AppWindow : FileText);
+  const tone = node.kind === "folder" || node.kind === "locked" ? "text-[var(--os-accent)]" : "text-[var(--os-ink-2)]";
+  return (
+    <span className={`relative inline-flex ${box} items-center justify-center ${tone}`}>
+      <Icon className={size === "large" ? "h-11 w-11" : "h-4 w-4"} strokeWidth={size === "large" ? 1.2 : 1.8} />
+      {node.kind === "locked" && <Lock className={`absolute bottom-0 right-0 ${size === "large" ? "h-4 w-4" : "h-2.5 w-2.5"} text-[var(--os-ink)]`} strokeWidth={2.2} />}
+    </span>
+  );
+}
+
+// Quick Look: a picture or a text file, over Finder
+function QuickLook({ node, onClose }) {
+  const [text, setText] = useState(null);
+  const blobUrl = useMemo(() => (node.blob ? URL.createObjectURL(node.blob) : null), [node.blob]);
+  useEffect(() => () => blobUrl && URL.revokeObjectURL(blobUrl), [blobUrl]);
+  useEffect(() => {
+    if (node.kind !== "text") return;
+    let cancelled = false;
+    node.read().then((t) => !cancelled && setText(t));
+    return () => {
+      cancelled = true;
+    };
+  }, [node]);
+  const [wallpaper, setWallpaper] = useState(readWallpaperCookie);
+  return (
+    <div className="finder-quicklook" role="dialog" aria-modal="true" aria-label={`Preview of ${node.name}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="finder-quicklook-panel">
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--os-line)] px-3 py-2 text-[13px]">
+          <button type="button" onClick={onClose} aria-label="Close preview" title="Close (Space)" className="os-round-btn os-win-close">
+            <X className="h-3.5 w-3.5" strokeWidth={2.2} />
+          </button>
+          <span className="min-w-0 flex-1 truncate text-center font-semibold">{node.name}</span>
+          {node.wallpaper && (
+            <button
+              type="button"
+              disabled={wallpaper === node.wallpaper}
+              onClick={() => {
+                saveWallpaper(node.wallpaper);
+                setWallpaper(node.wallpaper);
+              }}
+              className="shrink-0 rounded-full px-3 py-0.5 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)] disabled:opacity-50"
+            >
+              {wallpaper === node.wallpaper ? "Your wallpaper" : "Set as Wallpaper"}
+            </button>
+          )}
+          {node.url && (
+            <a href={node.url} target="_blank" rel="noreferrer" className="shrink-0 rounded-full px-3 py-0.5 ring-1 ring-[var(--os-line)] hover:bg-[var(--os-hover)]">
+              Open on GitHub
+            </a>
+          )}
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto">
+          {node.kind === "image" ? (
+            <div className="flex h-full items-center justify-center bg-black/80 p-3">
+              <img src={blobUrl || node.src} alt={node.name} className="max-h-full max-w-full object-contain" />
+            </div>
+          ) : (
+            <pre className="finder-quicklook-text" dir="auto">
+              {text ?? "Loading…"}
+            </pre>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const FINDER_PREFS = { cookie: "comcen_finder", event: "mh-finder-changed", defaults: { view: "icons" }, allowed: { view: ["icons", "list"] } };
+const coarsePointer = () => window.matchMedia?.("(pointer: coarse)").matches;
+
+function FinderApp() {
+  const [prefs, setPrefs] = usePrefs(FINDER_PREFS);
+  const [nav, setNav] = useState(() => {
+    const start = finderRequest?.path || homePath();
+    return { back: [], path: start, forward: [] };
+  });
+  const [selected, setSelected] = useState(() => finderRequest?.select || null);
+  const [preview, setPreview] = useState(null);
+  const [query, setQuery] = useState("");
+  const [message, setMessage] = useState("");
+  const pendingPreview = useRef(finderRequest?.preview ? finderRequest.select : null);
+  const paneRef = useRef(null);
+  const { entries, error, loading } = useFolderEntries(nav.path);
+  const shown = query ? entries.filter((e) => e.name.toLowerCase().includes(query.trim().toLowerCase())) : entries;
+
+  useEffect(() => {
+    finderRequest = null;
+    const onRequest = () => {
+      if (!finderRequest) return;
+      const { path, select, preview: wantPreview } = finderRequest;
+      finderRequest = null;
+      setNav((n) => (n.path === path ? n : { back: [...n.back, n.path], path, forward: [] }));
+      setSelected(select);
+      setQuery("");
+      pendingPreview.current = wantPreview ? select : null;
+    };
+    window.addEventListener("mh-finder-request", onRequest);
+    return () => window.removeEventListener("mh-finder-request", onRequest);
+  }, []);
+
+  // A preview Terminal asked for opens once the folder has loaded
+  useEffect(() => {
+    if (!pendingPreview.current || loading) return;
+    const node = entries.find((e) => e.name === pendingPreview.current);
+    pendingPreview.current = null;
+    if (node) queueMicrotask(() => setPreview(node));
+  }, [entries, loading]);
+
+  const go = (path) => {
+    if (path === nav.path) return;
+    setNav((n) => ({ back: [...n.back, n.path], path, forward: [] }));
+    setSelected(null);
+    setQuery("");
+    setMessage("");
+  };
+  const back = () =>
+    nav.back.length &&
+    setNav((n) => ({ back: n.back.slice(0, -1), path: n.back.at(-1), forward: [n.path, ...n.forward] }));
+  const forward = () =>
+    nav.forward.length &&
+    setNav((n) => ({ back: [...n.back, n.path], path: n.forward[0], forward: n.forward.slice(1) }));
+  const open = (node) =>
+    fsOpen(node, joinPath(nav.path, node.name), {
+      showFolder: go,
+      quickLook: setPreview,
+      onError: setMessage,
+    });
+
+  const onKeyDown = (e) => {
+    if (preview) {
+      if (e.key === "Escape" || e.key === " ") {
+        e.preventDefault();
+        e.stopPropagation();
+        setPreview(null);
+        paneRef.current?.focus();
+      }
+      return;
+    }
+    if (e.target.closest("input")) return;
+    const index = shown.findIndex((n) => n.name === selected);
+    const move = (to) => {
+      e.preventDefault();
+      const next = shown[Math.max(0, Math.min(shown.length - 1, to))];
+      if (next) setSelected(next.name);
+    };
+    const meta = e.metaKey || e.ctrlKey;
+    if (e.key === "ArrowRight" && !meta) move(index + 1);
+    else if (e.key === "ArrowLeft" && !meta) move(index < 0 ? 0 : index - 1);
+    else if (e.key === "ArrowDown" && !meta) move(index + (prefs.view === "icons" ? columnsOf(paneRef.current) : 1));
+    else if (e.key === "ArrowUp" && !meta) move(index < 0 ? 0 : index - (prefs.view === "icons" ? columnsOf(paneRef.current) : 1));
+    else if ((e.key === "ArrowUp" && meta) || e.key === "Backspace") {
+      e.preventDefault();
+      if (nav.path !== "/") go(parentPath(nav.path));
+    } else if ((e.key === "ArrowDown" && meta) || e.key === "Enter") {
+      e.preventDefault();
+      if (index >= 0) open(shown[index]);
+    } else if (e.key === " ") {
+      e.preventDefault();
+      if (index >= 0 && (shown[index].kind === "image" || shown[index].kind === "text")) setPreview(shown[index]);
+    } else if (meta && e.key === "[") {
+      e.preventDefault();
+      back();
+    } else if (meta && e.key === "]") {
+      e.preventDefault();
+      forward();
+    }
+  };
+
+  const home = homePath();
+  const sidebar = [
+    {
+      title: "Favorites",
+      items: [
+        ["Desktop", `${home}/Desktop`, Monitor],
+        ["Documents", `${home}/Documents`, FileText],
+        ["Downloads", `${home}/Downloads`, Download],
+        ["Pictures", `${home}/Pictures`, ImageIcon],
+        ["Applications", "/Applications", AppWindow],
+        ["Gits", "/Gits", Github],
+      ],
+    },
+    {
+      title: "Locations",
+      items: [
+        [homeName(currentUser()), home, House],
+        ["comcen HD", "/", HardDrive],
+      ],
+    },
+  ];
+  const crumbs = ["/", ...pathParts(nav.path).map((_, i, all) => `/${all.slice(0, i + 1).join("/")}`)];
+  const selectedNode = shown.find((n) => n.name === selected);
+  const itemProps = (node) => ({
+    role: "option",
+    "aria-selected": node.name === selected,
+    onClick: () => (coarsePointer() ? open(node) : setSelected(node.name)),
+    onDoubleClick: () => open(node),
+  });
+
+  return (
+    <div className="finder" onKeyDown={onKeyDown}>
+      <div className="finder-toolbar">
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={back} disabled={!nav.back.length} className="finder-tool" aria-label="Back" title="Back">
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={forward} disabled={!nav.forward.length} className="finder-tool" aria-label="Forward" title="Forward">
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+        <span className="min-w-0 flex-1 truncate font-semibold">{baseName(nav.path)}</span>
+        <div className="flex items-center gap-1" role="group" aria-label="View">
+          <button type="button" onClick={() => setPrefs({ view: "icons" })} aria-pressed={prefs.view === "icons"} className="finder-tool" aria-label="As icons" title="As icons">
+            <LayoutGrid className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={() => setPrefs({ view: "list" })} aria-pressed={prefs.view === "list"} className="finder-tool" aria-label="As list" title="As list">
+            <List className="h-4 w-4" />
+          </button>
+        </div>
+        <label className="finder-search">
+          <Search className="h-3.5 w-3.5 shrink-0 text-[var(--os-ink-3)]" aria-hidden="true" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search" aria-label="Search this folder" className="min-w-0 flex-1 bg-transparent outline-none" />
+        </label>
+      </div>
+
+      <div className="finder-body">
+        <nav className="finder-sidebar" aria-label="Places">
+          {sidebar.map((section) => (
+            <div key={section.title} className="mb-3">
+              <div className="finder-sidebar-title">{section.title}</div>
+              {section.items.map(([label, path, Icon]) => (
+                <button key={path} type="button" onClick={() => go(path)} aria-current={nav.path === path ? "location" : undefined} className="finder-place">
+                  <Icon className="h-4 w-4 shrink-0" strokeWidth={1.8} aria-hidden="true" />
+                  <span className="truncate">{label}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        <div
+          ref={paneRef}
+          tabIndex={0}
+          className="finder-pane"
+          role="listbox"
+          aria-label={`Contents of ${baseName(nav.path)}`}
+          onMouseDown={(e) => e.target === e.currentTarget && setSelected(null)}
+        >
+          {loading ? (
+            <p className="finder-empty">Loading…</p>
+          ) : error ? (
+            <p className="finder-empty">{error === "Permission denied" ? "You don't have permission to see this folder." : "This folder couldn't be opened."}</p>
+          ) : !shown.length ? (
+            <p className="finder-empty">{query ? `Nothing here matches "${query}".` : "This folder is empty."}</p>
+          ) : prefs.view === "icons" ? (
+            <div className="finder-grid">
+              {shown.map((node) => (
+                <button key={node.name} type="button" {...itemProps(node)} className="finder-icon" title={node.note || node.name}>
+                  <FsIcon node={node} />
+                  <span className="finder-icon-name">{node.name}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <table className="finder-list">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th className="hidden sm:table-cell">Date modified</th>
+                  <th className="hidden md:table-cell">Size</th>
+                  <th className="hidden sm:table-cell">Kind</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((node) => (
+                  <tr key={node.name} {...itemProps(node)} className="finder-row" title={node.note || undefined}>
+                    <td>
+                      <span className="flex min-w-0 items-center gap-2">
+                        <FsIcon node={node} size="small" />
+                        <span className="truncate">{node.name}</span>
+                      </span>
+                    </td>
+                    <td className="hidden sm:table-cell">{node.modified ? node.modified.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "--"}</td>
+                    <td className="hidden md:table-cell">{node.kind === "folder" ? "--" : fsSize(node.size)}</td>
+                    <td className="hidden sm:table-cell">{fsKind(node)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      <div className="finder-pathbar">
+        <nav aria-label="Path" className="flex min-w-0 items-center gap-0.5 overflow-hidden">
+          {crumbs.map((path, i) => (
+            <span key={path} className="flex min-w-0 items-center gap-0.5">
+              {i > 0 && <ChevronRight className="h-3 w-3 shrink-0 opacity-50" aria-hidden="true" />}
+              <button type="button" onClick={() => go(path)} className="truncate rounded px-1 hover:bg-[var(--os-hover)]">
+                {baseName(path)}
+              </button>
+            </span>
+          ))}
+        </nav>
+        <span className="ml-auto shrink-0 pl-3" aria-live="polite">
+          {message || (selectedNode ? `${selectedNode.name} · ${fsKind(selectedNode)}${selectedNode.note ? ` · ${selectedNode.note}` : ""}` : `${shown.length} ${shown.length === 1 ? "item" : "items"}`)}
+        </span>
+      </div>
+
+      {preview && (
+        <QuickLook
+          node={preview}
+          onClose={() => {
+            setPreview(null);
+            paneRef.current?.focus();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// How many icons fit in a row, for moving up and down with the arrow keys
+function columnsOf(pane) {
+  const items = pane?.querySelectorAll(".finder-icon");
+  if (!items || items.length < 2) return 1;
+  const top = items[0].offsetTop;
+  let n = 0;
+  while (n < items.length && items[n].offsetTop === top) n++;
+  return Math.max(1, n);
+}
+
+function FinderPage() {
+  return (
+    <SharedShell currentPage="finder">
+      <section className="rounded-3xl border p-3 sm:p-4">
+        <FinderApp />
+      </section>
+    </SharedShell>
+  );
+}
+
+/* Terminal: a shell over the same files. It can look around, open things, and change a few settings; it can't run
+   programs, change files, or connect anywhere, and says so. The session lasts while you're on the site. */
+const terminalSession = { lines: null, cwd: null, startedAt: Date.now() };
+const TERMINAL_HISTORY_KEY = "comcen_terminal_history";
+
+// Splits a command line like a shell: quotes and backslashes keep spaces in a word.
+// Pipes, redirection, and command chaining aren't available, so they're reported rather than taken literally.
+function splitCommand(line) {
+  const words = [];
+  let word = "";
+  let quote = null;
+  let started = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      else word += c;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+      started = true;
+    } else if (c === "\\" && i + 1 < line.length) {
+      word += line[++i];
+      started = true;
+    } else if (/\s/.test(c)) {
+      if (started) words.push(word);
+      word = "";
+      started = false;
+    } else if ("|<>;&`".includes(c)) {
+      return { words, special: c };
+    } else {
+      word += c;
+      started = true;
+    }
+  }
+  if (started) words.push(word);
+  return { words, special: quote ? "quote" : null };
+}
+
+// Shell-style wildcards (* and ?) as a test, ignoring case
+const globTest = (pattern) => new RegExp(`^${pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "i");
+
+const lsName = (node) => [{ text: node.kind === "folder" || node.kind === "locked" ? `${node.name}/` : node.name, tone: node.kind === "folder" || node.kind === "locked" ? "dir" : node.kind === "app" ? "app" : node.kind === "link" ? "link" : null }];
+
+// Words with spaces are shown escaped, as a shell would complete them
+const shellEscape = (name) => name.replace(/([ '"\\()&|;<>$`!])/g, "\\$1");
+
+const NO_WRITE = ["rm", "rmdir", "mkdir", "touch", "mv", "cp", "ln", "chmod", "chown", "chgrp", "tee", "truncate", "dd", "nano", "vi", "vim", "emacs", "pico", "ed"];
+const NO_RUN = ["node", "python", "python3", "ruby", "perl", "php", "java", "javac", "bash", "sh", "zsh", "csh", "tcsh", "fish", "npm", "npx", "yarn", "pnpm", "pip", "pip3", "brew", "apt", "apt-get", "yum", "make", "gcc", "cc", "clang", "g++", "go", "cargo", "rustc", "deno", "bun", "lua", "swift", "osascript", "eval", "exec", "source", ".", "xargs", "env", "nohup", "crontab"];
+const NO_NET = ["curl", "wget", "ssh", "scp", "sftp", "ftp", "rsync", "telnet", "nc", "ping", "git", "gh"];
+
+const TERMINAL_COMMANDS = {
+  help: { usage: "help", about: "lists what Terminal can do" },
+  ls: { usage: "ls [-l] [-a] [folder …]", about: "lists a folder (-l for details, -a to include . and ..)" },
+  cd: { usage: "cd [folder]", about: "goes to a folder (~ is your home folder, .. is the one above)" },
+  pwd: { usage: "pwd", about: "shows the folder you're in" },
+  cat: { usage: "cat file …", about: "shows a text file, like a README.md in /Gits" },
+  open: { usage: "open path|url", about: "opens something: a folder in Finder, a picture or file in Quick Look, an app, a link" },
+  tree: { usage: "tree [folder]", about: "shows a folder and what's in it, two levels deep" },
+  find: { usage: "find [folder] [-name pattern]", about: "finds files by name (* and ? work)" },
+  grep: { usage: "grep [-i] text file …", about: "finds lines in text files" },
+  echo: { usage: "echo text …", about: "prints text ($USER, $HOME and $PWD work)" },
+  history: { usage: "history", about: "the commands you've typed" },
+  clear: { usage: "clear", about: "clears the screen (or Control-L)" },
+  whoami: { usage: "whoami", about: "who you're signed in as" },
+  hostname: { usage: "hostname", about: "this computer's name" },
+  uname: { usage: "uname [-a]", about: "the system" },
+  date: { usage: "date", about: "the date and time" },
+  uptime: { usage: "uptime", about: "how long you've been on" },
+  neofetch: { usage: "neofetch", about: "this computer, at a glance" },
+  wallpaper: { usage: "wallpaper [name|next]", about: "lists the wallpapers, or changes yours" },
+  theme: { usage: "theme [light|dark|auto]", about: "shows or changes the theme" },
+  man: { usage: "man command", about: "how to use a command" },
+  exit: { usage: "exit", about: "closes Terminal" },
+};
+
+function uptimeText() {
+  const minutes = Math.floor((Date.now() - terminalSession.startedAt) / 60000);
+  return minutes < 1 ? "less than a minute" : minutes < 60 ? `${minutes} min${minutes === 1 ? "" : "s"}` : `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+// Runs one command line. sh: { cwd, setCwd, out(text|parts, tone), clear(), history }
+async function runCommand(line, sh) {
+  const { words, special } = splitCommand(line);
+  if (special === "quote") return sh.out("Unmatched quote.", "err");
+  if (special) return sh.out(`Pipes, redirection and "${special}" aren't available in this Terminal. Type one command at a time.`, "err");
+  if (!words.length) return;
+  const [cmd, ...args] = words;
+  const user = homeName(currentUser());
+  const arg = (a) => a.replace(/\$USER\b/g, user).replace(/\$HOME\b/g, homePath()).replace(/\$PWD\b/g, sh.cwd);
+  const where = (p) => resolvePath(sh.cwd, p);
+
+  if (NO_WRITE.includes(cmd)) return sh.out(`${cmd}: comcen HD is read-only. Nothing here can be changed.`, "err");
+  if (NO_NET.includes(cmd))
+    return sh.out(
+      cmd === "git" || cmd === "gh"
+        ? `${cmd}: this Terminal can't connect to GitHub. Max's projects are in /Gits: try "ls /Gits", or "open" one to see it on GitHub.`
+        : `${cmd}: this Terminal can't connect to other computers, and nothing can be uploaded.`,
+      "err",
+    );
+  if (NO_RUN.includes(cmd) || cmd.startsWith("./") || (cmd.startsWith("/") && cmd.length > 1))
+    return sh.out(`comcen os can't run programs. This Terminal can look around, open things, and change a few settings: type "help".`, "err");
+  if (cmd === "sudo" || cmd === "su") return sh.out(`${user} is not in the sudoers file. This incident will be reported.`, "err");
+
+  switch (cmd) {
+    case "help": {
+      sh.out("Terminal looks around comcen os. Everything here is read-only: it can't run programs, change files, or upload anything.", "dim");
+      const width = Math.max(...Object.values(TERMINAL_COMMANDS).map((c) => c.usage.length));
+      for (const c of Object.values(TERMINAL_COMMANDS)) sh.out([{ text: c.usage.padEnd(width + 2), tone: "accent" }, { text: c.about }]);
+      sh.out("Tab completes commands and names; ↑ and ↓ go through what you've typed.", "dim");
+      return;
+    }
+    case "man": {
+      const about = TERMINAL_COMMANDS[args[0]];
+      if (!args[0]) return sh.out("What manual page do you want? Try: man ls", "err");
+      if (!about) return sh.out(`No manual entry for ${args[0]}`, "err");
+      sh.out([{ text: about.usage, tone: "accent" }]);
+      return sh.out(`    ${about.about}.`);
+    }
+    case "pwd":
+      return sh.out(sh.cwd);
+    case "cd": {
+      const target = where(args[0] ? arg(args[0]) : "~");
+      try {
+        const node = await fsLookup(target);
+        if (node.kind !== "folder") return sh.out(`cd: not a directory: ${args[0]}`, "err");
+        sh.setCwd(target);
+      } catch (e) {
+        sh.out(`cd: ${e.message.toLowerCase()}: ${args[0]}`, "err");
+      }
+      return;
+    }
+    case "ls": {
+      const flags = args.filter((a) => a.startsWith("-")).join("");
+      const long = flags.includes("l");
+      const all = flags.includes("a");
+      const targets = args.filter((a) => !a.startsWith("-")).map(arg);
+      const paths = targets.length ? targets : ["."];
+      for (const [i, p] of paths.entries()) {
+        const path = where(p);
+        let entries;
+        try {
+          const node = await fsLookup(path);
+          entries = node.kind === "folder" ? await node.list() : [node];
+        } catch (e) {
+          sh.out(`ls: ${p}: ${e.message}`, "err");
+          continue;
+        }
+        if (paths.length > 1) sh.out(`${i ? "\n" : ""}${p}:`);
+        const list = all ? [{ name: ".", kind: "folder" }, { name: "..", kind: "folder" }, ...entries] : entries;
+        if (long) {
+          for (const node of list) {
+            const dir = node.kind === "folder" || node.kind === "locked";
+            const date = node.modified ? node.modified.toLocaleDateString("en-US", { month: "short", day: "2-digit" }) : "      ";
+            const owner = node.kind === "locked" ? node.name : user;
+            sh.out([{ text: `${dir ? "dr-xr-xr-x" : "-r--r--r--"}  ${owner.padEnd(10)} ${String(dir ? "-" : (node.size ?? 0)).padStart(9)}  ${date}  ` }, ...lsName(node)]);
+          }
+        } else if (list.length) {
+          sh.out(list.flatMap((node, j) => [...(j ? [{ text: "   " }] : []), ...lsName(node)]));
+        }
+      }
+      return;
+    }
+    case "cat": {
+      if (!args.length) return sh.out("cat: name a file, like: cat ~/Desktop/Read\\ Me.txt", "err");
+      for (const p of args.map(arg)) {
+        try {
+          const node = await fsLookup(where(p));
+          if (node.kind === "folder") sh.out(`cat: ${p}: Is a directory`, "err");
+          else if (node.kind === "text") sh.out((await node.read()).replace(/\n$/, ""));
+          else if (node.kind === "link") sh.out(node.url);
+          else sh.out(`cat: ${p}: is ${node.kind === "image" ? "a picture" : "an app"}. Try: open ${shellEscape(p)}`, "err");
+        } catch (e) {
+          sh.out(`cat: ${p}: ${e.message}`, "err");
+        }
+      }
+      return;
+    }
+    case "open": {
+      if (!args.length) return sh.out("Usage: open path|url (try: open . or open ~/Pictures)", "err");
+      for (const p of args.map(arg)) {
+        if (/^https?:\/\/\S+$/i.test(p)) {
+          window.open(p, "_blank", "noopener");
+          continue;
+        }
+        const path = where(p);
+        try {
+          const node = await fsLookup(path);
+          if (node.kind === "folder") openInFinder(path);
+          else if (node.kind === "app") node.run();
+          else if (node.kind === "link") window.open(node.url, "_blank", "noopener");
+          else openInFinder(parentPath(path), { select: node.name, preview: true });
+        } catch (e) {
+          sh.out(`The file ${path} does not exist.${e.message === "Permission denied" ? " (Permission denied)" : ""}`, "err");
+        }
+      }
+      return;
+    }
+    case "tree": {
+      const start = where(args[0] ? arg(args[0]) : ".");
+      let root;
+      try {
+        root = await fsLookup(start);
+      } catch (e) {
+        return sh.out(`tree: ${args[0]}: ${e.message}`, "err");
+      }
+      sh.out([{ text: args[0] || ".", tone: "dir" }]);
+      let folders = 0;
+      let files = 0;
+      const walk = async (node, prefix, depth) => {
+        const entries = await node.list().catch(() => []);
+        for (const [i, child] of entries.entries()) {
+          const last = i === entries.length - 1;
+          const dir = child.kind === "folder" || child.kind === "locked";
+          if (dir) folders++;
+          else files++;
+          sh.out([{ text: `${prefix}${last ? "└── " : "├── "}` }, ...lsName(child)]);
+          if (child.kind === "folder" && depth < 2) await walk(child, `${prefix}${last ? "    " : "│   "}`, depth + 1);
+        }
+      };
+      if (root.kind === "folder") await walk(root, "", 1);
+      return sh.out(`\n${folders} ${folders === 1 ? "directory" : "directories"}, ${files} ${files === 1 ? "file" : "files"}`, "dim");
+    }
+    case "find": {
+      const nameAt = args.findIndex((a) => a === "-name" || a === "-iname");
+      const pattern = nameAt >= 0 ? args[nameAt + 1] : null;
+      const startArg = args.find((a, i) => !a.startsWith("-") && i !== nameAt + 1) || ".";
+      const test = pattern ? globTest(pattern) : null;
+      let found = 0;
+      const walk = async (path, shown, depth) => {
+        let node;
+        try {
+          node = await fsLookup(path);
+        } catch (e) {
+          if (depth === 0) sh.out(`find: ${shown}: ${e.message}`, "err");
+          return;
+        }
+        if (!test || test.test(depth ? node.name : baseName(path))) {
+          sh.out(shown);
+          found++;
+        }
+        if (node.kind !== "folder" || depth >= 5 || found >= 300) return;
+        for (const child of await node.list().catch(() => [])) {
+          if (child.kind === "locked") continue;
+          await walk(joinPath(path, child.name), shown === "/" ? `/${child.name}` : `${shown}/${child.name}`, depth + 1);
+        }
+      };
+      await walk(where(arg(startArg)), arg(startArg), 0);
+      return;
+    }
+    case "grep": {
+      const ignoreCase = args.includes("-i");
+      const rest = args.filter((a) => a !== "-i");
+      const [needle, ...files] = rest;
+      if (!needle || !files.length) return sh.out("Usage: grep [-i] text file … (try: grep -i install /Gits/ZPTTLink/README.md)", "err");
+      const want = ignoreCase ? needle.toLowerCase() : needle;
+      for (const p of files.map(arg)) {
+        try {
+          const node = await fsLookup(where(p));
+          if (node.kind === "folder") {
+            sh.out(`grep: ${p}: Is a directory`, "err");
+            continue;
+          }
+          if (node.kind !== "text") continue;
+          for (const text of (await node.read()).split("\n")) {
+            if ((ignoreCase ? text.toLowerCase() : text).includes(want)) sh.out(files.length > 1 ? `${p}:${text}` : text);
+          }
+        } catch (e) {
+          sh.out(`grep: ${p}: ${e.message}`, "err");
+        }
+      }
+      return;
+    }
+    case "echo":
+      return sh.out(args.map(arg).join(" "));
+    case "history":
+      return sh.history.forEach((h, i) => sh.out(`${String(i + 1).padStart(5)}  ${h}`));
+    case "clear":
+      return sh.clear();
+    case "whoami":
+      return sh.out(user);
+    case "hostname":
+      return sh.out(HOST_NAME);
+    case "uname":
+      return sh.out(args.includes("-a") ? `COMCEN_OS ${HOST_NAME} I v${OS_VERSION} ${THIS_COMPUTER_NAME} mips` : "COMCEN_OS");
+    case "date":
+      return sh.out(new Date().toString().replace(/ \(.+\)$/, ""));
+    case "uptime":
+      return sh.out(`${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}  up ${uptimeText()}, 1 user`);
+    case "neofetch": {
+      const spec = Object.fromEntries(THIS_COMPUTER);
+      const logo = ["   ▄▄▄▄▄▄▄   ", "  █ ▄▄▄▄▄ █  ", "  █ █   █ █  ", "  █ ▀▀▀▀▀ █  ", "   ▀▀▀▀▀▀▀   ", "  ▀▀▀▀▀▀▀▀▀  "];
+      const info = [
+        [`${user}@${HOST_NAME}`, ""],
+        ["OS", `${spec.system} ${spec.version}`],
+        ["Host", `${THIS_COMPUTER_NAME} (${THIS_COMPUTER_KIND})`],
+        ["Uptime", uptimeText()],
+        ["Resolution", `${window.screen.width}×${window.screen.height}`],
+        ["Theme", document.documentElement.dataset.theme || (window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark (auto)" : "light (auto)")],
+        ["CPU", spec.processor],
+        ["GPU", spec.graphics],
+        ["Memory", spec.memory],
+        ["Disk", spec.storage],
+      ];
+      info.forEach(([key, value], i) =>
+        sh.out([{ text: (logo[i] || "").padEnd(14), tone: "accent" }, ...(value ? [{ text: `${key}: `, tone: "accent" }, { text: value }] : [{ text: key, tone: "accent" }])]),
+      );
+      return;
+    }
+    case "wallpaper": {
+      const pictures = await listPictures("wallpaper").catch(() => []);
+      const all = [...WALLPAPERS.map((w) => ({ id: w.id, name: w.label })), ...pictures.map((p) => ({ id: `custom-${p.id}`, name: p.name.replace(/\.[^.]+$/, "") }))];
+      const current = readWallpaperCookie();
+      if (!args.length) {
+        all.forEach((w) => sh.out([{ text: w.id === current ? "* " : "  ", tone: "accent" }, { text: w.name }]));
+        return sh.out('Change it with: wallpaper "wet leaf" (or wallpaper next)', "dim");
+      }
+      const want = args.join(" ").toLowerCase();
+      const pick = want === "next" ? all[(all.findIndex((w) => w.id === current) + 1) % all.length] : all.find((w) => w.name.toLowerCase() === want || w.id === want);
+      if (!pick) return sh.out(`wallpaper: no wallpaper named "${args.join(" ")}". Type "wallpaper" to see them.`, "err");
+      saveWallpaper(pick.id);
+      return sh.out(`Your wallpaper is now ${pick.name}.`);
+    }
+    case "theme": {
+      if (!args.length) return sh.out(readTheme());
+      if (!["light", "dark", "auto"].includes(args[0])) return sh.out("Usage: theme [light|dark|auto]", "err");
+      saveTheme(args[0]);
+      return sh.out(`Theme: ${args[0]}.`);
+    }
+    case "exit":
+    case "logout":
+      sh.out("[Process completed]", "dim");
+      window.location.hash = "/";
+      return;
+    default:
+      return sh.out(`comcen: command not found: ${cmd}`, "err");
+  }
+}
+
+// Tab: completes the command, or the last name you're typing
+async function completeLine(line, cwd) {
+  const { words } = splitCommand(line);
+  const endsWithSpace = /\s$/.test(line) && !/\\\s$/.test(line);
+  if (words.length <= 1 && !endsWithSpace) {
+    const start = words[0] || "";
+    const matches = Object.keys(TERMINAL_COMMANDS).filter((c) => c.startsWith(start));
+    return { matches, replace: start, done: (m) => `${m} ` };
+  }
+  const partial = endsWithSpace ? "" : words.at(-1);
+  const slash = partial.lastIndexOf("/");
+  const dirPart = slash >= 0 ? partial.slice(0, slash + 1) : "";
+  const namePart = slash >= 0 ? partial.slice(slash + 1) : partial;
+  let entries = [];
+  try {
+    entries = await fsList(resolvePath(cwd, dirPart || "."));
+  } catch {
+    entries = [];
+  }
+  const matches = entries.filter((e) => e.name.toLowerCase().startsWith(namePart.toLowerCase()));
+  return {
+    matches: matches.map((e) => e.name + (e.kind === "folder" ? "/" : "")),
+    replace: partial,
+    done: (m) => `${shellEscape(dirPart)}${shellEscape(m.replace(/\/$/, ""))}${m.endsWith("/") ? "/" : " "}`,
+  };
+}
+
+function commonPrefix(list) {
+  if (!list.length) return "";
+  let prefix = list[0];
+  for (const s of list) while (!s.toLowerCase().startsWith(prefix.toLowerCase())) prefix = prefix.slice(0, -1);
+  return prefix;
+}
+
+function TerminalApp() {
+  const user = homeName(currentUser());
+  const [cwd, setCwd] = useState(() => terminalSession.cwd || homePath());
+  const [lines, setLines] = useState(
+    () =>
+      terminalSession.lines || [
+        { parts: [{ text: `Last login: ${new Date(terminalSession.startedAt).toString().replace(/ GMT.+$/, "")} on ttys000` }] },
+        { parts: [{ text: `comcen os I v${OS_VERSION}. Type "help" to see what Terminal can do. Everything here is read-only.`, tone: "dim" }] },
+      ],
+  );
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [history, setHistory] = useState(() => {
+    const saved = readJSON(TERMINAL_HISTORY_KEY, []);
+    return Array.isArray(saved) ? saved.filter((h) => typeof h === "string").slice(-200) : [];
+  });
+  const historyAt = useRef(null); // where ↑/↓ are in the history, or null while typing
+  const inputRef = useRef(null);
+  const screenRef = useRef(null);
+  const prompt = `${user}@${HOST_NAME} ${prettyPath(cwd)} %`;
+
+  // The session lasts while you're on the site, like a Terminal window left open
+  useEffect(() => {
+    terminalSession.lines = lines.slice(-500);
+    terminalSession.cwd = cwd;
+  }, [lines, cwd]);
+
+  useEffect(() => {
+    screenRef.current?.scrollTo(0, screenRef.current.scrollHeight);
+  }, [lines, busy]);
+
+  useEffect(() => {
+    inputRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  const run = async (line) => {
+    const echo = { prompt, text: line };
+    setLines((l) => [...l, echo]);
+    if (line.trim()) {
+      const next = [...history.filter((h, i) => !(i === history.length - 1 && h === line)), line].slice(-200);
+      setHistory(next);
+      writeStore("localStorage", TERMINAL_HISTORY_KEY, JSON.stringify(next));
+    }
+    historyAt.current = null;
+    setBusy(true);
+    let cleared = false;
+    const pending = [];
+    const sh = {
+      cwd,
+      setCwd,
+      history: [...history, line],
+      out: (content, tone = null) => {
+        pending.push(typeof content === "string" ? { parts: [{ text: content, tone }] } : { parts: content });
+      },
+      clear: () => {
+        cleared = true;
+        pending.length = 0;
+      },
+    };
+    try {
+      await runCommand(line, sh);
+    } catch {
+      sh.out("Something went wrong running that.", "err");
+    }
+    setLines((l) => (cleared ? [] : [...l, ...pending]));
+    setBusy(false);
+    queueMicrotask(() => inputRef.current?.focus({ preventScroll: true }));
+  };
+
+  const onKeyDown = async (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (busy) return;
+      const line = input;
+      setInput("");
+      run(line);
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      if (busy) return;
+      const { matches, replace, done } = await completeLine(input, cwd);
+      const head = input.slice(0, input.length - replace.length);
+      if (matches.length === 1) setInput(head + done(matches[0]));
+      else if (matches.length > 1) {
+        const prefix = commonPrefix(matches);
+        if (prefix.length > replace.replace(/\\/g, "").length) setInput(head + shellEscape(prefix));
+        else setLines((l) => [...l, { prompt, text: input }, { parts: matches.flatMap((m, i) => [...(i ? [{ text: "   " }] : []), { text: m, tone: m.endsWith("/") ? "dir" : null }]) }]);
+      }
+    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!history.length) return;
+      const at = historyAt.current ?? history.length;
+      const next = e.key === "ArrowUp" ? Math.max(0, at - 1) : at + 1;
+      historyAt.current = next >= history.length ? null : next;
+      setInput(next >= history.length ? "" : history[next]);
+    } else if (e.ctrlKey && e.key === "c") {
+      if (window.getSelection()?.toString()) return; // copying text
+      e.preventDefault();
+      setLines((l) => [...l, { prompt, text: `${input}^C` }]);
+      setInput("");
+      historyAt.current = null;
+    } else if (e.ctrlKey && e.key === "l") {
+      e.preventDefault();
+      setLines([]);
+    } else if (e.ctrlKey && e.key === "u") {
+      e.preventDefault();
+      setInput("");
+    }
+  };
+
+  return (
+    <div className="terminal" onMouseUp={() => !window.getSelection()?.toString() && inputRef.current?.focus({ preventScroll: true })}>
+      <div className="terminal-title">
+        {user} — {prettyPath(cwd)} — 80×24
+      </div>
+      <div ref={screenRef} className="terminal-screen" role="log" aria-live="polite" aria-label="Terminal">
+        {lines.map((line, i) => (
+          <div key={i} className="terminal-line">
+            {line.prompt ? (
+              <>
+                <span className="terminal-prompt">{line.prompt}</span> {line.text}
+              </>
+            ) : (
+              line.parts.map((part, j) => (
+                <span key={j} className={part.tone ? `terminal-${part.tone}` : undefined}>
+                  {part.text}
+                </span>
+              ))
+            )}
+          </div>
+        ))}
+        <div className={`terminal-line flex ${busy ? "invisible" : ""}`}>
+          <label htmlFor="terminal-input" className="terminal-prompt shrink-0 pr-[1ch]">
+            {prompt}
+          </label>
+          <input
+            id="terminal-input"
+            ref={inputRef}
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              historyAt.current = null;
+            }}
+            onKeyDown={onKeyDown}
+            className="terminal-input"
+            autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-label="Command"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TerminalPage() {
+  return (
+    <SharedShell currentPage="terminal">
+      <section className="rounded-3xl border p-3 sm:p-4">
+        <TerminalApp />
+      </section>
+    </SharedShell>
+  );
+}
+
 function InternetPage() {
   return (
     <SharedShell currentPage="internet">
@@ -9738,6 +10909,10 @@ export default function App() {
       <AboutPage />
     ) : route === "contact" ? (
       <ContactPage />
+    ) : route === "finder" ? (
+      <FinderPage />
+    ) : route === "terminal" ? (
+      <TerminalPage />
     ) : (
       <HomePage />
     );
