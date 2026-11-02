@@ -947,6 +947,9 @@ const WALLPAPERS = [
   { id: "fish", label: "fish", src: "/wallpaper/system6-fish.jpg", thumb: "/wallpaper/system6-fish-thumb.jpg", position: "center" },
   { id: "wetleaf", label: "wet leaf", src: "/wallpaper/system6-wetleaf.jpg", thumb: "/wallpaper/system6-wetleaf-thumb.jpg", position: "center" },
   { id: "abstractgreen", label: "abstract green", src: "/wallpaper/system6-abstractgreen.jpg", thumb: "/wallpaper/system6-abstractgreen-thumb.jpg", position: "center" },
+  { id: "bluesky", label: "blue sky", src: "/wallpaper/system6-bluesky.jpg", thumb: "/wallpaper/system6-bluesky-thumb.jpg", position: "center" },
+  { id: "starfish", label: "starfish", src: "/wallpaper/system6-starfish.jpg", thumb: "/wallpaper/system6-starfish-thumb.jpg", position: "center" },
+  { id: "wettree", label: "wet tree", src: "/wallpaper/system6-wettree.jpg", thumb: "/wallpaper/system6-wettree-thumb.jpg", position: "center" },
 ];
 const WALLPAPER_COOKIE = "comcen_wallpaper";
 
@@ -4373,7 +4376,7 @@ const GALLERY_PANELS = [
 ];
 // Wallpaper, panel, wallpaper, panel… then the remaining panels: nine different backdrops for nine widgets
 const GALLERY_BACKDROPS = [
-  ...WALLPAPERS.flatMap((w, i) => [`url("${w.thumb}")`, GALLERY_PANELS[i]]),
+  ...WALLPAPERS.flatMap((w, i) => [`url("${w.thumb}")`, GALLERY_PANELS[i % GALLERY_PANELS.length]]),
   ...GALLERY_PANELS.slice(WALLPAPERS.length),
 ];
 const galleryBackground = (i) => ({ backgroundImage: GALLERY_BACKDROPS[i % GALLERY_BACKDROPS.length] });
